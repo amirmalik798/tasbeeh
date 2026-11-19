@@ -49,6 +49,7 @@ internal fun SessionHistoryScreen(
     onFinish: () -> Unit
 ) {
     var selectedFilter by remember { mutableStateOf("All") }
+    var confirmFinish by remember { mutableStateOf(false) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val totalSessions = sessions.size + (if (openSession != null) 1 else 0)
     val completed = remember(sessions) { sessions.filter { it.status == SessionStatus.COMPLETED } }
@@ -83,7 +84,7 @@ internal fun SessionHistoryScreen(
         ) {
             IconButton(
                 onClick = onBack,
-                modifier = Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF171B17))
+                modifier = Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF171B17))
             ) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFFFFD56A))
             }
@@ -145,7 +146,7 @@ internal fun SessionHistoryScreen(
                     session = openSession,
                     now = now,
                     onResume = onResume,
-                    onFinish = onFinish
+                    onFinish = { confirmFinish = true }
                 )
             }
 
@@ -224,6 +225,33 @@ internal fun SessionHistoryScreen(
             }
         }
     }
+
+    if (confirmFinish) {
+        AlertDialog(
+            onDismissRequest = { confirmFinish = false },
+            containerColor = HistoryPanel,
+            title = { Text("Finish this session?", color = HistoryIvory) },
+            text = {
+                Text(
+                    "Your current progress will be saved as an incomplete session. You can still review it in your history.",
+                    color = HistoryMuted
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmFinish = false
+                    onFinish()
+                }) {
+                    Text("FINISH SESSION", color = Color(0xFFFFA18A))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmFinish = false }) {
+                    Text("KEEP SESSION", color = HistoryGold)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -301,7 +329,7 @@ private fun OpenSessionCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = onResume,
-                    modifier = Modifier.weight(1f).height(44.dp),
+                    modifier = Modifier.weight(1f).height(48.dp),
                     shape = RoundedCornerShape(13.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = HistoryGold, contentColor = Color(0xFF17130A))
                 ) {
@@ -311,7 +339,7 @@ private fun OpenSessionCard(
                 }
                 OutlinedButton(
                     onClick = onFinish,
-                    modifier = Modifier.height(44.dp),
+                    modifier = Modifier.height(48.dp),
                     shape = RoundedCornerShape(13.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = HistoryMuted),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF46483C))
