@@ -75,7 +75,7 @@ internal fun CustomDhikrEditorScreen(
         ) {
             IconButton(
                 onClick = { requestLeave() },
-                modifier = Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF171B17))
+                modifier = Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF171B17))
             ) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFFFFD56A))
             }
