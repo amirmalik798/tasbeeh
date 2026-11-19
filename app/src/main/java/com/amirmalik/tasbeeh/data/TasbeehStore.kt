@@ -34,6 +34,9 @@ enum class CountOutcome {
     PAUSED
 }
 
+internal fun visibleCounterValue(storedCount: Int, sessionStatus: SessionStatus?): Int =
+    if (sessionStatus == SessionStatus.INCOMPLETE) 0 else storedCount.coerceAtLeast(0)
+
 internal fun canUndoCount(count: Int, sessionStatus: SessionStatus?): Boolean =
     count > 0 &&
         sessionStatus != SessionStatus.PAUSED &&
@@ -145,15 +148,16 @@ class TasbeehStore(private val context: Context) {
     }
 
     val state: Flow<TasbeehState> = context.tasbeehDataStore.data.map { prefs ->
+        val currentSession = decodeSession(prefs[Keys.currentSession].orEmpty())
         TasbeehState(
-            count = (prefs[Keys.count] ?: 0).coerceAtLeast(0),
+            count = visibleCounterValue(prefs[Keys.count] ?: 0, currentSession?.status),
             target = (prefs[Keys.target] ?: 33).coerceIn(1, 9999),
             dhikr = prefs[Keys.dhikr] ?: "SubhanAllah",
             soundEnabled = prefs[Keys.sound] ?: false,
             hapticsEnabled = prefs[Keys.haptics] ?: true,
             ttsVoicePreference = prefs[Keys.ttsVoicePreference]?.takeIf { it == "male" || it == "female" } ?: "female",
             fontScale = (prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE).coerceIn(1.0f, 1.25f),
-            currentSession = decodeSession(prefs[Keys.currentSession].orEmpty()),
+            currentSession = currentSession,
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
             selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId]
         )
