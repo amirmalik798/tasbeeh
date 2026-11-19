@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.amirmalik.tasbeeh.data.CustomDhikr
 import com.amirmalik.tasbeeh.data.SavedSession
 import com.amirmalik.tasbeeh.data.TasbeehState
 import com.amirmalik.tasbeeh.data.TasbeehStore
@@ -85,15 +86,26 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     var showReset by remember { mutableStateOf(false) }
     var showTarget by remember { mutableStateOf(false) }
     var showDhikrScreen by remember { mutableStateOf(false) }
+    var showCustomDhikrEditor by remember { mutableStateOf(false) }
+    var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
+    val selectedCustomDhikr = state.customDhikrs.firstOrNull { it.id == state.selectedCustomDhikrId }
     val selectedDhikr = DhikrCatalog.byValue(state.dhikr)
+    val activeDhikrTitle = selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
+    val activeDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
+    val activeDhikrTransliteration = selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
     var completionRecordedFor by remember { mutableIntStateOf(-1) }
 
-    BackHandler(enabled = showDhikrScreen || showHistory || showSettings) {
-        if (showDhikrScreen) {
-            showDhikrScreen = false
-        } else {
-            showHistory = false
-            showSettings = false
+    BackHandler(enabled = showCustomDhikrEditor || showDhikrScreen || showHistory || showSettings) {
+        when {
+            showCustomDhikrEditor -> {
+                showCustomDhikrEditor = false
+                editingCustomDhikr = null
+            }
+            showDhikrScreen -> showDhikrScreen = false
+            else -> {
+                showHistory = false
+                showSettings = false
+            }
         }
     }
 
@@ -111,19 +123,59 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Ink, background = Ink, surface = Panel, onSurface = Ivory, secondary = Color(0xFF16714B))) {
-        if (showDhikrScreen) {
-            DhikrSelectionScreen(
-                currentDhikr = state.dhikr,
-                onBack = { showDhikrScreen = false },
-                onSelect = { dhikr ->
-                    showDhikrScreen = false
-                    if (dhikr.value != state.dhikr) {
-                        completionRecordedFor = -1
-                        scope.launch { store.update(count = 0, dhikr = dhikr.value) }
+        when {
+            showCustomDhikrEditor -> {
+                CustomDhikrEditorScreen(
+                    existing = editingCustomDhikr,
+                    existingTitles = state.customDhikrs
+                        .filterNot { it.id == editingCustomDhikr?.id }
+                        .map { it.title },
+                    onBack = {
+                        showCustomDhikrEditor = false
+                        editingCustomDhikr = null
+                    },
+                    onSave = { custom ->
+                        scope.launch { store.saveCustomDhikr(custom) }
+                        showCustomDhikrEditor = false
+                        editingCustomDhikr = null
                     }
-                }
-            )
-        } else {
+                )
+            }
+            showDhikrScreen -> {
+                DhikrSelectionScreen(
+                    currentDhikr = state.dhikr,
+                    currentCustomDhikrId = state.selectedCustomDhikrId,
+                    customDhikrs = state.customDhikrs,
+                    onBack = { showDhikrScreen = false },
+                    onSelect = { item ->
+                        showDhikrScreen = false
+                        when {
+                            item.customId != null && item.customId != state.selectedCustomDhikrId -> {
+                                completionRecordedFor = -1
+                                scope.launch { store.selectCustomDhikr(item.customId) }
+                            }
+                            item.customId == null &&
+                                (state.selectedCustomDhikrId != null || item.value != state.dhikr) -> {
+                                completionRecordedFor = -1
+                                scope.launch { store.selectBuiltInDhikr(item.value) }
+                            }
+                        }
+                    },
+                    onCreateCustom = {
+                        editingCustomDhikr = null
+                        showCustomDhikrEditor = true
+                    },
+                    onEditCustom = { custom ->
+                        editingCustomDhikr = custom
+                        showCustomDhikrEditor = true
+                    },
+                    onDeleteCustom = { custom ->
+                        if (state.selectedCustomDhikrId == custom.id) completionRecordedFor = -1
+                        scope.launch { store.deleteCustomDhikr(custom.id) }
+                    }
+                )
+            }
+            else -> {
             Box(Modifier.fillMaxSize().background(Ink)) {
             Canvas(Modifier.fillMaxSize()) {
                 drawCircle(
@@ -147,20 +199,23 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    selectedDhikr?.title ?: state.dhikr,
+                    activeDhikrTitle,
                     color = Ivory,
-                    fontSize = if ((selectedDhikr?.title ?: state.dhikr).length > 22) 19.sp else 25.sp,
+                    fontSize = if (activeDhikrTitle.length > 22) 19.sp else 25.sp,
                     fontWeight = FontWeight.Medium,
                     textAlign = TextAlign.Center
                 )
-                Text(
-                    selectedDhikr?.arabic ?: "سُبْحَانَ اللّٰهِ",
-                    color = GoldLight.copy(alpha = .92f),
-                    fontSize = if ((selectedDhikr?.arabic?.length ?: 0) > 55) 14.sp else 19.sp,
-                    lineHeight = 22.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 2.dp).fillMaxWidth()
-                )
+                val dhikrSubtitle = activeDhikrArabic ?: activeDhikrTransliteration
+                if (!dhikrSubtitle.isNullOrBlank()) {
+                    Text(
+                        dhikrSubtitle,
+                        color = GoldLight.copy(alpha = .92f),
+                        fontSize = if (dhikrSubtitle.length > 55) 14.sp else 19.sp,
+                        lineHeight = 22.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 2.dp).fillMaxWidth()
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
 
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
