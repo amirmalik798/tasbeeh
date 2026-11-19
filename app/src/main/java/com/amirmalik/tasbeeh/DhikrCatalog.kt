@@ -8,7 +8,7 @@ package com.amirmalik.tasbeeh
  * device TTS; transliteration is a reading aid, not a tajwid substitute.
  *
  * Source research: the Qur'an and established Sunnah adhkar, cross-checked
- * against Hisn al-Muslim and OpenDua dataset v0.0.4.
+ * against Hisn al-Muslim and OpenDua's published references and API metadata.
  */
 internal object DhikrCatalog {
     /**
