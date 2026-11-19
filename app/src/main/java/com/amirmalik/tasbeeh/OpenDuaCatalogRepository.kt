@@ -375,15 +375,17 @@ internal class OpenDuaCatalogRepository(context: Context) {
             )
             // commit() runs on Dispatchers.IO here and confirms the full snapshot
             // is on disk before it is advertised as an offline-ready cache.
-            val persisted = preferences.edit()
-                .putString("items", rawItems)
-                .putString("categories", rawCategories)
-                .putString("data_version", snapshot.dataVersion)
-                .putInt("source_entry_count", sourceEntryCount)
-                .putInt("canonical_dua_count", snapshot.canonicalDuaCount)
-                .putInt("recording_count", snapshot.recordingCount)
-                .putString("cache_sha256", checksum)
-                .commit()
+            val persisted = runCatching {
+                preferences.edit()
+                    .putString("items", rawItems)
+                    .putString("categories", rawCategories)
+                    .putString("data_version", snapshot.dataVersion)
+                    .putInt("source_entry_count", sourceEntryCount)
+                    .putInt("canonical_dua_count", snapshot.canonicalDuaCount)
+                    .putInt("recording_count", snapshot.recordingCount)
+                    .putString("cache_sha256", checksum)
+                    .commit()
+            }.getOrDefault(false)
             snapshot.copy(cachePersisted = persisted)
         } finally {
             connection.disconnect()
