@@ -162,12 +162,17 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
             clearPlaybackCheckpoint()
             return
         }
+        val encodedUrls = JSONArray(urls).toString()
+        if (encodedUrls.length > MAX_STORED_PLAYLIST_CHARS) {
+            clearPlaybackCheckpoint()
+            return
+        }
 
         val currentItem = player.currentMediaItem
         val title = currentItem?.mediaMetadata?.title?.toString().orEmpty()
         val artist = currentItem?.mediaMetadata?.artist?.toString().orEmpty()
         preferences.edit()
-            .putString(KEY_URLS, JSONArray(urls).toString())
+            .putString(KEY_URLS, encodedUrls)
             .putString(KEY_TITLE, title)
             .putString(KEY_ARTIST, artist)
             .putInt(KEY_CURRENT_INDEX, player.currentMediaItemIndex.coerceIn(0, urls.lastIndex))
