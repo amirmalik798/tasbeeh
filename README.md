@@ -2,26 +2,22 @@
 
 Native Android dhikr counter built with Kotlin and Jetpack Compose.
 
-## Requirements
-- Android Studio Ladybug or newer
-- JDK 17
-- Android SDK 35
+## Build the Android app
+- Open in Android Studio and run the app on a device/emulator; or
+- On macOS/Linux run `./gradlew :app:assembleDebug`; on Windows run `gradlew.bat :app:assembleDebug`.
 
-Open in Android Studio, sync Gradle, and run the `app` configuration on an Android device or emulator (minimum Android 8 / API 26).
+The lightweight Gradle bootstrap scripts download Gradle 8.9 when it is not already cached. Java 17 is required.
+
+## GitHub Actions
+Pushes and pull requests targeting `main` run the Android CI workflow. It runs unit tests, assembles the debug APK, and uploads `Tasbeeh-debug-apk` as a 7-day GitHub Actions artifact. You can also trigger it manually from the Actions tab.
 
 ## Experience
-- Kaaba-inspired Kiswah black, muted emerald and warm gold palette.
-- Custom 33-bead misbaha with dimensional shading, specular highlights and cast shadows.
-- Each count advances the active bead to the next strand position, while the outgoing bead moves back into its place. Spring settling creates tactile momentum rather than a simple color pulse.
+- Kaaba-inspired Kiswah black, muted emerald and warm gold.
+- 33 individually shaded beads with specular highlights and cast shadows.
+- Active bead advances around the strand on every count; the previous bead yields to the next slot with spring settling.
 - Imam bead and tassel.
-- Current count, target, dhikr and preferences persisted using Android Preferences DataStore.
-- Completion history (up to 100 records), undo, reset confirmation, target presets and haptic feedback.
+- Count, target, dhikr and preferences persisted using Android Preferences DataStore.
+- Session completion history, undo, reset confirmation, target presets and haptic feedback.
 
 ## Persistence
-Count and preferences are committed to Preferences DataStore after each change. DataStore survives process death and normal restarts. Clearing app storage or uninstalling removes local app-private data.
-
-## Build
-```bash
-gradle wrapper --gradle-version 8.9
-./gradlew :app:assembleDebug
-```
+Count and preferences are committed to Preferences DataStore after every change. DataStore survives process death and normal restarts. Clearing app storage or uninstalling removes local app-private data.
