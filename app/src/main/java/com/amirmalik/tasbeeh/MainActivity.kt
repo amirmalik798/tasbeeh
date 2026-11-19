@@ -197,6 +197,7 @@ internal fun recitationPlaybackFailureMessage(
     }
 }
 
+@androidx.media3.common.util.UnstableApi
 class MainActivity : ComponentActivity() {
     private var speechPlaying by mutableStateOf(false)
     private var recitationPreparing by mutableStateOf(false)
@@ -243,7 +244,6 @@ class MainActivity : ComponentActivity() {
             ?.toString().orEmpty()
     }
 
-    @androidx.media3.common.util.UnstableApi
     private fun connectToRecitationService() {
         if (mediaController != null || mediaControllerFuture != null || isFinishing || isDestroyed) return
         val token = SessionToken(
