@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 store.state.collect { value = it }
             }
+            LaunchedEffect(store) { store.migrateToSingleSession() }
             val saved = savedState
             if (saved == null) {
                 TasbeehStartupScreen()
@@ -158,27 +159,29 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     val selectedDhikr = DhikrCatalog.byValue(state.dhikr)
     // An in-progress session displays its captured content. Editing the saved
     // custom entry affects the next session, never the session already underway.
-    val activeDhikrTitle = state.openSession?.dhikr ?: selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
-    val activeDhikrArabic = if (state.openSession != null) {
-        state.openSession.arabic.takeIf { it.isNotBlank() }
+    val sessionIsOpen = state.currentSession?.status == SessionStatus.ACTIVE ||
+        state.currentSession?.status == SessionStatus.PAUSED
+    val activeSession = state.currentSession?.takeIf { sessionIsOpen }
+    val activeDhikrTitle = activeSession?.dhikr ?: selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
+    val activeDhikrArabic = if (activeSession != null) {
+        activeSession.arabic.takeIf { it.isNotBlank() }
     } else {
         selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
     }
-    val activeDhikrTransliteration = if (state.openSession != null) {
-        state.openSession.transliteration.takeIf { it.isNotBlank() }
+    val activeDhikrTransliteration = if (activeSession != null) {
+        activeSession.transliteration.takeIf { it.isNotBlank() }
     } else {
         selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
     }
-    val effectiveTarget = state.openSession?.target ?: state.target
-    val latestSessionIsCurrentCompletion = state.sessions.firstOrNull()?.let { latest ->
-        latest.status == SessionStatus.COMPLETED &&
-            latest.count == state.count &&
-            latest.dhikr == activeDhikrTitle
-    } == true
-    val canUndo = state.count > 0 &&
-        state.openSession?.status != SessionStatus.PAUSED &&
-        (state.openSession != null || !latestSessionIsCurrentCompletion)
-    var sessionClock by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val activeDhikrMeaning = if (activeSession != null) {
+        activeSession.meaning
+    } else {
+        selectedCustomDhikr?.meaning.orEmpty().ifBlank { selectedDhikr?.meaning.orEmpty() }
+    }
+    val effectiveTarget = activeSession?.target ?: state.target
+    val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
+    val sessionCompleted = state.currentSession?.status == SessionStatus.COMPLETED
+    val canUndo = state.count > 0 && !sessionPaused && !sessionCompleted
 
     // The editor owns its own BackHandler so it can ask before discarding edits.
     BackHandler(enabled = showDhikrScreen || showHistoryScreen || showSettings) {
@@ -191,27 +194,6 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
         }
     }
 
-    LaunchedEffect(state.openSession?.id, state.openSession?.status, state.openSession?.lastActivityAt) {
-        val open = state.openSession
-        if (open?.status == SessionStatus.ACTIVE) {
-            val elapsedSinceActivity = (System.currentTimeMillis() - open.lastActivityAt).coerceAtLeast(0L)
-            val untilPause = (com.amirmalik.tasbeeh.data.SESSION_IDLE_TIMEOUT_MS - elapsedSinceActivity).coerceAtLeast(0L)
-            delay(untilPause)
-            store.pauseOpenSessionIfIdle(System.currentTimeMillis())
-        }
-    }
-
-    LaunchedEffect(state.openSession?.id, state.openSession?.status) {
-        if (state.openSession?.status == SessionStatus.ACTIVE) {
-            while (true) {
-                sessionClock = System.currentTimeMillis()
-                delay(1000)
-            }
-        } else {
-            sessionClock = System.currentTimeMillis()
-        }
-    }
-
     fun increment() {
         val now = System.currentTimeMillis()
         scope.launch {
@@ -219,7 +201,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 dhikr = activeDhikrTitle,
                 arabic = activeDhikrArabic.orEmpty(),
                 transliteration = activeDhikrTransliteration.orEmpty(),
-                meaning = selectedCustomDhikr?.meaning.orEmpty().ifBlank { selectedDhikr?.meaning.orEmpty() },
+                meaning = activeDhikrMeaning,
                 fallbackTarget = effectiveTarget,
                 now = now
             )
@@ -255,22 +237,8 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             }
             showHistoryScreen -> {
                 SessionHistoryScreen(
-                    sessions = state.sessions,
-                    openSession = state.openSession,
-                    onBack = { showHistoryScreen = false },
-                    onResume = {
-                        scope.launch {
-                            if (state.openSession?.status == SessionStatus.PAUSED) {
-                                store.resumeOpenSession(System.currentTimeMillis())
-                            }
-                            showHistoryScreen = false
-                        }
-                    },
-                    onFinish = {
-                        scope.launch {
-                            store.finishOpenSession(System.currentTimeMillis(), resetCounter = true)
-                        }
-                    }
+                    session = state.currentSession,
+                    onBack = { showHistoryScreen = false }
                 )
             }
             showDhikrScreen -> {
@@ -361,7 +329,12 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
 
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
                     val diameter = min(maxWidth, if (compactLayout) 286.dp else 352.dp)
-                    TasbeehStrand(count = state.count, onCount = { increment() }, modifier = Modifier.size(diameter))
+                    TasbeehStrand(
+                        count = state.count,
+                        onCount = { increment() },
+                        enabled = !sessionPaused,
+                        modifier = Modifier.size(diameter)
+                    )
                 }
 
                 Spacer(Modifier.height(if (compactLayout) 2.dp else 5.dp))
@@ -387,10 +360,6 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 Text("${(effectiveTarget - state.count.coerceAtMost(effectiveTarget)).coerceAtLeast(0)} remaining", color = Muted, fontSize = 12.sp)
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 12.dp))
                 ProgressTrack(state.count, effectiveTarget)
-                state.openSession?.let { open ->
-                    Spacer(Modifier.height(9.dp))
-                    SessionTimeStrip(open, sessionClock)
-                }
                 Spacer(Modifier.height(if (compactLayout) 8.dp else 15.dp))
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -404,6 +373,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                     }
                     Button(
                         onClick = { increment() },
+                        enabled = !sessionPaused,
                         modifier = Modifier.weight(1.7f).height(if (compactLayout) 56.dp else 62.dp),
                         shape = RoundedCornerShape(22.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Ink),
@@ -414,6 +384,19 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                         Text("COUNT", fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp, fontSize = 14.sp)
                     }
                     SmallAction(Icons.Default.Refresh, "RESET", true, Modifier.weight(1f)) { showReset = true }
+                }
+                if (sessionIsOpen) {
+                    Spacer(Modifier.height(if (compactLayout) 6.dp else 10.dp))
+                    SessionControlButton(
+                        paused = sessionPaused,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            scope.launch {
+                                if (sessionPaused) store.resumeCurrentSession()
+                                else store.pauseCurrentSession()
+                            }
+                        }
+                    )
                 }
                 Spacer(Modifier.height(if (compactLayout) 6.dp else 10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -442,8 +425,8 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             title = { Text("Reset this session?", color = Ivory) },
             text = {
                 Text(
-                    if (state.openSession != null) {
-                        "Save this unfinished session to history, or reset without keeping it."
+                    if (sessionIsOpen) {
+                        "Save this current session as incomplete, or discard it and reset the counter."
                     } else {
                         "Your current count will return to zero."
                     },
@@ -467,7 +450,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
         if (!showDhikrScreen && !showHistoryScreen && showTarget) TargetDialog(
             current = state.target,
             onDismiss = { showTarget = false },
-            hasOpenSession = state.openSession != null
+            hasOpenSession = sessionIsOpen
         ) { target ->
             scope.launch { store.update(target = target) }
             showTarget = false
@@ -488,16 +471,9 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
         if (
             !showDhikrScreen && !showHistoryScreen && !showCustomDhikrEditor &&
             !showReset && !showTarget && !showSettings &&
-            state.openSession?.status == SessionStatus.PAUSED
+            false
         ) {
-            state.openSession?.let { pausedSession ->
-                PausedSessionDialog(
-                    session = pausedSession,
-                    onResume = { scope.launch { store.resumeOpenSession(System.currentTimeMillis()) } },
-                    onFinish = { scope.launch { store.finishOpenSession(System.currentTimeMillis(), resetCounter = true) } },
-                    onHistory = { showHistoryScreen = true }
-                )
-            }
+            // Session pause/resume is controlled explicitly on the main screen.
         }
         }
     }
@@ -1174,110 +1150,6 @@ private fun TargetDialog(
             TextButton(onClick = onDismiss) { Text("CANCEL", color = Muted) }
         }
     )
-}
-
-@Composable
-private fun SessionTimeStrip(session: com.amirmalik.tasbeeh.data.SavedSession, now: Long) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = Panel.copy(alpha = .88f),
-        shape = RoundedCornerShape(13.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF373629))
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Default.Timer, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f)) {
-                Text("SESSION TIME", color = Muted, fontSize = 9.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.SemiBold)
-                Text("Active time · pauses excluded", color = Muted, fontSize = 10.sp)
-            }
-            Text(
-                formatSessionDurationShort(session.activeDurationAt(now)),
-                color = GoldLight,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-    }
-}
-
-@Composable
-private fun PausedSessionDialog(
-    session: com.amirmalik.tasbeeh.data.SavedSession,
-    onResume: () -> Unit,
-    onFinish: () -> Unit,
-    onHistory: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = {},
-        properties = DialogProperties(
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false
-        ),
-        containerColor = Panel,
-        title = { Text("Welcome back", color = Ivory) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text(
-                    "Your ${session.dhikr} session has been safely paused. You can continue exactly where you left off.",
-                    color = Muted,
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp
-                )
-                Surface(
-                    color = Panel2,
-                    shape = RoundedCornerShape(14.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF393A2E))
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(13.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("YOUR PROGRESS", color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
-                            Text("${session.count} / ${session.target}", color = Ivory, fontSize = 22.sp, fontWeight = FontWeight.Light)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("ACTIVE TIME", color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
-                            Text(formatSessionDurationShort(session.activeDurationMs ?: 0L), color = Gold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onResume,
-                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Ink),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("RESUME SESSION", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
-        },
-        dismissButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                TextButton(onClick = onFinish) { Text("FINISH AS INCOMPLETE", color = Color(0xFFFF9B82), fontSize = 11.sp) }
-                TextButton(onClick = onHistory) { Text("VIEW HISTORY", color = Muted, fontSize = 11.sp) }
-            }
-        }
-    )
-}
-
-private fun formatSessionDurationShort(durationMs: Long): String {
-    val seconds = durationMs.coerceAtLeast(0L) / 1000L
-    val hours = seconds / 3600L
-    val minutes = (seconds % 3600L) / 60L
-    val remainder = seconds % 60L
-    return when {
-        hours > 0 -> "${hours}h ${minutes}m"
-        minutes > 0 -> "${minutes}m ${remainder}s"
-        else -> "${remainder}s"
-    }
 }
 
 @Composable
