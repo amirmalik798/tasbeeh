@@ -22,6 +22,11 @@ class DhikrSearchNormalizationTest {
     }
 
     @Test
+    fun unaccentedTransliterationMatchesAccentedText() {
+        assertEquals("subhanallah", normalizeDhikrSearchText("Subḥānallāh"))
+    }
+
+    @Test
     fun englishSearchIgnoresCaseAndExtraWhitespace() {
         assertEquals("subhan allah", normalizeDhikrSearchText("  SUBHAN   ALLAH  "))
     }

@@ -41,17 +41,22 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.amirmalik.tasbeeh.data.CustomDhikr
+import java.text.Normalizer
 import java.util.Locale
 
 internal fun normalizeDhikrSearchText(value: String): String {
-    val lowered = value.lowercase(Locale.ROOT)
-    return buildString(lowered.length) {
-        lowered.forEach { character ->
-            val isArabicMark = character in '\u064B'..'\u065F' ||
+    val decomposed = Normalizer.normalize(value.lowercase(Locale.ROOT), Normalizer.Form.NFD)
+    return buildString(decomposed.length) {
+        decomposed.forEach { character ->
+            val isCombiningMark = character in '\u0300'..'\u036F' ||
+                character in '\u1AB0'..'\u1AFF' ||
+                character in '\u1DC0'..'\u1DFF' ||
+                character in '\u20D0'..'\u20FF' ||
+                character in '\uFE20'..'\uFE2F' ||
+                character in '\u064B'..'\u065F' ||
                 character == '\u0670' ||
-                character == '\u0640' ||
                 character in '\u06D6'..'\u06ED'
-            if (!isArabicMark) append(character)
+            if (!isCombiningMark && character != '\u0640') append(character)
         }
     }.replace(Regex("\\s+"), " ").trim()
 }
