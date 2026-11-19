@@ -899,9 +899,9 @@ private fun TasbeehApp(
         // A complete surah can be very large. Keep a compact preview in the
         // DataStore session snapshot; the complete text remains in its verified
         // per-surah cache and is shown in the reader.
-        val sessionArabic = if (countIsFullSurah) countDhikrArabic.orEmpty().take(240) else countDhikrArabic.orEmpty()
-        val sessionTransliteration = if (countIsFullSurah) countDhikrTransliteration.orEmpty().take(240) else countDhikrTransliteration.orEmpty()
-        val sessionMeaning = if (countIsFullSurah) countDhikrMeaning.take(240) else countDhikrMeaning
+        val sessionArabic = quranSessionSnapshotText(countDhikrArabic.orEmpty(), countIsFullSurah)
+        val sessionTransliteration = quranSessionSnapshotText(countDhikrTransliteration.orEmpty(), countIsFullSurah)
+        val sessionMeaning = quranSessionSnapshotText(countDhikrMeaning, countIsFullSurah)
         launchStoreOperation(label = "Saving your count…") {
             val outcome = store.countDhikr(
                 dhikr = countDhikrTitle,
