@@ -807,6 +807,11 @@ private fun TasbeehApp(
             ?: quranReciters.firstOrNull()
             ?: QuranReciterCatalog.fallback.first()
     }
+    LaunchedEffect(state.quranReciterId, selectedQuranReciter.id) {
+        if (state.quranReciterId != selectedQuranReciter.id) {
+            store.update(quranReciterId = selectedQuranReciter.id)
+        }
+    }
     var nextStoreOperationId by remember { mutableLongStateOf(0L) }
     var showStoreBusyIndicator by remember { mutableStateOf(false) }
     var failedStoreOperation by remember { mutableStateOf<FailedStoreOperation?>(null) }
@@ -1037,7 +1042,8 @@ private fun TasbeehApp(
                     quranRefreshError = quranRefreshError,
                     quranCacheWriteFailed = quranCacheWriteFailed,
                     isSpeaking = isSpeaking,
-                    isPreparingRecitation = isPreparingSpeech || isResolvingQuranRecitation,
+                    isPreparingRecitation = isPreparingSpeech,
+                    isResolvingQuranRecitation = isResolvingQuranRecitation,
                     activeRecitationTitle = activeRecitationTitle,
                     selectedQuranReciter = selectedQuranReciter,
                     onPlayQuranRecitation = { title, ayahKeys -> playQuranRecitation(title, ayahKeys) },
