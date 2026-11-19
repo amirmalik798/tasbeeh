@@ -126,7 +126,9 @@ class MainActivity : ComponentActivity() {
         }
 
         if (!arabicSpeechReady || engine == null) {
-            if (queueMode == TextToSpeech.QUEUE_ADD && !ttsInitializationFinished) {
+            if (!ttsInitializationFinished) {
+                // Also buffer a manual Play request made during startup. A
+                // QUEUE_FLUSH request has already cleared older pending items.
                 pendingUntilTtsReady.addLast(PendingArabicSpeech(text, preferredVoice))
                 speechPlaying = true
             } else if (showUnavailableNotice || queueMode == TextToSpeech.QUEUE_ADD) {
