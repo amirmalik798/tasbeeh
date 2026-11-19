@@ -619,7 +619,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MyDhikrsEmptyState(onOpenLibrary: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
