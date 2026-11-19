@@ -1,10 +1,20 @@
 package com.amirmalik.tasbeeh.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LegacySessionEventTest {
+
+    @Test
+    fun countOnlyRecoveryIsAllowedOnlyWhenTheCurrentSessionRecordIsAbsent() {
+        assertTrue(shouldUseLegacyCountOnlyRecovery("", false, 7))
+        assertFalse(shouldUseLegacyCountOnlyRecovery("{corrupt", false, 7))
+        assertFalse(shouldUseLegacyCountOnlyRecovery("", true, 7))
+        assertFalse(shouldUseLegacyCountOnlyRecovery("", false, 0))
+    }
+
 
     @Test
     fun knownStartAndEndTimesProduceCompleteLegacyTimeline() {
