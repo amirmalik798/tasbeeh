@@ -612,12 +612,10 @@ class TasbeehStore(private val context: Context) {
                     }
                     continue
                 }
-                if (!seenIds.add(id)) {
-                    if (rejectInvalidEntries) {
-                        throw IllegalStateException("Saved custom Dhikr collection contains duplicate identities.")
-                    }
-                    continue
-                }
+                // An ID is the stable identity used by Compose list keys and
+                // selection. Keep the first copy so duplicate persisted rows
+                // cannot crash the list or make a valid item undeletable.
+                if (!seenIds.add(id)) continue
 
                 add(
                     CustomDhikr(

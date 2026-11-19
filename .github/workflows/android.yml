@@ -43,6 +43,9 @@ jobs:
       - name: Run unit tests
         run: gradle :app:testDebugUnitTest
 
+      - name: Run Android lint
+        run: gradle :app:lintDebug
+
       - name: Assemble debug APK
         run: gradle :app:assembleDebug
 
