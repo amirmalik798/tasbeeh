@@ -48,6 +48,25 @@ class DhikrCatalogIntegrityTest {
     }
 
     @Test
+    fun QuranTextIsOnlyReportedCompleteWhenEveryRequestedAyahIsPresent() {
+        val fallback = QuranicDuaCatalog.fallbackItems()
+        assertFalse(hasCompleteQuranicText(fallback))
+
+        val complete = fallback.map { item -> item.copy(arabic = "نَصٌّ") }
+        assertTrue(hasCompleteQuranicText(complete))
+
+        val missingAyah = complete.mapIndexed { index, item ->
+            if (index == 1) item.copy(quranAyahKeys = item.quranAyahKeys.dropLast(1)) else item
+        }
+        assertFalse(hasCompleteQuranicText(missingAyah))
+
+        val missingArabic = complete.mapIndexed { index, item ->
+            if (index == 2) item.copy(arabic = "") else item
+        }
+        assertFalse(hasCompleteQuranicText(missingArabic))
+    }
+
+    @Test
     fun theFourQuranEntriesHaveTheExactRequestedSurahVerseRanges() {
         val items = QuranicDuaCatalog.additions.associateBy { it.id }
         assertEquals(

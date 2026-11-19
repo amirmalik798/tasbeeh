@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -88,6 +89,24 @@ internal object QuranicDuaCatalog {
     private fun keys(vararg values: String) = values.toList()
 }
 
+internal data class QuranicCatalogRefreshResult(
+    val items: List<DhikrItem>,
+    val isComplete: Boolean,
+    val refreshedFromNetwork: Boolean,
+    val cachePersisted: Boolean
+)
+
+internal fun hasCompleteQuranicText(items: List<DhikrItem>): Boolean {
+    if (items.size != QuranicDuaCatalog.additions.size) return false
+    val itemsById = items.associateBy { it.id }
+    return QuranicDuaCatalog.additions.all { definition ->
+        val item = itemsById[definition.id]
+        item != null &&
+            item.arabic.isNotBlank() &&
+            item.quranAyahKeys == definition.ayahKeys
+    }
+}
+
 internal class QuranicDuaRepository(context: Context) {
     private val preferences = context.getSharedPreferences("quran_catalog_v2", Context.MODE_PRIVATE)
 
@@ -98,7 +117,7 @@ internal class QuranicDuaRepository(context: Context) {
             if (array.length() != QuranicDuaCatalog.additions.size) {
                 return@runCatching QuranicDuaCatalog.fallbackItems()
             }
-            buildList {
+            val cached = buildList {
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
                     val keys = item.optJSONArray("ayahKeys") ?: JSONArray()
@@ -117,13 +136,12 @@ internal class QuranicDuaRepository(context: Context) {
                         )
                     )
                 }
-            }.takeIf { cached ->
-                cached.size == 4 && cached.map { it.id }.toSet() == QuranicDuaCatalog.additions.map { it.id }.toSet()
-            } ?: QuranicDuaCatalog.fallbackItems()
+            }
+            cached.takeIf(::hasCompleteQuranicText) ?: QuranicDuaCatalog.fallbackItems()
         }.getOrDefault(QuranicDuaCatalog.fallbackItems())
     }
 
-    suspend fun refresh(): List<DhikrItem> = withContext(Dispatchers.IO) {
+    suspend fun refresh(): QuranicCatalogRefreshResult = withContext(Dispatchers.IO) {
         val chapters = QuranicDuaCatalog.additions
             .flatMap { it.ayahKeys }
             .mapNotNull { it.substringBefore(':').toIntOrNull() }
@@ -159,10 +177,12 @@ internal class QuranicDuaRepository(context: Context) {
             )
         }
 
-        val cachedItems = loadCachedItems()
-        val hasCompleteArabicText = items.size == 4 && items.all { it.arabic.isNotBlank() }
+        val allRequestedVersesPresent = QuranicDuaCatalog.additions.all { definition ->
+            definition.ayahKeys.all { key -> verseByKey[key]?.first?.isNotBlank() == true }
+        }
+        val hasCompleteArabicText = allRequestedVersesPresent && hasCompleteQuranicText(items)
         if (hasCompleteArabicText) {
-            runCatching {
+            val persisted = runCatching {
                 val array = JSONArray()
                 items.forEach { item ->
                     array.put(JSONObject().apply {
@@ -175,12 +195,25 @@ internal class QuranicDuaRepository(context: Context) {
                         put("ayahKeys", JSONArray(item.quranAyahKeys))
                     })
                 }
-                preferences.edit().putString("items", array.toString()).apply()
-            }
+                preferences.edit().putString("items", array.toString()).commit()
+            }.getOrDefault(false)
+
+            QuranicCatalogRefreshResult(
+                items = items,
+                isComplete = true,
+                refreshedFromNetwork = true,
+                cachePersisted = persisted
+            )
+        } else {
+            val cachedItems = loadCachedItems()
+            val hasCompleteCachedText = hasCompleteQuranicText(cachedItems)
+            QuranicCatalogRefreshResult(
+                items = if (hasCompleteCachedText) cachedItems else QuranicDuaCatalog.fallbackItems(),
+                isComplete = hasCompleteCachedText,
+                refreshedFromNetwork = false,
+                cachePersisted = hasCompleteCachedText
+            )
         }
-        if (hasCompleteArabicText) items else cachedItems.takeIf {
-            it.size == 4 && it.all { cached -> cached.arabic.isNotBlank() }
-        } ?: items
     }
 
     private fun fetchChapter(chapter: Int): Map<String, Pair<String, String>>? {
@@ -223,6 +256,8 @@ internal class QuranicDuaRepository(context: Context) {
                     }
                 }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         } finally {

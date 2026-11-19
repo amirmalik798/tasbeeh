@@ -41,6 +41,7 @@ private val EditorMuted = Color(0xFF9A9B8D)
 internal fun CustomDhikrEditorScreen(
     existing: CustomDhikr?,
     existingTitles: List<String>,
+    isSaving: Boolean = false,
     onBack: () -> Unit,
     onSave: (CustomDhikr) -> Unit
 ) {
@@ -332,16 +333,29 @@ internal fun CustomDhikrEditorScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(54.dp),
+                    enabled = !isSaving,
                     shape = RoundedCornerShape(17.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = EditorGold,
                         contentColor = Color(0xFF17130A)
                     )
                 ) {
-                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = Color(0xFF17130A),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        if (existing == null) "SAVE DHIKR" else "SAVE CHANGES",
+                        when {
+                            isSaving -> "SAVING…"
+                            existing == null -> "SAVE DHIKR"
+                            else -> "SAVE CHANGES"
+                        },
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
                     )

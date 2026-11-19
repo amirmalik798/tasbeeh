@@ -97,6 +97,11 @@ internal fun DhikrSelectionScreen(
     openDuaIsRefreshing: Boolean,
     openDuaRefreshError: String?,
     openDuaCacheWriteFailed: Boolean,
+    hasInternetConnection: Boolean,
+    quranIsRefreshing: Boolean,
+    quranRefreshError: String?,
+    quranCacheWriteFailed: Boolean,
+    onRetryQuranText: () -> Unit,
     onRetryOpenDuaCatalog: () -> Unit,
     currentDhikr: String,
     currentCustomDhikrId: String?,
@@ -295,15 +300,33 @@ internal fun DhikrSelectionScreen(
             )
         }
         if ((category == "All" || category in openDuaCategories) &&
-            (openDuaIsRefreshing || openDuaRefreshError != null || openDuaCacheWriteFailed)
+            (openDuaIsRefreshing || openDuaRefreshError != null || openDuaCacheWriteFailed || !hasInternetConnection)
         ) {
-            OpenDuaCatalogStatusPanel(
+            CatalogStatusPanel(
+                catalogName = "OpenDua",
                 isRefreshing = openDuaIsRefreshing,
                 hasCachedData = catalogItems.any { it.id.startsWith("opendua-") },
                 errorMessage = openDuaRefreshError,
                 cacheWriteFailed = openDuaCacheWriteFailed,
+                isOffline = !hasInternetConnection,
                 itemCount = catalogItems.count { it.id.startsWith("opendua-") },
                 onRetry = onRetryOpenDuaCatalog
+            )
+        }
+        val quranItems = catalogItems.filter { it.category == "Quran" }
+        val quranTextIsCached = quranItems.size == 4 && quranItems.all { it.arabic.isNotBlank() }
+        if ((category == "All" || category == "Quran") &&
+            (quranIsRefreshing || quranRefreshError != null || quranCacheWriteFailed)
+        ) {
+            CatalogStatusPanel(
+                catalogName = "Qur'anic text",
+                isRefreshing = quranIsRefreshing,
+                hasCachedData = quranTextIsCached,
+                errorMessage = quranRefreshError,
+                cacheWriteFailed = quranCacheWriteFailed,
+                isOffline = !hasInternetConnection,
+                itemCount = quranItems.size,
+                onRetry = onRetryQuranText
             )
         }
         Spacer(Modifier.height(3.dp))
@@ -372,11 +395,13 @@ internal fun DhikrSelectionScreen(
 }
 
 @Composable
-private fun OpenDuaCatalogStatusPanel(
+private fun CatalogStatusPanel(
+    catalogName: String,
     isRefreshing: Boolean,
     hasCachedData: Boolean,
     errorMessage: String?,
     cacheWriteFailed: Boolean,
+    isOffline: Boolean,
     itemCount: Int,
     onRetry: () -> Unit
 ) {
@@ -386,33 +411,47 @@ private fun OpenDuaCatalogStatusPanel(
     val message: String
     val showRetry: Boolean
     when {
+        isOffline && hasCachedData -> {
+            title = "Offline · saved $catalogName available"
+            message = "Your saved copy is ready on this device. Connect to the internet to check for updates."
+            showRetry = false
+        }
+        isOffline -> {
+            title = "No internet connection"
+            message = if (catalogName == "OpenDua") {
+                "The dua catalogue has not been downloaded on this device yet. Connect to the internet, then retry."
+            } else {
+                "The Qur'anic Arabic text is not saved on this device yet. Connect to the internet, then retry. The four selections remain listed."
+            }
+            showRetry = true
+        }
         cacheWriteFailed -> {
-            title = "Catalogue loaded, offline save incomplete"
-            message = "The duas are available now, but the app could not confirm that the offline copy was saved. Check available device storage and retry."
+            title = "$catalogName loaded, offline save incomplete"
+            message = "The content is available now, but Android could not confirm that the offline copy was saved. Check available device storage and retry."
             showRetry = true
         }
         errorMessage != null && hasCachedData -> {
-            title = "Using your saved OpenDua catalogue"
-            message = "The latest update could not be downloaded. Your saved collection of $itemCount entries is still available.\n$errorMessage"
+            title = "Using your saved $catalogName"
+            message = "The latest update could not be downloaded. Your saved content is still available.\n$errorMessage"
             showRetry = true
         }
         errorMessage != null -> {
-            title = "OpenDua catalogue unavailable"
-            message = "No offline catalogue is available yet. Check your internet connection, then retry the download.\n$errorMessage"
+            title = "$catalogName unavailable"
+            message = "The content is not available yet. Check your connection and retry.\n$errorMessage"
             showRetry = true
         }
         isRefreshing && hasCachedData -> {
-            title = "Your saved catalogue is ready"
-            message = "Checking OpenDua for updates in the background."
+            title = "Saved $catalogName ready"
+            message = "Checking for updates in the background."
             showRetry = false
         }
         isRefreshing -> {
-            title = "Preparing the dua library"
-            message = "Downloading and verifying the OpenDua catalogue for first use."
+            title = "Preparing $catalogName"
+            message = "Downloading and verifying the content for first use."
             showRetry = false
         }
         else -> {
-            title = "OpenDua catalogue ready"
+            title = "$catalogName ready"
             message = "$itemCount entries are available on this device."
             showRetry = false
         }
@@ -434,9 +473,9 @@ private fun OpenDuaCatalogStatusPanel(
                     )
                 } else {
                     Icon(
-                        imageVector = if (errorMessage != null) Icons.Filled.CloudOff else Icons.Filled.CloudDone,
+                        imageVector = if (isOffline || errorMessage != null) Icons.Filled.CloudOff else Icons.Filled.CloudDone,
                         contentDescription = null,
-                        tint = if (errorMessage != null || cacheWriteFailed) Color(0xFFE7B66A) else Color(0xFF83B994),
+                        tint = if (isOffline || errorMessage != null || cacheWriteFailed) Color(0xFFE7B66A) else Color(0xFF83B994),
                         modifier = Modifier.size(17.dp)
                     )
                 }
@@ -464,7 +503,7 @@ private fun OpenDuaCatalogStatusPanel(
                 ) {
                     Icon(Icons.Filled.Refresh, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("RETRY DOWNLOAD", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("RETRY", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

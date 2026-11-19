@@ -2,6 +2,9 @@ package com.amirmalik.tasbeeh
 
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -87,6 +90,25 @@ private val Muted = Color(0xFF9A9B8D)
 internal const val RECITATION_QUEUE_REPLACE = 0
 internal const val RECITATION_QUEUE_APPEND = 1
 
+private data class FailedStoreOperation(
+    val label: String,
+    val message: String,
+    val retry: suspend () -> Unit,
+    val onSuccess: () -> Unit
+)
+
+internal fun storeOperationFailureMessage(label: String, error: Throwable): String {
+    val action = label.removeSuffix("…").trim().ifBlank { "This action" }
+    return when (error) {
+        is java.io.IOException ->
+            "$action could not be saved. Check available device storage, then retry. Your existing saved data has not been intentionally cleared."
+        is SecurityException ->
+            "$action was blocked by Android. Check the app's permissions and try again."
+        else ->
+            "$action could not be completed. Your existing saved data has been kept. Please retry."
+    }
+}
+
 internal fun arabicSpeechQueueMode(manualPlayback: Boolean): Int =
     if (manualPlayback) RECITATION_QUEUE_REPLACE else RECITATION_QUEUE_APPEND
 
@@ -107,9 +129,9 @@ internal fun recitationPlaybackFailureMessage(
             causes.any { it is java.net.SocketTimeoutException } ->
             "The connection to the recitation provider timed out before the recitation could load. Check your internet connection and try again."
         causes.any { it is java.net.UnknownHostException } ->
-            "Android could not resolve the recitation provider. Check your internet connection or DNS settings."
+            "No internet connection or DNS service is available. Reconnect and try the recorded recitation again."
         causes.any { it is java.net.ConnectException } ->
-            "Android could not connect to the recitation provider. The server may be unavailable or your network may be blocking it."
+            "The recitation provider could not be reached. Check your internet connection and try again."
         causes.any { it is java.io.FileNotFoundException } ->
             "The requested recitation audio file was not found on the audio provider."
         android.media.MediaPlayer.MEDIA_ERROR_MALFORMED in codes ->
@@ -138,6 +160,7 @@ internal fun recitationPlaybackFailureMessage(
 
 class MainActivity : ComponentActivity() {
     private var speechPlaying by mutableStateOf(false)
+    private var recitationPreparing by mutableStateOf(false)
     private val pendingRecitationUrls = ArrayDeque<String>()
     private var recitationMediaPlayer: MediaPlayer? = null
 
@@ -161,6 +184,7 @@ class MainActivity : ComponentActivity() {
             runCatching { player.release() }
         }
         speechPlaying = false
+        recitationPreparing = false
     }
 
     private fun showRecitationPlaybackError(message: String) {
@@ -190,6 +214,7 @@ class MainActivity : ComponentActivity() {
         val player = recitationMediaPlayer
         recitationMediaPlayer = null
         pendingRecitationUrls.clear()
+        recitationPreparing = false
         if (player != null) {
             runCatching { player.setOnPreparedListener(null) }
             runCatching { player.setOnCompletionListener(null) }
@@ -207,6 +232,7 @@ class MainActivity : ComponentActivity() {
     private fun startNextRecitationAudio() {
         if (isFinishing || isDestroyed || recitationMediaPlayer != null) return
         if (pendingRecitationUrls.isEmpty()) {
+            recitationPreparing = false
             refreshSpeechPlayingState()
             return
         }
@@ -227,6 +253,7 @@ class MainActivity : ComponentActivity() {
                     runCatching { prepared.release() }
                     return@setOnPreparedListener
                 }
+                recitationPreparing = false
                 runCatching { prepared.start() }
                     .onFailure { failCurrentRecitation(it) }
             }
@@ -248,6 +275,7 @@ class MainActivity : ComponentActivity() {
                 true
             }
             player.setDataSource(url)
+            recitationPreparing = true
             player.prepareAsync()
             refreshSpeechPlayingState()
         } catch (error: Exception) {
@@ -273,6 +301,13 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        if (!hasValidatedInternetConnection(applicationContext)) {
+            showRecitationPlaybackError(
+                "No internet connection is available. Recorded recitations are streamed and need an internet connection. Reconnect and try again."
+            )
+            return
+        }
+
         if (queueMode == RECITATION_QUEUE_REPLACE) stopRecitationAudio()
         safeUrls.forEach { pendingRecitationUrls.addLast(it) }
         refreshSpeechPlayingState()
@@ -291,6 +326,48 @@ class MainActivity : ComponentActivity() {
         setContent {
             val openDuaRepository = remember { OpenDuaCatalogRepository(applicationContext) }
             val quranicDuaRepository = remember { QuranicDuaRepository(applicationContext) }
+            val connectivityManager = remember {
+                applicationContext.getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager
+            }
+            var hasInternetConnection by remember {
+                mutableStateOf(hasValidatedInternetConnection(applicationContext))
+            }
+            DisposableEffect(connectivityManager) {
+                val manager = connectivityManager
+                var registered = false
+                val updateNetworkState: (Boolean) -> Unit = { available ->
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) hasInternetConnection = available
+                    }
+                }
+                val callback = object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        updateNetworkState(hasValidatedInternetConnection(applicationContext))
+                    }
+
+                    override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                        updateNetworkState(hasValidatedInternetConnection(capabilities))
+                    }
+
+                    override fun onLost(network: Network) {
+                        updateNetworkState(hasValidatedInternetConnection(applicationContext))
+                    }
+                }
+                if (manager != null) {
+                    registered = runCatching {
+                        manager.registerDefaultNetworkCallback(callback)
+                        true
+                    }.onFailure {
+                        Log.w("Noor-e-Dhikr", "Could not monitor network changes", it)
+                    }.getOrDefault(false)
+                }
+                onDispose {
+                    if (registered && manager != null) {
+                        runCatching { manager.unregisterNetworkCallback(callback) }
+                    }
+                }
+            }
+
             val cachedOpenDua = remember(openDuaRepository) { openDuaRepository.loadCachedSnapshot() }
             var openDuaItems by remember { mutableStateOf(cachedOpenDua.items) }
             var openDuaCategories by remember { mutableStateOf(cachedOpenDua.categories) }
@@ -299,11 +376,22 @@ class MainActivity : ComponentActivity() {
             var openDuaCacheWriteFailed by remember { mutableStateOf(false) }
             var openDuaRetryCount by remember { mutableIntStateOf(0) }
             var extendedQuranicItems by remember { mutableStateOf(quranicDuaRepository.loadCachedItems()) }
+            var quranIsRefreshing by remember { mutableStateOf(false) }
+            var quranRefreshError by remember { mutableStateOf<String?>(null) }
+            var quranCacheWriteFailed by remember { mutableStateOf(false) }
+            var quranRetryCount by remember { mutableIntStateOf(0) }
 
-            LaunchedEffect(openDuaRepository, openDuaRetryCount) {
-                openDuaIsRefreshing = true
+            LaunchedEffect(openDuaRepository, openDuaRetryCount, hasInternetConnection) {
                 openDuaRefreshError = null
                 openDuaCacheWriteFailed = false
+                if (!hasInternetConnection) {
+                    openDuaIsRefreshing = false
+                    openDuaRefreshError =
+                        "No internet connection. Connect to the internet to download the catalogue; saved duas remain available offline."
+                    return@LaunchedEffect
+                }
+
+                openDuaIsRefreshing = true
                 try {
                     val snapshot = openDuaRepository.refresh()
                     if (snapshot.items.isEmpty() || snapshot.categories.isEmpty()) {
@@ -318,18 +406,43 @@ class MainActivity : ComponentActivity() {
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    Log.e("Noor-e-Dhikr", "OpenDua catalogue refresh failed; retaining the last verified local copy", error)
-                    openDuaRefreshError = error.localizedMessage
-                        ?.takeIf { it.isNotBlank() }
-                        ?: "The catalogue could not be downloaded. Check your connection and try again."
+                    Log.w("Noor-e-Dhikr", "OpenDua catalogue refresh failed; retaining the last verified cached release", error)
+                    openDuaRefreshError = networkFailureMessage("OpenDua", error)
                 } finally {
                     openDuaIsRefreshing = false
                 }
             }
 
-            LaunchedEffect(quranicDuaRepository) {
-                runCatching { extendedQuranicItems = quranicDuaRepository.refresh() }
-                    .onFailure { Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; using cached references", it) }
+            LaunchedEffect(quranicDuaRepository, quranRetryCount, hasInternetConnection) {
+                quranRefreshError = null
+                quranCacheWriteFailed = false
+                if (!hasInternetConnection) {
+                    quranIsRefreshing = false
+                    quranRefreshError =
+                        "No internet connection. Saved Qur'anic text remains available when present; audio recitations require internet."
+                    return@LaunchedEffect
+                }
+
+                quranIsRefreshing = true
+                try {
+                    val result = quranicDuaRepository.refresh()
+                    extendedQuranicItems = result.items
+                    quranCacheWriteFailed = result.refreshedFromNetwork && !result.cachePersisted
+                    if (!result.refreshedFromNetwork) {
+                        quranRefreshError = if (result.isComplete) {
+                            "The latest Qur'anic text update could not be reached. Your complete saved text is being used."
+                        } else {
+                            "The complete Qur'anic text could not be downloaded. The four selections remain available; retry when your connection is stable."
+                        }
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; retaining saved references", error)
+                    quranRefreshError = networkFailureMessage("Qur'anic text", error)
+                } finally {
+                    quranIsRefreshing = false
+                }
             }
             val catalogItems = remember(openDuaItems, extendedQuranicItems) {
                 (extendedQuranicItems + openDuaItems).distinctBy { it.id }
@@ -361,11 +474,18 @@ class MainActivity : ComponentActivity() {
                     state = saved,
                     store = store,
                     isSpeaking = speechPlaying,
+                    isPreparingSpeech = recitationPreparing,
+                    hasInternetConnection = hasInternetConnection,
                     catalogItems = catalogItems,
                     catalogCategories = openDuaCategories,
                     openDuaIsRefreshing = openDuaIsRefreshing,
                     openDuaRefreshError = openDuaRefreshError,
                     openDuaCacheWriteFailed = openDuaCacheWriteFailed,
+                    hasInternetConnection = hasInternetConnection,
+                    quranIsRefreshing = quranIsRefreshing,
+                    quranRefreshError = quranRefreshError,
+                    quranCacheWriteFailed = quranCacheWriteFailed,
+                    onRetryQuranText = { quranRetryCount++ },
                     onRetryOpenDuaCatalog = { openDuaRetryCount++ },
                     onPlayRecitation = { urls, queueMode -> playRecitations(urls, queueMode) },
                     onStopSpeech = { stopRecitationPlayback() }
@@ -468,11 +588,17 @@ private fun TasbeehApp(
     state: TasbeehState,
     store: TasbeehStore,
     isSpeaking: Boolean,
+    isPreparingSpeech: Boolean,
+    hasInternetConnection: Boolean,
     catalogItems: List<DhikrItem>,
     catalogCategories: List<String>,
     openDuaIsRefreshing: Boolean,
     openDuaRefreshError: String?,
     openDuaCacheWriteFailed: Boolean,
+    quranIsRefreshing: Boolean,
+    quranRefreshError: String?,
+    quranCacheWriteFailed: Boolean,
+    onRetryQuranText: () -> Unit,
     onRetryOpenDuaCatalog: () -> Unit,
     onPlayRecitation: (List<String>, Int) -> Unit,
     onStopSpeech: () -> Unit,
@@ -480,26 +606,46 @@ private fun TasbeehApp(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val pendingStoreOperations = remember { mutableStateMapOf<Long, String>() }
+    var nextStoreOperationId by remember { mutableLongStateOf(0L) }
+    var showStoreBusyIndicator by remember { mutableStateOf(false) }
+    var failedStoreOperation by remember { mutableStateOf<FailedStoreOperation?>(null) }
+
+    LaunchedEffect(pendingStoreOperations.size) {
+        if (pendingStoreOperations.isEmpty()) {
+            showStoreBusyIndicator = false
+        } else {
+            showStoreBusyIndicator = false
+            delay(350)
+            showStoreBusyIndicator = pendingStoreOperations.isNotEmpty()
+        }
+    }
 
     fun launchStoreOperation(
+        label: String = "Saving changes…",
         onSuccess: () -> Unit = {},
         operation: suspend () -> Unit
     ) {
+        nextStoreOperationId += 1L
+        val operationId = nextStoreOperationId
+        pendingStoreOperations[operationId] = label
         scope.launch {
             try {
                 operation()
+                onSuccess()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                Log.e("Noor-e-Dhikr", "A saved-data operation failed", error)
-                Toast.makeText(
-                    context,
-                    "The action could not be completed. Your saved data has not been intentionally reset. Please try again.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return@launch
+                Log.e("Noor-e-Dhikr", "$label failed", error)
+                failedStoreOperation = FailedStoreOperation(
+                    label = label,
+                    message = storeOperationFailureMessage(label, error),
+                    retry = operation,
+                    onSuccess = onSuccess
+                )
+            } finally {
+                pendingStoreOperations.remove(operationId)
             }
-            onSuccess()
         }
     }
 
@@ -522,7 +668,9 @@ private fun TasbeehApp(
         if (!customSelectionExists && !builtInSelectionExists && !sessionIsOpenForSelection) {
             val fallback = catalogItems.firstOrNull { it.category == "Quran" } ?: catalogItems.firstOrNull()
             if (fallback != null) {
-                store.selectBuiltInDhikr(fallback.value, fallback.arabic, System.currentTimeMillis())
+                launchStoreOperation(label = "Preparing your selected Dhikr…") {
+                    store.selectBuiltInDhikr(fallback.value, fallback.arabic, System.currentTimeMillis())
+                }
             }
         }
     }
@@ -612,7 +760,7 @@ private fun TasbeehApp(
 
     fun increment() {
         val now = System.currentTimeMillis()
-        launchStoreOperation {
+        launchStoreOperation(label = "Saving your count…") {
             val outcome = store.countDhikr(
                 dhikr = countDhikrTitle,
                 arabic = countDhikrArabic.orEmpty(),
@@ -638,6 +786,7 @@ private fun TasbeehApp(
         )
     ) {
         MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Ink, background = Ink, surface = Panel, onSurface = Ivory, secondary = Color(0xFF16714B))) {
+        Box(Modifier.fillMaxSize()) {
         when {
             showCustomDhikrEditor -> {
                 CustomDhikrEditorScreen(
@@ -645,12 +794,14 @@ private fun TasbeehApp(
                     existingTitles = catalogItems.map { it.title } + state.customDhikrs
                         .filterNot { it.id == editingCustomDhikr?.id }
                         .map { it.title },
+                    isSaving = pendingStoreOperations.values.any { it.startsWith("Saving your Dhikr") },
                     onBack = {
                         showCustomDhikrEditor = false
                         editingCustomDhikr = null
                     },
                     onSave = { custom ->
                         launchStoreOperation(
+                            label = "Saving your Dhikr…",
                             operation = { store.saveCustomDhikr(custom) },
                             onSuccess = {
                                 showCustomDhikrEditor = false
@@ -673,6 +824,11 @@ private fun TasbeehApp(
                     openDuaIsRefreshing = openDuaIsRefreshing,
                     openDuaRefreshError = openDuaRefreshError,
                     openDuaCacheWriteFailed = openDuaCacheWriteFailed,
+                    hasInternetConnection = hasInternetConnection,
+                    quranIsRefreshing = quranIsRefreshing,
+                    quranRefreshError = quranRefreshError,
+                    quranCacheWriteFailed = quranCacheWriteFailed,
+                    onRetryQuranText = onRetryQuranText,
                     onRetryOpenDuaCatalog = onRetryOpenDuaCatalog,
                     currentDhikr = state.dhikr,
                     currentCustomDhikrId = state.selectedCustomDhikrId,
@@ -683,6 +839,7 @@ private fun TasbeehApp(
                             item.customId != null && item.customId != state.selectedCustomDhikrId -> {
                                 val custom = state.customDhikrs.firstOrNull { it.id == item.customId }
                                 if (custom != null) launchStoreOperation(
+                                    label = "Changing your Dhikr…",
                                     onSuccess = { showDhikrScreen = false }
                                 ) {
                                     store.selectCustomDhikr(custom, System.currentTimeMillis())
@@ -692,6 +849,7 @@ private fun TasbeehApp(
                                 (state.selectedCustomDhikrId != null || item.value != state.dhikr) -> {
                                 val builtIn = catalogItems.firstOrNull { it.value == item.value }
                                 launchStoreOperation(
+                                    label = "Changing your Dhikr…",
                                     onSuccess = { showDhikrScreen = false }
                                 ) {
                                     store.selectBuiltInDhikr(
@@ -713,7 +871,7 @@ private fun TasbeehApp(
                         showCustomDhikrEditor = true
                     },
                     onDeleteCustom = { custom, onDeleted ->
-                        launchStoreOperation(onSuccess = onDeleted) {
+                        launchStoreOperation(label = "Deleting your Dhikr…", onSuccess = onDeleted) {
                             store.deleteCustomDhikr(custom.id, System.currentTimeMillis())
                         }
                     }
@@ -741,6 +899,29 @@ private fun TasbeehApp(
                     onHistory = { showHistoryScreen = true },
                     onSettings = { showSettings = true }
                 )
+                if (!hasInternetConnection) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        color = Color(0xFF211D15),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF735B2E).copy(alpha = .55f))
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.CloudOff, contentDescription = null, tint = Gold, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "OFFLINE · SAVED CONTENT AVAILABLE",
+                                color = GoldLight,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = .7.sp
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(6.dp).background(Gold, CircleShape))
@@ -831,7 +1012,7 @@ private fun TasbeehApp(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SmallAction(Icons.Default.Undo, "UNDO", canUndo, Modifier.weight(1f)) {
-                        launchStoreOperation { store.undoCount(System.currentTimeMillis()) }
+                        launchStoreOperation(label = "Undoing the last count…") { store.undoCount(System.currentTimeMillis()) }
                     }
                     if (sessionIsOpen) {
                         SmallAction(
@@ -840,7 +1021,7 @@ private fun TasbeehApp(
                             true,
                             Modifier.weight(1f)
                         ) {
-                            launchStoreOperation {
+                            launchStoreOperation(label = if (sessionPaused) "Resuming your session…" else "Pausing your session…") {
                                 if (sessionPaused) store.resumeCurrentSession()
                                 else store.pauseCurrentSession()
                             }
@@ -897,6 +1078,7 @@ private fun TasbeehApp(
                         TextButton(
                             onClick = {
                                 launchStoreOperation(
+                                    label = "Discarding your session…",
                                     operation = { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) },
                                     onSuccess = { showReset = false }
                                 )
@@ -911,6 +1093,7 @@ private fun TasbeehApp(
             confirmButton = {
                 TextButton(onClick = {
                     launchStoreOperation(
+                        label = "Resetting your counter…",
                         operation = { store.resetCounter(saveSession = true, now = System.currentTimeMillis()) },
                         onSuccess = { showReset = false }
                     )
@@ -927,6 +1110,7 @@ private fun TasbeehApp(
             isNextTarget = sessionIsOpen || completedRoundStillDisplayed
         ) { target ->
             launchStoreOperation(
+                label = "Saving your target…",
                 operation = { store.update(target = target) },
                 onSuccess = { showTarget = false }
             )
@@ -936,19 +1120,76 @@ private fun TasbeehApp(
             quranAyahKeys = activeQuranAyahKeys,
             activeAudioUrls = activeRecitationUrls,
             isSpeaking = isSpeaking,
+            isPreparingSpeech = isPreparingSpeech,
+            hasInternetConnection = hasInternetConnection,
             onPlayRecitation = {
                 onPlayRecitation(activeRecitationUrls, arabicSpeechQueueMode(manualPlayback = true))
             },
             onStopSpeech = onStopSpeech,
             onDismiss = { showSettings = false },
             onSave = { sound, haptics, fontScale ->
-                launchStoreOperation(onSuccess = { showSettings = false }) {
+                launchStoreOperation(label = "Saving your settings…", onSuccess = { showSettings = false }) {
                     store.update(soundEnabled = sound, hapticsEnabled = haptics, fontScale = fontScale)
                 }
             }
         )
+
+        if (showStoreBusyIndicator && pendingStoreOperations.isNotEmpty()) {
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 42.dp),
+                color = Color(0xFF20251F),
+                shape = RoundedCornerShape(50),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF66512B)),
+                shadowElevation = 8.dp
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 15.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(15.dp),
+                        color = Gold,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        pendingStoreOperations.values.lastOrNull() ?: "Processing…",
+                        color = Ivory,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+
+        failedStoreOperation?.let { failure ->
+            AlertDialog(
+                onDismissRequest = { failedStoreOperation = null },
+                containerColor = Panel,
+                title = { Text("Couldn't complete the action", color = Ivory) },
+                text = { Text(failure.message, color = Muted, lineHeight = 20.sp) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        failedStoreOperation = null
+                        launchStoreOperation(
+                            label = failure.label,
+                            onSuccess = failure.onSuccess,
+                            operation = failure.retry
+                        )
+                    }) {
+                        Text("RETRY", color = Gold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { failedStoreOperation = null }) {
+                        Text("CLOSE", color = Muted)
+                    }
+                }
+            )
+        }
         }
     }
+}
 }
 
 @Composable
@@ -1736,6 +1977,8 @@ private fun SettingsDialog(
     quranAyahKeys: List<String>,
     activeAudioUrls: List<String>,
     isSpeaking: Boolean,
+    isPreparingSpeech: Boolean,
+    hasInternetConnection: Boolean,
     onPlayRecitation: () -> Unit,
     onStopSpeech: () -> Unit,
     onDismiss: () -> Unit,
@@ -1771,6 +2014,9 @@ private fun SettingsDialog(
                         Text(
                             when {
                                 activeAudioUrls.isEmpty() -> "No recorded recitation is available for this entry"
+                                !hasInternetConnection -> "Offline · recorded audio needs internet"
+                                isPreparingSpeech -> "Connecting and loading recitation…"
+                                isSpeaking -> "Recitation is playing"
                                 quranAyahKeys.isNotEmpty() -> "Qur'anic recitation · internet required"
                                 else -> "OpenDua recitation · internet required"
                             },
@@ -1779,9 +2025,11 @@ private fun SettingsDialog(
                         )
                     }
                     FilledTonalButton(
-                        onClick = { if (isSpeaking) onStopSpeech() else onPlayRecitation() },
-                        enabled = arabicPlaybackControlEnabled(
-                            hasArabicText = activeAudioUrls.isNotEmpty(),
+                        onClick = {
+                            if (isSpeaking || isPreparingSpeech) onStopSpeech() else onPlayRecitation()
+                        },
+                        enabled = isPreparingSpeech || arabicPlaybackControlEnabled(
+                            hasArabicText = activeAudioUrls.isNotEmpty() && hasInternetConnection,
                             isSpeaking = isSpeaking
                         ),
                         colors = ButtonDefaults.filledTonalButtonColors(
@@ -1792,13 +2040,29 @@ private fun SettingsDialog(
                         ),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                     ) {
-                        Icon(
-                            if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
+                        if (isPreparingSpeech) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(17.dp),
+                                color = GoldLight,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
                             contentDescription = null,
-                            modifier = Modifier.size(17.dp)
-                        )
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
                         Spacer(Modifier.width(6.dp))
-                        Text(if (isSpeaking) "STOP" else "PLAY", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            when {
+                                isPreparingSpeech -> "LOADING"
+                                isSpeaking -> "STOP"
+                                else -> "PLAY"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
