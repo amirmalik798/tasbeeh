@@ -388,7 +388,7 @@ internal fun DhikrSelectionScreen(
                         selected = isSelected,
                         enabled = !isStoreBusy,
                         selectable = isCounterSelectableDhikr(item),
-                        showListenButton = item.customId == null,
+                        showListenButton = true,
                         listenEnabled = hasRecording && hasInternetConnection,
                         onClick = { if (isCounterSelectableDhikr(item)) onSelect(item) },
                         onListen = if (hasRecording) {
@@ -773,6 +773,15 @@ private fun DhikrOptionCard(
                     item.recitationCredit.ifBlank { "Audio streamed from the recording linked to this entry" },
                     color = Color(0xFF7F8C78),
                     fontSize = 9.sp
+                )
+            } else if (item.customId != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "NO AUDIO RECORDING ATTACHED",
+                    color = Color(0xFF8B8F82),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = .45.sp
                 )
             } else if (item.isCountable) {
                 Spacer(Modifier.height(6.dp))
