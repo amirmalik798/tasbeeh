@@ -364,7 +364,9 @@ class MainActivity : ComponentActivity() {
         if (result == TextToSpeech.ERROR) {
             pendingArabicUtterances.remove(utteranceId)
             refreshSpeechPlayingState()
-            if (showUnavailableNotice || queueMode == TextToSpeech.QUEUE_ADD) {
+            if (quranAyahKeys.isNotEmpty()) {
+                enqueueQuranRecitation(text, preferredVoice, quranAyahKeys, queueMode)
+            } else if (showUnavailableNotice || queueMode == TextToSpeech.QUEUE_ADD) {
                 showArabicVoiceNotice("The Arabic voice could not play this dhikr.")
             }
         }
