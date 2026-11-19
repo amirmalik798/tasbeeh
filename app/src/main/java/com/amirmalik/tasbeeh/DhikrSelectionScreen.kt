@@ -188,7 +188,6 @@ internal fun DhikrSelectionScreen(
         }
 
     }
-    }
 }
 
 @Composable
