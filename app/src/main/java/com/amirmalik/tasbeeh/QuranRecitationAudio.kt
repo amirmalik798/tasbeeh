@@ -24,8 +24,11 @@ internal object QuranRecitationAudio {
      * an explicit, validated ayah mapping. User-authored Arabic text is not
      * inferred to be Qur'anic from its wording or title.
      */
+    fun shouldAttemptQuranFoundation(ayahKeys: List<String>): Boolean =
+        ayahKeys.isNotEmpty()
+
     fun shouldUseQuranFoundation(ayahKeys: List<String>): Boolean =
-        ayahKeys.isNotEmpty() && audioUrlsForAyahs(ayahKeys).isNotEmpty()
+        shouldAttemptQuranFoundation(ayahKeys) && audioUrlsForAyahs(ayahKeys).isNotEmpty()
 
     fun audioUrlForAyah(ayahKey: String): String? {
         val parts = ayahKey.split(':')
