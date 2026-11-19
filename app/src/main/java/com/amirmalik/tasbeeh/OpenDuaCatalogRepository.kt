@@ -6,170 +6,285 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+internal data class OpenDuaCatalogSnapshot(
+    val items: List<DhikrItem>,
+    val categories: List<String>,
+    val dataVersion: String
+)
+
 /**
- * OpenDua API v2 reader. The dataset version and audio origin are pinned from
- * API metadata, and the last successful catalogue is cached locally so the
- * library remains available when the network is unavailable.
+ * Parser for OpenDua's immutable, versioned catalogue release.
  *
- * The public API currently documents a staging preview; its review statuses
- * are not treated as a claim of scholarly approval.
+ * Each published entry is retained. Context-specific variations are exposed
+ * as separate selectable options so their wording and recording stay paired.
+ * Instruction and narration records remain visible, but are not countable.
  */
+internal object OpenDuaCatalogParser {
+    const val DATA_VERSION = "0.0.4"
+    const val DATASET_URL = "https://opendua.org/v0.0.4/catalogue.json"
+    const val EXPECTED_ENTRY_COUNT = 267
+    const val EXPECTED_DUA_COUNT = 262
+    const val EXPECTED_RECORDING_COUNT = 249
+
+    fun parse(root: JSONObject): OpenDuaCatalogSnapshot? {
+        if (root.optString("dataVersion") != DATA_VERSION) return null
+
+        val counts = root.optJSONObject("counts") ?: return null
+        if (counts.optInt("entries", -1) != EXPECTED_ENTRY_COUNT ||
+            counts.optInt("duas", -1) != EXPECTED_DUA_COUNT ||
+            counts.optInt("recordings", -1) != EXPECTED_RECORDING_COUNT
+        ) return null
+
+        val tags = root.optJSONArray("tags") ?: return null
+        val categoryById = LinkedHashMap<String, String>()
+        val categories = buildList {
+            for (index in 0 until tags.length()) {
+                val tag = tags.optJSONObject(index) ?: continue
+                val id = tag.optString("id").trim()
+                val title = tag.optString("title").trim()
+                if (id.isNotBlank() && title.isNotBlank()) {
+                    categoryById[id] = title
+                    if (title !in this) add(title)
+                }
+            }
+        }
+        if (categories.isEmpty()) return null
+
+        val reciters = root.optJSONArray("reciters") ?: JSONArray()
+        val reciterNames = buildMap<String, String> {
+            for (index in 0 until reciters.length()) {
+                val reciter = reciters.optJSONObject(index) ?: continue
+                val id = reciter.optString("id").trim()
+                val name = reciter.optString("name").trim()
+                if (id.isNotBlank() && name.isNotBlank()) put(id, name)
+            }
+        }
+
+        val chapters = root.optJSONArray("chapters") ?: JSONArray()
+        val chapterTitles = buildMap<String, String> {
+            for (index in 0 until chapters.length()) {
+                val chapter = chapters.optJSONObject(index) ?: continue
+                val id = chapter.optString("id").trim()
+                val title = chapter.optString("title").trim()
+                if (id.isNotBlank() && title.isNotBlank()) put(id, title)
+            }
+        }
+
+        val entries = root.optJSONArray("entries") ?: return null
+        val items = ArrayList<DhikrItem>()
+        val sourceEntryIds = linkedSetOf<String>()
+        val canonicalDuaIds = linkedSetOf<String>()
+        val recordingIds = linkedSetOf<String>()
+        val selectionValues = linkedSetOf<String>()
+
+        for (entryIndex in 0 until entries.length()) {
+            val entry = entries.optJSONObject(entryIndex) ?: return null
+            val entryId = entry.optString("id").trim()
+            val sourceTitle = entry.optString("title").trim()
+            if (entryId.isBlank() || sourceTitle.isBlank()) return null
+            sourceEntryIds += entryId
+
+            val entryType = entry.optString("type").trim().ifBlank { "invocation" }
+            val entryCategories = buildList {
+                val tagIds = entry.optJSONArray("tags") ?: JSONArray()
+                for (tagIndex in 0 until tagIds.length()) {
+                    val tagId = tagIds.optString(tagIndex).trim()
+                    val label = categoryById[tagId]
+                        ?: tagId.replace('-', ' ').replaceFirstChar { it.uppercase() }
+                    if (label.isNotBlank() && label !in this) add(label)
+                }
+            }
+
+            val variations = entry.optJSONArray("variations")
+            val variants: List<JSONObject?> = if (variations != null && variations.length() > 0) {
+                buildList {
+                    for (variantIndex in 0 until variations.length()) {
+                        add(variations.optJSONObject(variantIndex) ?: return null)
+                    }
+                }
+            } else {
+                listOf(null)
+            }
+
+            variants.forEachIndexed { variantIndex, variation ->
+                val variationId = variation?.optString("id")?.trim()
+                    ?.takeIf { it.isNotBlank() } ?: "default-$variantIndex"
+                val variationLabel = variation?.optString("label")?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: variation?.optString("condition")?.trim()?.takeIf { it.isNotBlank() }
+                    ?: variationId.takeUnless { it == "standard" || it == "default-$variantIndex" }
+
+                val steps = variation?.optJSONArray("steps")
+                    ?: entry.optJSONArray("steps")
+                    ?: JSONArray()
+                val arabicParts = mutableListOf<String>()
+                val transliterationParts = mutableListOf<String>()
+                val translationParts = mutableListOf<String>()
+                val instructionParts = mutableListOf<String>()
+                val audioUrls = linkedSetOf<String>()
+                val creditNames = linkedSetOf<String>()
+
+                for (stepIndex in 0 until steps.length()) {
+                    val step = steps.optJSONObject(stepIndex) ?: continue
+                    when (step.optString("type")) {
+                        "recitation" -> {
+                            val duaItems = step.optJSONArray("items") ?: JSONArray()
+                            for (duaIndex in 0 until duaItems.length()) {
+                                val wrapper = duaItems.optJSONObject(duaIndex) ?: continue
+                                val dua = wrapper.optJSONObject("dua") ?: wrapper
+                                val duaId = dua.optString("id").trim()
+                                if (duaId.isNotBlank()) canonicalDuaIds += duaId
+                                dua.optString("arabic").trim().takeIf { it.isNotBlank() }
+                                    ?.let(arabicParts::add)
+                                dua.optString("transliteration").trim().takeIf { it.isNotBlank() }
+                                    ?.let(transliterationParts::add)
+                                dua.optString("translation").trim().takeIf { it.isNotBlank() }
+                                    ?.let(translationParts::add)
+                            }
+
+                            val recordings = step.optJSONArray("recordings") ?: JSONArray()
+                            for (recordingIndex in 0 until recordings.length()) {
+                                val recording = recordings.optJSONObject(recordingIndex) ?: continue
+                                val url = recording.optString("url").trim()
+                                if (!url.startsWith("https://audio.opendua.org/")) continue
+                                audioUrls += url
+                                recording.optString("id").trim().takeIf { it.isNotBlank() }
+                                    ?.let(recordingIds::add)
+                                val reciterId = recording.optString("reciterId").trim()
+                                reciterNames[reciterId]?.let(creditNames::add)
+                            }
+                        }
+                        "instruction", "narration" -> {
+                            step.optString("arabic").trim().takeIf { it.isNotBlank() }
+                                ?.let(arabicParts::add)
+                            step.optString("text").trim().takeIf { it.isNotBlank() }
+                                ?.let(instructionParts::add)
+                        }
+                    }
+                }
+
+                val displayTitle = if (variationLabel == null) sourceTitle
+                    else "$sourceTitle — $variationLabel"
+                var selectionValue = displayTitle
+                if (selectionValue in selectionValues) {
+                    val sourceRef = entry.optString("sourceReference").trim()
+                    selectionValue = "$displayTitle · ${
+                        sourceRef.ifBlank { entryId }
+                    }"
+                }
+                if (selectionValue in selectionValues) {
+                    selectionValue = "$selectionValue · $variationId"
+                }
+                if (!selectionValues.add(selectionValue)) return null
+
+                val referenceParts = buildList {
+                    val sourceReference = entry.optString("sourceReference").trim()
+                    if (sourceReference.isNotBlank()) add("Hisn al-Muslim $#$sourceReference")
+                    chapterTitles[entry.optString("chapterId")]?.let(::add)
+                    variationLabel?.let(::add)
+                }
+                val reference = (listOf("OpenDua v$DATA_VERSION") + referenceParts)
+                    .joinToString(" · ")
+
+                val meaningParts = (translationParts + instructionParts).distinct()
+                val itemCategory = entryCategories.firstOrNull().orEmpty()
+                items += DhikrItem(
+                    id = "opendua-$entryId-$variationId",
+                    value = selectionValue,
+                    title = displayTitle,
+                    category = itemCategory,
+                    arabic = arabicParts.distinct().joinToString(" ۞ "),
+                    transliteration = transliterationParts.distinct().joinToString(" · "),
+                    meaning = meaningParts.joinToString("\n\n"),
+                    reference = reference,
+                    recitationAudioUrls = audioUrls.toList(),
+                    recitationCredit = creditNames.joinToString(" · ")
+                        .ifBlank { if (audioUrls.isNotEmpty()) "OpenDua recorded recitation" else "" },
+                    categories = entryCategories,
+                    sourceEntryId = entryId,
+                    contentType = entryType,
+                    isCountable = entryType == "invocation"
+                )
+            }
+        }
+
+        // Refuse partial or malformed releases. The app keeps its last complete
+        // cached release rather than silently displaying a truncated library.
+        if (sourceEntryIds.size != EXPECTED_ENTRY_COUNT ||
+            canonicalDuaIds.size != EXPECTED_DUA_COUNT ||
+            recordingIds.size != EXPECTED_RECORDING_COUNT ||
+            items.isEmpty() ||
+            items.map { it.id }.distinct().size != items.size
+        ) return null
+
+        return OpenDuaCatalogSnapshot(items, categories, DATA_VERSION)
+    }
+}
+
 internal class OpenDuaCatalogRepository(context: Context) {
-    private val preferences = context.getSharedPreferences("open_dua_catalog", Context.MODE_PRIVATE)
+    private val preferences = context.getSharedPreferences("open_dua_catalog_v004", Context.MODE_PRIVATE)
 
-    fun loadCachedItems(): List<DhikrItem> {
-        val raw = preferences.getString("items_v2", null) ?: return emptyList()
-        return runCatching { decodeItems(JSONArray(raw)) }.getOrDefault(emptyList())
-    }
-
-    suspend fun refresh(): List<DhikrItem> = withContext(Dispatchers.IO) {
-        val metadata = requestJson(API_BASE + "/v2")
-        val meta = metadata.optJSONObject("meta") ?: JSONObject()
-        val datasetVersion = meta.optString("datasetVersion")
-            .takeIf { Regex("\\d+\\.\\d+\\.\\d+").matches(it) }
-        val audioBaseUrl = meta.optString("audioBaseUrl")
-            .takeIf { it.startsWith("https://") } ?: DEFAULT_AUDIO_BASE
-
-        val collected = LinkedHashMap<String, DhikrItem>()
-        var cursor: String? = null
-        var pagesRead = 0
-        do {
-            val query = buildString {
-                append(API_BASE + "/v2/duas?limit=100")
-                datasetVersion?.let { append("&version=").append(URLEncoder.encode(it, "UTF-8")) }
-                cursor?.let { append("&cursor=").append(URLEncoder.encode(it, "UTF-8")) }
-            }
-            val page = requestJson(query)
-            val pageMeta = page.optJSONObject("meta")
-            val resolvedAudioBase = pageMeta?.optString("audioBaseUrl")
-                ?.takeIf { it.startsWith("https://") } ?: audioBaseUrl
-            val data = page.optJSONArray("data") ?: JSONArray()
-            for (index in 0 until data.length()) {
-                val entry = data.optJSONObject(index) ?: continue
-                val parsed = parseOpenDuaEntry(entry, resolvedAudioBase) ?: continue
-                if (!collected.containsKey(parsed.id)) collected[parsed.id] = parsed
-                if (collected.size >= TARGET_COUNT) break
-            }
-            cursor = page.optJSONObject("pagination")?.optString("nextCursor")
-                ?.takeIf { it.isNotBlank() && it != "null" }
-            pagesRead++
-        } while (cursor != null && collected.size < TARGET_COUNT && pagesRead < MAX_PAGES)
-
-        val items = collected.values.toList().take(TARGET_COUNT)
-        if (items.size == TARGET_COUNT) {
-            runCatching {
-                val array = JSONArray()
-                items.forEach { item -> array.put(encodeItem(item)) }
-                preferences.edit()
-                    .putString("items_v2", array.toString())
-                    .putString("dataset_version", datasetVersion.orEmpty())
-                    .apply()
-            }
+    fun loadCachedSnapshot(): OpenDuaCatalogSnapshot {
+        val version = preferences.getString("data_version", null)
+        if (version != OpenDuaCatalogParser.DATA_VERSION) {
+            return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
         }
-        if (items.isNotEmpty()) items else loadCachedItems()
+        val rawItems = preferences.getString("items", null)
+            ?: return OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
+        return runCatching {
+            val items = decodeItems(JSONArray(rawItems))
+            val rawCategories = preferences.getString("categories", "[]") ?: "[]"
+            val categoriesArray = JSONArray(rawCategories)
+            val categories = (0 until categoriesArray.length())
+                .map { categoriesArray.optString(it) }
+                .filter { it.isNotBlank() }
+            val sourceEntryCount = items.map { it.sourceEntryId }.distinct().size
+            if (sourceEntryCount != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
+                categories.isEmpty() ||
+                items.map { it.id }.distinct().size != items.size
+            ) {
+                OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
+            } else {
+                OpenDuaCatalogSnapshot(items, categories, version)
+            }
+        }.getOrDefault(OpenDuaCatalogSnapshot(emptyList(), emptyList(), version))
     }
 
-    internal fun parseOpenDuaEntry(entry: JSONObject, audioBaseUrl: String): DhikrItem? {
-        if (entry.optString("form") != "dua") return null
-        val title = entry.optString("title").trim()
-        val slug = entry.optString("slug").trim().ifBlank { entry.optString("id").trim() }
-        if (title.isBlank() || slug.isBlank()) return null
+    fun loadCachedItems(): List<DhikrItem> = loadCachedSnapshot().items
 
-        val source = entry.optJSONObject("source")
-        val sourceName = source?.optString("workName").orEmpty()
-        val sourceId = source?.optString("workId").orEmpty()
-        val sourceCitation = source?.optString("citation").orEmpty()
-        val tagsForSource = entry.optJSONArray("tags") ?: JSONArray()
-        val isQuranicSource = sourceName.contains("qur'an", ignoreCase = true) ||
-            sourceName.contains("quran", ignoreCase = true) ||
-            sourceId.contains("quran", ignoreCase = true) ||
-            sourceCitation.contains("qur'an", ignoreCase = true) ||
-            sourceCitation.contains("quran", ignoreCase = true) ||
-            (0 until tagsForSource.length()).any {
-                tagsForSource.optString(it).contains("quran", ignoreCase = true)
-            }
-        if (isQuranicSource) return null
+    fun loadCachedCategories(): List<String> = loadCachedSnapshot().categories
 
-        val blocks = entry.optJSONArray("blocks") ?: return null
-        val recitationBlocks = buildList {
-            for (index in 0 until blocks.length()) {
-                val block = blocks.optJSONObject(index) ?: continue
-                if (block.optString("type") != "recitation") continue
-                if (block.optString("arabic").isNotBlank()) add(block)
-            }
-        }
-        if (recitationBlocks.isEmpty()) return null
-
-        val blockIds = recitationBlocks.map { it.optString("id") }.filter { it.isNotBlank() }.toSet()
-        val arabic = recitationBlocks.joinToString(" ۞ ") { it.optString("arabic").trim() }
-        val transliteration = recitationBlocks.map { it.optString("transliteration").trim() }
-            .filter { it.isNotBlank() }.joinToString(" · ")
-        val meaning = recitationBlocks.map { it.optString("english").trim() }
-            .filter { it.isNotBlank() }.joinToString(" ")
-
-        val recordings = entry.optJSONArray("recordings") ?: JSONArray()
-        val recitationCredit = (0 until recordings.length())
-            .mapNotNull { recordings.optJSONObject(it)?.optString("reciter")?.takeIf(String::isNotBlank) }
-            .distinct()
-            .joinToString(" · ")
-            .ifBlank { "Recorded recitation · OpenDua" }
-        val audioUrls = buildList {
-            for (index in 0 until recordings.length()) {
-                val recording = recordings.optJSONObject(index) ?: continue
-                val covers = recording.optJSONArray("covers")
-                val coversSelectedBlocks = covers == null || covers.length() == 0 ||
-                    (0 until covers.length()).any { covers.optString(it) in blockIds }
-                if (!coversSelectedBlocks) continue
-                val objectKey = recording.optString("objectKey").trim().trimStart('/')
-                if (objectKey.isBlank()) continue
-                add(audioBaseUrl.trimEnd('/') + "/" + objectKey)
-            }
-        }.distinct()
-
-        val collection = entry.optJSONArray("collections")?.optJSONObject(0)
-        val tags = entry.optJSONArray("tags")
-        val category = collection?.optString("name")?.trim()
-            ?.takeIf { it.isNotBlank() && it != "null" }
-            ?: tags?.optString(0)?.takeIf { it.isNotBlank() }?.replace('-', ' ')?.replaceFirstChar { it.uppercase() }
-            ?: "Daily Du'a"
-        val citation = sourceCitation.takeIf { it.isNotBlank() }
-            ?: "OpenDua " + entry.optString("id")
-        val id = entry.optString("id").ifBlank { slug }
-
-        return DhikrItem(
-            id = "opendua-" + slug,
-            // The counter/session store uses the display title as its stable lookup value.
-            // OpenDua IDs remain the Compose list identity; API titles are distinct variants.
-            value = title,
-            title = title,
-            category = category,
-            arabic = arabic,
-            transliteration = transliteration,
-            meaning = meaning,
-            reference = citation + " · OpenDua",
-            recitationAudioUrls = audioUrls,
-            recitationCredit = recitationCredit
-        )
-    }
-
-    private fun requestJson(address: String): JSONObject {
-        val connection = (URL(address).openConnection() as HttpURLConnection).apply {
+    suspend fun refresh(): OpenDuaCatalogSnapshot = withContext(Dispatchers.IO) {
+        val connection = (URL(OpenDuaCatalogParser.DATASET_URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
-            connectTimeout = 9_000
-            readTimeout = 12_000
+            connectTimeout = 15_000
+            readTimeout = 30_000
             setRequestProperty("Accept", "application/json")
             setRequestProperty("User-Agent", "NOOR-E-DHIKR/1.0")
         }
         try {
             val status = connection.responseCode
-            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            val payload = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) throw IOException("OpenDua API returned HTTP " + status)
-            return JSONObject(payload)
+            if (status !in 200..299) {
+                throw IOException("OpenDua catalogue returned HTTP $status")
+            }
+            val payload = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val snapshot = OpenDuaCatalogParser.parse(JSONObject(payload))
+                ?: throw IOException("OpenDua catalogue did not match the complete v${
+                    OpenDuaCatalogParser.DATA_VERSION
+                } release integrity checks")
+
+            val encodedItems = JSONArray()
+            snapshot.items.forEach { item -> encodedItems.put(encodeItem(item)) }
+            val encodedCategories = JSONArray(snapshot.categories)
+            preferences.edit()
+                .putString("items", encodedItems.toString())
+                .putString("categories", encodedCategories.toString())
+                .putString("data_version", snapshot.dataVersion)
+                .apply()
+            snapshot
         } finally {
             connection.disconnect()
         }
@@ -178,6 +293,7 @@ internal class OpenDuaCatalogRepository(context: Context) {
     private fun decodeItems(array: JSONArray): List<DhikrItem> = buildList {
         for (index in 0 until array.length()) {
             val item = array.optJSONObject(index) ?: continue
+            val categoryArray = item.optJSONArray("categories") ?: JSONArray()
             val urls = item.optJSONArray("audioUrls") ?: JSONArray()
             add(
                 DhikrItem(
@@ -190,7 +306,11 @@ internal class OpenDuaCatalogRepository(context: Context) {
                     meaning = item.optString("meaning"),
                     reference = item.optString("reference"),
                     recitationAudioUrls = (0 until urls.length()).map { urls.optString(it) },
-                    recitationCredit = item.optString("recitationCredit")
+                    recitationCredit = item.optString("recitationCredit"),
+                    categories = (0 until categoryArray.length()).map { categoryArray.optString(it) },
+                    sourceEntryId = item.optString("sourceEntryId"),
+                    contentType = item.optString("contentType", "invocation"),
+                    isCountable = item.optBoolean("isCountable", true)
                 )
             )
         }
@@ -207,12 +327,9 @@ internal class OpenDuaCatalogRepository(context: Context) {
         put("reference", item.reference)
         put("audioUrls", JSONArray(item.recitationAudioUrls))
         put("recitationCredit", item.recitationCredit)
-    }
-
-    companion object {
-        private const val API_BASE = "https://api.staging.opendua.org"
-        private const val DEFAULT_AUDIO_BASE = "https://audio.staging.opendua.org"
-        private const val TARGET_COUNT = 87
-        private const val MAX_PAGES = 8
+        put("categories", JSONArray(item.categories))
+        put("sourceEntryId", item.sourceEntryId)
+        put("contentType", item.contentType)
+        put("isCountable", item.isCountable)
     }
 }
