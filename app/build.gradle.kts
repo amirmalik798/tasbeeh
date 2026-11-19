@@ -47,7 +47,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // Keep audio playback in a foreground MediaSessionService, independent of Activity lifetime.
-    val media3Version = "1.8.1"
+    val media3Version = "1.11.1"
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
 
