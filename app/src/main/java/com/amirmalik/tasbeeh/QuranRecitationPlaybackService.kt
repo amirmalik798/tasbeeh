@@ -58,7 +58,7 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
                 true
             )
             setHandleAudioBecomingNoisy(true)
-            setWakeMode(C.WAKE_MODE_LOCAL)
+            setWakeMode(C.WAKE_MODE_NETWORK)
             repeatMode = Player.REPEAT_MODE_OFF
             addListener(object : Player.Listener {
                 override fun onTimelineChanged(
