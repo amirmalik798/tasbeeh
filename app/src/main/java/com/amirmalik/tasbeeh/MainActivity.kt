@@ -22,8 +22,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,15 +38,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.amirmalik.tasbeeh.data.CountOutcome
 import com.amirmalik.tasbeeh.data.CustomDhikr
-import com.amirmalik.tasbeeh.data.SavedSession
+import com.amirmalik.tasbeeh.data.SessionStatus
 import com.amirmalik.tasbeeh.data.TasbeehState
 import com.amirmalik.tasbeeh.data.TasbeehStore
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -81,7 +78,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var showHistory by remember { mutableStateOf(false) }
+    var showHistoryScreen by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showReset by remember { mutableStateOf(false) }
     var showTarget by remember { mutableStateOf(false) }
@@ -93,29 +90,54 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     val activeDhikrTitle = selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
     val activeDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
     val activeDhikrTransliteration = selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
-    var completionRecordedFor by remember { mutableIntStateOf(-1) }
+    val effectiveTarget = state.openSession?.target ?: state.target
+    var sessionClock by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     // The editor owns its own BackHandler so it can ask before discarding edits.
-    BackHandler(enabled = showDhikrScreen || showHistory || showSettings) {
+    BackHandler(enabled = showDhikrScreen || showHistoryScreen || showSettings) {
         if (showDhikrScreen) {
             showDhikrScreen = false
+        } else if (showHistoryScreen) {
+            showHistoryScreen = false
         } else {
-            showHistory = false
             showSettings = false
         }
     }
 
+    LaunchedEffect(state.openSession?.id, state.openSession?.status, state.openSession?.lastActivityAt) {
+        val open = state.openSession
+        if (open?.status == SessionStatus.ACTIVE) {
+            val elapsedSinceActivity = (System.currentTimeMillis() - open.lastActivityAt).coerceAtLeast(0L)
+            val untilPause = (com.amirmalik.tasbeeh.data.SESSION_IDLE_TIMEOUT_MS - elapsedSinceActivity).coerceAtLeast(0L)
+            delay(untilPause)
+            store.pauseOpenSessionIfIdle(System.currentTimeMillis())
+        }
+    }
+
+    LaunchedEffect(state.openSession?.id, state.openSession?.status) {
+        if (state.openSession?.status == SessionStatus.ACTIVE) {
+            while (true) {
+                sessionClock = System.currentTimeMillis()
+                delay(1000)
+            }
+        } else {
+            sessionClock = System.currentTimeMillis()
+        }
+    }
+
     fun increment() {
-        val next = state.count + 1
         val now = System.currentTimeMillis()
         scope.launch {
-            store.update(count = next)
-            if (next >= state.target && state.count < state.target && completionRecordedFor != state.target) {
-                completionRecordedFor = state.target
-                store.completeSession(SavedSession(now, state.dhikr, next, state.target, now))
-            }
+            val outcome = store.countDhikr(
+                dhikr = activeDhikrTitle,
+                arabic = activeDhikrArabic.orEmpty(),
+                transliteration = activeDhikrTransliteration.orEmpty(),
+                meaning = selectedCustomDhikr?.meaning.orEmpty().ifBlank { selectedDhikr?.meaning.orEmpty() },
+                fallbackTarget = effectiveTarget,
+                now = now
+            )
+            if (outcome == CountOutcome.COUNTED) onTap()
         }
-        onTap()
     }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Ink, background = Ink, surface = Panel, onSurface = Ivory, secondary = Color(0xFF16714B))) {
@@ -137,6 +159,26 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                     }
                 )
             }
+            showHistoryScreen -> {
+                SessionHistoryScreen(
+                    sessions = state.sessions,
+                    openSession = state.openSession,
+                    onBack = { showHistoryScreen = false },
+                    onResume = {
+                        scope.launch {
+                            if (state.openSession?.status == SessionStatus.PAUSED) {
+                                store.resumeOpenSession(System.currentTimeMillis())
+                            }
+                            showHistoryScreen = false
+                        }
+                    },
+                    onFinish = {
+                        scope.launch {
+                            store.finishOpenSession(System.currentTimeMillis(), resetCounter = true)
+                        }
+                    }
+                )
+            }
             showDhikrScreen -> {
                 DhikrSelectionScreen(
                     currentDhikr = state.dhikr,
@@ -147,13 +189,21 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                         showDhikrScreen = false
                         when {
                             item.customId != null && item.customId != state.selectedCustomDhikrId -> {
-                                completionRecordedFor = -1
-                                scope.launch { store.selectCustomDhikr(item.customId) }
+                                val custom = state.customDhikrs.firstOrNull { it.id == item.customId }
+                                if (custom != null) scope.launch {
+                                    store.selectCustomDhikr(custom, System.currentTimeMillis())
+                                }
                             }
                             item.customId == null &&
                                 (state.selectedCustomDhikrId != null || item.value != state.dhikr) -> {
-                                completionRecordedFor = -1
-                                scope.launch { store.selectBuiltInDhikr(item.value) }
+                                val builtIn = DhikrCatalog.byValue(item.value)
+                                scope.launch {
+                                    store.selectBuiltInDhikr(
+                                        item.value,
+                                        builtIn?.arabic.orEmpty(),
+                                        System.currentTimeMillis()
+                                    )
+                                }
                             }
                         }
                     },
@@ -166,8 +216,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                         showCustomDhikrEditor = true
                     },
                     onDeleteCustom = { custom ->
-                        if (state.selectedCustomDhikrId == custom.id) completionRecordedFor = -1
-                        scope.launch { store.deleteCustomDhikr(custom.id) }
+                        scope.launch { store.deleteCustomDhikr(custom.id, System.currentTimeMillis()) }
                     }
                 )
             }
@@ -187,7 +236,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Header(onHistory = { showHistory = true }, onSettings = { showSettings = true })
+                Header(onHistory = { showHistoryScreen = true }, onSettings = { showSettings = true })
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(6.dp).background(Gold, CircleShape))
@@ -232,14 +281,23 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 ) { count ->
                     Text(count.toString(), color = Ivory, fontSize = 64.sp, lineHeight = 68.sp, fontWeight = FontWeight.Light, letterSpacing = (-2).sp)
                 }
-                Text("${(state.target - state.count.coerceAtMost(state.target)).coerceAtLeast(0)} remaining", color = Muted, fontSize = 12.sp)
+                Text("${(effectiveTarget - state.count.coerceAtMost(effectiveTarget)).coerceAtLeast(0)} remaining", color = Muted, fontSize = 12.sp)
                 Spacer(Modifier.height(12.dp))
-                ProgressTrack(state.count, state.target)
-                Spacer(Modifier.height(16.dp))
+                ProgressTrack(state.count, effectiveTarget)
+                state.openSession?.let { open ->
+                    Spacer(Modifier.height(9.dp))
+                    SessionTimeStrip(open, sessionClock)
+                }
+                Spacer(Modifier.height(15.dp))
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SmallAction(Icons.Default.Undo, "UNDO", state.count > 0, Modifier.weight(1f)) {
-                        scope.launch { store.update(count = (state.count - 1).coerceAtLeast(0)) }
+                    SmallAction(
+                        Icons.Default.Undo,
+                        "UNDO",
+                        state.count > 0 && state.openSession?.status != SessionStatus.PAUSED,
+                        Modifier.weight(1f)
+                    ) {
+                        scope.launch { store.undoCount(System.currentTimeMillis()) }
                     }
                     Button(
                         onClick = { increment() },
@@ -256,7 +314,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                    QuickChip("Target · ${state.target}", Modifier.weight(1f)) { showTarget = true }
+                    QuickChip("Target · ${effectiveTarget}", Modifier.weight(1f)) { showTarget = true }
                     QuickChip("Change dhikr", Modifier.weight(1f)) { showDhikrScreen = true }
                 }
                 Spacer(Modifier.height(14.dp))
@@ -275,16 +333,57 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
         }
         }
 
-        if (!showDhikrScreen && showReset) AlertDialog(
-            onDismissRequest = { showReset = false }, containerColor = Panel,
+        if (!showDhikrScreen && !showHistoryScreen && showReset) AlertDialog(
+            onDismissRequest = { showReset = false },
+            containerColor = Panel,
             title = { Text("Reset this session?", color = Ivory) },
-            text = { Text("Your current count will return to zero. Completed sessions remain in history.", color = Muted) },
-            confirmButton = { TextButton(onClick = { scope.launch { store.update(count = 0) }; completionRecordedFor = -1; showReset = false }) { Text("RESET COUNT", color = Gold) } },
+            text = {
+                Text(
+                    if (state.openSession != null) {
+                        "Save this unfinished session to history, or reset without keeping it."
+                    } else {
+                        "Your current count will return to zero."
+                    },
+                    color = Muted
+                )
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = {
+                        scope.launch { store.resetCounter(saveSession = true, now = System.currentTimeMillis()) }
+                        showReset = false
+                    }) { Text("SAVE & RESET", color = Gold) }
+                    TextButton(onClick = {
+                        scope.launch { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) }
+                        showReset = false
+                    }) { Text("RESET WITHOUT SAVING", color = Color(0xFFFF9B82)) }
+                }
+            },
             dismissButton = { TextButton(onClick = { showReset = false }) { Text("CANCEL", color = Muted) } }
         )
-        if (!showDhikrScreen && showTarget) TargetDialog(state.target, { showTarget = false }) { target -> scope.launch { store.update(target = target) }; showTarget = false }
-        if (!showDhikrScreen && showSettings) SettingsDialog(state, { showSettings = false }) { sound, haptics -> scope.launch { store.update(soundEnabled = sound, hapticsEnabled = haptics) } }
-        if (!showDhikrScreen && showHistory) HistoryDialog(state.sessions, { showHistory = false })
+        if (!showDhikrScreen && !showHistoryScreen && showTarget) TargetDialog(
+            current = effectiveTarget,
+            onDismiss = { showTarget = false },
+            hasOpenSession = state.openSession != null
+        ) { target ->
+            scope.launch { store.update(target = target) }
+            showTarget = false
+        }
+        if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(state, { showSettings = false }) { sound, haptics ->
+            scope.launch { store.update(soundEnabled = sound, hapticsEnabled = haptics) }
+        }
+        if (
+            !showDhikrScreen && !showHistoryScreen && !showCustomDhikrEditor &&
+            !showReset && !showTarget && !showSettings &&
+            state.openSession?.status == SessionStatus.PAUSED
+        ) {
+            PausedSessionDialog(
+                session = state.openSession,
+                onResume = { scope.launch { store.resumeOpenSession(System.currentTimeMillis()) } },
+                onFinish = { scope.launch { store.finishOpenSession(System.currentTimeMillis(), resetCounter = true) } },
+                onHistory = { showHistoryScreen = true }
+            )
+        }
     }
 }
 
@@ -933,44 +1032,6 @@ private fun SettingToggle(title: String, description: String, checked: Boolean, 
             Text(description, color = Muted, fontSize = 11.sp)
         }
         Switch(checked, onCheckedChange = onChecked, colors = SwitchDefaults.colors(checkedThumbColor = Ink, checkedTrackColor = Gold))
-    }
-}
-
-@Composable
-private fun HistoryDialog(sessions: List<SavedSession>, onDismiss: () -> Unit) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxWidth(.92f).fillMaxHeight(.78f), color = Panel,
-            shape = RoundedCornerShape(26.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF383326))) {
-            Column(Modifier.padding(20.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Your sessions", color = Ivory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                        Text("A record of your remembrance", color = Muted, fontSize = 11.sp)
-                    }
-                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Close", tint = Muted) }
-                }
-                Spacer(Modifier.height(12.dp))
-                if (sessions.isEmpty()) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Completed sessions will appear here.", color = Muted, textAlign = TextAlign.Center)
-                    }
-                } else {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(sessions, key = { it.id }) { session ->
-                            Surface(color = Panel2, shape = RoundedCornerShape(15.dp)) {
-                                Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(session.dhikr, color = Ivory, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                        Text(SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault()).format(Date(session.completedAt)), color = Muted, fontSize = 10.sp)
-                                    }
-                                    Text("${session.count}/${session.target}", color = Gold, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
