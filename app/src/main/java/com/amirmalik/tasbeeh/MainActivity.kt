@@ -358,34 +358,51 @@ private fun TasbeehApp(
     var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
     val selectedCustomDhikr = state.customDhikrs.firstOrNull { it.id == state.selectedCustomDhikrId }
     val selectedDhikr = DhikrCatalog.byValue(state.dhikr)
-    // An in-progress session displays its captured content. Editing the saved
-    // custom entry affects the next session, never the session already underway.
+    // Keep the completed session's captured content visible until the user
+    // starts the next round. The next count still uses the currently selected
+    // Dhikr, so editing a custom entry affects future sessions only.
     val sessionIsOpen = state.currentSession?.status == SessionStatus.ACTIVE ||
         state.currentSession?.status == SessionStatus.PAUSED
     val activeSession = state.currentSession?.takeIf { sessionIsOpen }
-    val activeDhikrTitle = activeSession?.dhikr ?: selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
-    val activeDhikrArabic = if (activeSession != null) {
-        activeSession.arabic.takeIf { it.isNotBlank() }
-    } else {
-        selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
-    }
-    val activeDhikrTransliteration = if (activeSession != null) {
-        activeSession.transliteration.takeIf { it.isNotBlank() }
-    } else {
-        selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
-            ?: selectedDhikr?.transliteration
-    }
-    val activeDhikrMeaning = if (activeSession != null) {
-        activeSession.meaning
-    } else {
-        selectedCustomDhikr?.meaning.orEmpty().ifBlank { selectedDhikr?.meaning.orEmpty() }
-    }
     val completedRoundStillDisplayed =
         state.currentSession?.status == SessionStatus.COMPLETED &&
             state.count == state.currentSession.count
-    val effectiveTarget = activeSession?.target
-        ?: state.currentSession?.takeIf { completedRoundStillDisplayed }?.target
-        ?: state.target
+    val sessionForDisplay = sessionSnapshotForDisplay(state.currentSession, state.count)
+
+    val selectedDhikrTitle = selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
+    val selectedDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
+    val selectedDhikrTransliteration = selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
+        ?: selectedDhikr?.transliteration
+    val selectedDhikrMeaning = selectedCustomDhikr?.meaning.orEmpty().ifBlank { selectedDhikr?.meaning.orEmpty() }
+
+    val activeDhikrTitle = sessionForDisplay?.dhikr ?: selectedDhikrTitle
+    val activeDhikrArabic = if (sessionForDisplay != null) {
+        sessionForDisplay.arabic.takeIf { it.isNotBlank() }
+    } else {
+        selectedDhikrArabic
+    }
+    val activeDhikrTransliteration = if (sessionForDisplay != null) {
+        sessionForDisplay.transliteration.takeIf { it.isNotBlank() }
+    } else {
+        selectedDhikrTransliteration
+    }
+    val activeDhikrMeaning = sessionForDisplay?.meaning ?: selectedDhikrMeaning
+
+    // Counting after completion starts a new session from the current selection,
+    // not from the historical snapshot still shown on screen.
+    val countDhikrTitle = activeSession?.dhikr ?: selectedDhikrTitle
+    val countDhikrArabic = if (activeSession != null) {
+        activeSession.arabic.takeIf { it.isNotBlank() }
+    } else {
+        selectedDhikrArabic
+    }
+    val countDhikrTransliteration = if (activeSession != null) {
+        activeSession.transliteration.takeIf { it.isNotBlank() }
+    } else {
+        selectedDhikrTransliteration
+    }
+    val countDhikrMeaning = activeSession?.meaning ?: selectedDhikrMeaning
+    val effectiveTarget = sessionForDisplay?.target ?: state.target
     val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
     val canUndo = canUndoCount(state.count, state.currentSession?.status)
 
@@ -404,17 +421,17 @@ private fun TasbeehApp(
         val now = System.currentTimeMillis()
         scope.launch {
             val outcome = store.countDhikr(
-                dhikr = activeDhikrTitle,
-                arabic = activeDhikrArabic.orEmpty(),
-                transliteration = activeDhikrTransliteration.orEmpty(),
-                meaning = activeDhikrMeaning,
+                dhikr = countDhikrTitle,
+                arabic = countDhikrArabic.orEmpty(),
+                transliteration = countDhikrTransliteration.orEmpty(),
+                meaning = countDhikrMeaning,
                 fallbackTarget = effectiveTarget,
                 now = now
             )
             if (outcome == CountOutcome.COUNTED) {
-                if (state.soundEnabled && !activeDhikrArabic.isNullOrBlank()) {
+                if (state.soundEnabled && !countDhikrArabic.isNullOrBlank()) {
                     onSpeakArabic(
-                        activeDhikrArabic,
+                        countDhikrArabic,
                         state.ttsVoicePreference,
                         arabicSpeechQueueMode(manualPlayback = false)
                     )
