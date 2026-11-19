@@ -80,13 +80,24 @@ class MainActivity : ComponentActivity() {
     private var arabicSpeechReady = false
     private var speechPlaying by mutableStateOf(false)
 
-    private fun speakArabic(text: String) {
+    private fun speakArabic(text: String, preferredVoice: String) {
         val engine = arabicTextToSpeech
         if (!arabicSpeechReady || engine == null) {
             Toast.makeText(this, "Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings.", Toast.LENGTH_LONG).show()
             return
         }
         if (text.isBlank()) return
+        val voices = engine.voices.orEmpty().filter { it.locale.language == "ar" }
+        val requestedVoice = voices.firstOrNull { voice ->
+            val name = voice.name.lowercase(Locale.ROOT)
+            if (preferredVoice == "male") name.contains("male") || name.contains("man")
+            else name.contains("female") || name.contains("woman")
+        }
+        if (requestedVoice != null) engine.voice = requestedVoice
+        else {
+            engine.setLanguage(Locale("ar"))
+            Toast.makeText(this, "Requested Arabic voice unavailable; using the device default.", Toast.LENGTH_LONG).show()
+        }
         engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "serene-dhikr-arabic")
     }
 
@@ -143,7 +154,7 @@ class MainActivity : ComponentActivity() {
                     state = saved,
                     store = store,
                     isSpeaking = speechPlaying,
-                    onSpeakArabic = { speakArabic(it) },
+                    onSpeakArabic = { text, voice -> speakArabic(text, voice) },
                     onStopSpeech = { stopArabicSpeech() }
                 ) {
                     if (saved.soundEnabled) {
@@ -205,7 +216,7 @@ private fun TasbeehApp(
     state: TasbeehState,
     store: TasbeehStore,
     isSpeaking: Boolean,
-    onSpeakArabic: (String) -> Unit,
+    onSpeakArabic: (String, String) -> Unit,
     onStopSpeech: () -> Unit,
     onTap: () -> Unit
 ) {
@@ -371,7 +382,7 @@ private fun TasbeehApp(
                     onHistory = { showHistoryScreen = true },
                     onSpeak = {
                         val arabic = activeDhikrArabic.orEmpty()
-                        if (isSpeaking) onStopSpeech() else onSpeakArabic(arabic)
+                        if (isSpeaking) onStopSpeech() else onSpeakArabic(arabic, state.ttsVoicePreference)
                     },
                     isSpeaking = isSpeaking,
                     canSpeak = !activeDhikrArabic.isNullOrBlank(),
