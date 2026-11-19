@@ -95,7 +95,7 @@ internal fun voiceConfigurationHash(arabic: String, transliteration: String): St
         append(normalizeDhikrPhrase(transliteration))
     }
     val digest = MessageDigest.getInstance("SHA-256").digest(source.toByteArray(Charsets.UTF_8))
-    return digest.joinToString("") { "%02x".format(Locale.ROOT, it) }
+    return digest.joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
 }
 
 internal fun CustomDhikr.hasUsableVoiceProfile(): Boolean =
