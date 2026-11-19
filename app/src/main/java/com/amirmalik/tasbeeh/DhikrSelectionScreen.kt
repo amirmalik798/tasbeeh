@@ -333,7 +333,9 @@ internal fun DhikrSelectionScreen(
             )
         }
         val quranItems = catalogItems.filter { it.category == "Quran" }
-        val quranTextIsCached = hasCompleteQuranicText(quranItems)
+        val quranTextIsCached = quranItems.any {
+            it.arabic.isNotBlank() && it.transliteration.isNotBlank()
+        }
         if ((category == "All" || category == "Quran") &&
             (quranIsRefreshing || quranRefreshError != null || quranCacheWriteFailed)
         ) {
