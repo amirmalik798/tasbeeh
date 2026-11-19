@@ -74,12 +74,23 @@ internal data class DhikrItem(
     val customId: String? = null,
     val quranAyahKeys: List<String> = emptyList(),
     val recitationAudioUrls: List<String> = emptyList(),
-    val recitationCredit: String = ""
+    val recitationCredit: String = "",
+    val categories: List<String> = listOf(category).filter { it.isNotBlank() },
+    val sourceEntryId: String = id,
+    val contentType: String = "invocation",
+    val isCountable: Boolean = contentType == "invocation"
 )
+
+internal fun orderedDhikrCategories(openDuaCategories: List<String>): List<String> =
+    (listOf("All", "Quran", "My Dhikhrs") + openDuaCategories
+        .map { it.trim() }
+        .filter { it.isNotBlank() })
+        .distinct()
 
 @Composable
 internal fun DhikrSelectionScreen(
     catalogItems: List<DhikrItem>,
+    openDuaCategories: List<String>,
     currentDhikr: String,
     currentCustomDhikrId: String?,
     customDhikrs: List<CustomDhikr>,
@@ -92,8 +103,8 @@ internal fun DhikrSelectionScreen(
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
-    val categories = remember(catalogItems) {
-        listOf("All", "My Dhikr") + catalogItems.map { it.category }.filter { it.isNotBlank() }.distinct()
+    val categories = remember(openDuaCategories) {
+        orderedDhikrCategories(openDuaCategories)
     }
     val keyboardController = LocalSoftwareKeyboardController.current
     val customItems = remember(customDhikrs) {
@@ -102,11 +113,14 @@ internal fun DhikrSelectionScreen(
                 id = "custom-${custom.id}",
                 value = custom.title,
                 title = custom.title,
-                category = "My Dhikr",
+                category = "My Dhikhrs",
                 arabic = custom.arabic,
                 transliteration = custom.transliteration,
                 meaning = custom.meaning,
-                customId = custom.id
+                customId = custom.id,
+                categories = listOf("My Dhikhrs"),
+                contentType = "custom",
+                isCountable = true
             )
         }
     }
@@ -114,22 +128,15 @@ internal fun DhikrSelectionScreen(
     val filteredItems = remember(query, category, allItems) {
         val normalizedQuery = normalizeDhikrSearchText(query)
         val matches = allItems.filter { item ->
-            val matchesCategory = category == "All" || item.category == category
+            val matchesCategory = category == "All" || category in item.categories || item.category == category
             val matchesSearch = normalizedQuery.isBlank() ||
-                listOf(item.title, item.transliteration, item.meaning, item.arabic, item.reference)
-                    .any { value -> normalizeDhikrSearchText(value).contains(normalizedQuery) }
+                (listOf(item.title, item.transliteration, item.meaning, item.arabic, item.reference) +
+                    item.categories).any { value ->
+                    normalizeDhikrSearchText(value).contains(normalizedQuery)
+                }
             matchesCategory && matchesSearch
         }
-        if (category == "Sleep") {
-            val sleepPriority = mapOf(
-                "sleep-four-qul" to 0,
-                "sleep-ayat-al-kursi" to 1,
-                "sleep-last-two-baqarah" to 2
-            )
-            matches.sortedBy { sleepPriority[it.id] ?: 3 }
-        } else {
-            matches
-        }
+        matches
     }
     Column(
         Modifier.fillMaxSize()
@@ -158,7 +165,7 @@ internal fun DhikrSelectionScreen(
                     .border(1.dp, Color(0xFFD6A63D).copy(alpha = .38f), RoundedCornerShape(50))
                     .padding(horizontal = 11.dp, vertical = 7.dp)
             ) {
-                Text("${allItems.size} DHIKRS", color = Color(0xFFFFD875), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
+                Text("${allItems.size} ITEMS", color = Color(0xFFFFD875), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
             }
         }
 
@@ -271,7 +278,16 @@ internal fun DhikrSelectionScreen(
             }
         }
 
-        Spacer(Modifier.height(9.dp))
+        if (category == "All" || category in openDuaCategories) {
+            Text(
+                "OPENDUA v0.0.4  ·  HISN AL-MUSLIM  ·  RECITATION: MUHAMMAD JUMAH",
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 7.dp),
+                color = Color(0xFF7F8C78),
+                fontSize = 9.sp,
+                letterSpacing = .55.sp
+            )
+        }
+        Spacer(Modifier.height(3.dp))
         if (filteredItems.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -346,7 +362,11 @@ private fun DhikrOptionCard(
 ) {
     val gold = Color(0xFFFFD56A)
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(
+            enabled = item.isCountable,
+            role = if (item.isCountable) Role.Button else null,
+            onClick = onClick
+        ),
         color = if (selected) Color(0xFF252014) else Color(0xFF121714),
         shape = RoundedCornerShape(19.dp),
         border = BorderStroke(if (selected) 1.4.dp else 1.dp, if (selected) Color(0xFFE7B84D).copy(alpha = .92f) else Color(0xFF30372F)),
@@ -373,6 +393,16 @@ private fun DhikrOptionCard(
                 if (selected) {
                     Spacer(Modifier.width(6.dp))
                     Icon(Icons.Default.Check, contentDescription = "Selected", tint = gold, modifier = Modifier.size(17.dp))
+                }
+                if (!item.isCountable) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier.clip(RoundedCornerShape(50))
+                            .background(Color(0xFF3A2B1A))
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    ) {
+                        Text("REFERENCE", color = Color(0xFFE7C17C), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
                 if (onEdit != null) {
                     IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
@@ -409,6 +439,16 @@ private fun DhikrOptionCard(
                 Spacer(Modifier.height(7.dp))
                 Text(item.reference, color = Color(0xFF7F8C78), fontSize = 10.sp, letterSpacing = .25.sp)
             }
+            if (!item.isCountable) {
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "REFERENCE ONLY · NOT A COUNTABLE DU'A",
+                    color = Color(0xFFE7C17C),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = .45.sp
+                )
+            }
             if (item.quranAyahKeys.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -437,6 +477,15 @@ private fun DhikrOptionCard(
                     item.recitationCredit.ifBlank { "Audio streamed from the recording linked to this entry" },
                     color = Color(0xFF7F8C78),
                     fontSize = 9.sp
+                )
+            } else if (item.isCountable) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "NO RECORDING PROVIDED BY OPENDUA",
+                    color = Color(0xFF8B8F82),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = .45.sp
                 )
             }
         }
