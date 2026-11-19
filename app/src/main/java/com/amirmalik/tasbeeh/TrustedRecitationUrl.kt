@@ -19,3 +19,10 @@ internal fun isTrustedRecitationUrl(value: String): Boolean = runCatching {
         uri.rawPath.isNotBlank() &&
         host in setOf("verses.quran.foundation", "audio.opendua.org")
 }.getOrDefault(false)
+
+
+/** OpenDua recordings must come from its exact audio host, not a look-alike URL. */
+internal fun isTrustedOpenDuaAudioUrl(value: String): Boolean =
+    isTrustedRecitationUrl(value) && runCatching {
+        URI(value.trim()).host.equals("audio.opendua.org", ignoreCase = true)
+    }.getOrDefault(false)
