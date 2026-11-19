@@ -90,8 +90,12 @@ class MainActivity : ComponentActivity() {
         val voices = engine.voices.orEmpty().filter { it.locale.language == "ar" }
         val requestedVoice = voices.firstOrNull { voice ->
             val name = voice.name.lowercase(Locale.ROOT)
-            if (preferredVoice == "male") name.contains("male") || name.contains("man")
-            else name.contains("female") || name.contains("woman")
+            if (preferredVoice == "male") {
+                (name.contains("male") && !name.contains("female")) ||
+                    (name.contains("man") && !name.contains("woman"))
+            } else {
+                name.contains("female") || name.contains("woman")
+            }
         }
         if (requestedVoice != null) engine.voice = requestedVoice
         else {
