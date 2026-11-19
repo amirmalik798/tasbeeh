@@ -418,15 +418,26 @@ class MainActivity : ComponentActivity() {
                     }.isSuccess
 
                     if (!listenerInstalled) {
-                        // Without completion callbacks, the speaking indicator
-                        // could remain stuck. Disable TTS instead of retaining
-                        // an untrackable queue.
+                        // The recorded Quran audio does not depend on the device
+                        // TTS callback listener. Keep the app usable and allow
+                        // queued Quran passages to continue through their normal
+                        // primary/fallback handling.
                         arabicSpeechReady = false
-                        val hadWaitingSpeech = pendingUntilTtsReady.isNotEmpty()
+                        val waiting = pendingUntilTtsReady.toList()
                         pendingUntilTtsReady.clear()
                         pendingArabicUtterances.clear()
-                        speechPlaying = quranMediaPlayer != null || pendingQuranAudioUrls.isNotEmpty()
-                        if (hadWaitingSpeech) {
+                        waiting.filter { it.quranAyahKeys.isNotEmpty() }.forEach { pending ->
+                            enqueueQuranRecitation(
+                                pending.text,
+                                pending.preferredVoice,
+                                pending.quranAyahKeys,
+                                TextToSpeech.QUEUE_ADD
+                            )
+                        }
+                        speechPlaying = quranMediaPlayer != null ||
+                            pendingQuranAudioUrls.isNotEmpty() ||
+                            pendingQuranFallbacks.isNotEmpty()
+                        if (waiting.any { it.quranAyahKeys.isEmpty() }) {
                             showArabicVoiceNotice(
                                 "Arabic text-to-speech could not start reliably. Check your device's TTS settings."
                             )
