@@ -80,6 +80,9 @@ private val GoldLight = Color(0xFFFFE6A0)
 private val Ivory = Color(0xFFFFF8EA)
 private val Muted = Color(0xFF9A9B8D)
 
+internal fun arabicSpeechQueueMode(manualPlayback: Boolean): Int =
+    if (manualPlayback) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+
 class MainActivity : ComponentActivity() {
     private data class PendingArabicSpeech(val text: String, val preferredVoice: String)
 
@@ -413,7 +416,7 @@ private fun TasbeehApp(
                     onSpeakArabic(
                         activeDhikrArabic,
                         state.ttsVoicePreference,
-                        TextToSpeech.QUEUE_ADD
+                        arabicSpeechQueueMode(manualPlayback = false)
                     )
                 }
                 onTap()
@@ -708,7 +711,7 @@ private fun TasbeehApp(
                 onSpeakArabic(
                     activeDhikrArabic.orEmpty(),
                     voice,
-                    TextToSpeech.QUEUE_ADD
+                    arabicSpeechQueueMode(manualPlayback = true)
                 )
             },
             onStopSpeech = onStopSpeech,
