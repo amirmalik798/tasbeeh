@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.amirmalik.tasbeeh.data.CustomDhikr
@@ -164,7 +165,8 @@ internal fun CustomDhikrEditorScreen(
                     color = EditorIvory,
                     fontSize = 23.sp,
                     lineHeight = 38.sp,
-                    textAlign = TextAlign.End
+                    textAlign = TextAlign.End,
+                    textDirection = TextDirection.Rtl
                 ),
                 supportingText = { Text("${arabic.length}/800", color = EditorMuted) },
                 shape = RoundedCornerShape(16.dp),
