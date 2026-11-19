@@ -52,7 +52,7 @@ internal fun RecitationPlaybackBar(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     when {
-                        isPreparing -> "PREPARING RECITATION"
+                        isPreparing && isPlaying -> "PREPARING RECITATION"
                         isPlaying -> "NOW PLAYING"
                         else -> "RECITATION PAUSED"
                     },

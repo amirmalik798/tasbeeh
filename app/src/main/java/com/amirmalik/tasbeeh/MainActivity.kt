@@ -374,7 +374,7 @@ class MainActivity : ComponentActivity() {
         activeRecitationArtist = request.artist
         activeRecitationSubtitle = "Connecting to audio…"
         recitationPreparing = true
-        speechPlaying = false
+        speechPlaying = true
         if (controller != null) {
             pendingRecitationRequest = null
             startRecitationRequest(controller, request)
