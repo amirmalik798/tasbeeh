@@ -119,6 +119,18 @@ internal fun storeOperationFailureMessage(label: String, error: Throwable): Stri
 internal fun arabicSpeechQueueMode(manualPlayback: Boolean): Int =
     if (manualPlayback) RECITATION_QUEUE_REPLACE else RECITATION_QUEUE_APPEND
 
+/**
+ * Automatic recitation is best-effort: do not accumulate an unbounded backlog
+ * when a user counts faster than a multi-verse selection can be streamed.
+ * Manual playback still replaces the current queue.
+ */
+internal fun shouldAcceptRecitationRequest(
+    queueMode: Int,
+    hasActivePlayer: Boolean,
+    hasPendingRecitations: Boolean
+): Boolean =
+    queueMode != RECITATION_QUEUE_APPEND || (!hasActivePlayer && !hasPendingRecitations)
+
 internal fun arabicPlaybackControlEnabled(hasArabicText: Boolean, isSpeaking: Boolean): Boolean =
     hasArabicText || isSpeaking
 
@@ -320,6 +332,19 @@ class MainActivity : ComponentActivity() {
             } else {
                 Log.w("Noor-e-Dhikr", "Skipping an automatic recitation with no supported recording URL")
             }
+            return
+        }
+
+        if (!shouldAcceptRecitationRequest(
+                queueMode = queueMode,
+                hasActivePlayer = recitationMediaPlayer != null,
+                hasPendingRecitations = pendingRecitationUrls.isNotEmpty()
+            )
+        ) {
+            Log.d(
+                "Noor-e-Dhikr",
+                "Skipping automatic recitation while another selection is queued or playing"
+            )
             return
         }
 

@@ -24,6 +24,42 @@ class ArabicSpeechQueueModeTest {
     }
 
     @Test
+    fun automaticPlaybackIsAcceptedOnlyWhenThePlayerAndQueueAreIdle() {
+        assertTrue(
+            shouldAcceptRecitationRequest(
+                queueMode = RECITATION_QUEUE_APPEND,
+                hasActivePlayer = false,
+                hasPendingRecitations = false
+            )
+        )
+        assertFalse(
+            shouldAcceptRecitationRequest(
+                queueMode = RECITATION_QUEUE_APPEND,
+                hasActivePlayer = true,
+                hasPendingRecitations = false
+            )
+        )
+        assertFalse(
+            shouldAcceptRecitationRequest(
+                queueMode = RECITATION_QUEUE_APPEND,
+                hasActivePlayer = false,
+                hasPendingRecitations = true
+            )
+        )
+    }
+
+    @Test
+    fun manualPlaybackCanReplaceAnExistingPlayerAndQueue() {
+        assertTrue(
+            shouldAcceptRecitationRequest(
+                queueMode = RECITATION_QUEUE_REPLACE,
+                hasActivePlayer = true,
+                hasPendingRecitations = true
+            )
+        )
+    }
+
+    @Test
     fun stopControlRemainsEnabledWhileRecitationIsPlaying() {
         assertTrue(
             arabicPlaybackControlEnabled(hasArabicText = false, isSpeaking = true)
