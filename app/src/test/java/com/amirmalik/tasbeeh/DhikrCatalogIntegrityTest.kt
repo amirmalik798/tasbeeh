@@ -137,7 +137,7 @@ class DhikrCatalogIntegrityTest {
     fun categoryOrderIsFixedBeforeOpenDuaCategoriesAndKeepsApiOrder() {
         val apiCategories = listOf("Morning and evening", "Sleep and waking", "Travel")
         assertEquals(
-            listOf("All", "Quran", "My Dhikhrs", "Morning and evening", "Sleep and waking", "Travel"),
+            listOf("All", "Favorites", "My Dhikhrs", "Quran", "Morning and evening", "Sleep and waking", "Travel"),
             orderedDhikrCategories(apiCategories)
         )
     }
