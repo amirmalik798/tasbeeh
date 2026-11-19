@@ -130,7 +130,7 @@ class MainActivity : ComponentActivity() {
         // Manual playback replaces all queued speech. Count playback appends,
         // including counts made during the short asynchronous TTS startup.
         if (queueMode == TextToSpeech.QUEUE_FLUSH) {
-            if (arabicSpeechReady) engine?.stop()
+            if (arabicSpeechReady) runCatching { engine?.stop() }
             pendingArabicUtterances.clear()
             pendingUntilTtsReady.clear()
             speechPlaying = false
@@ -150,7 +150,9 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val arabicVoices = engine.voices.orEmpty().filter { it.locale.language == "ar" }
+        val arabicVoices = runCatching {
+            engine.voices.orEmpty().filter { it.locale.language == "ar" }
+        }.getOrDefault(emptyList())
         val requestedVoice = arabicVoices.firstOrNull { voice ->
             val name = voice.name.lowercase(Locale.ROOT)
             if (preferredVoice == "male") {
@@ -163,9 +165,9 @@ class MainActivity : ComponentActivity() {
 
         if (requestedVoice != null) {
             runCatching { engine.voice = requestedVoice }
-                .onFailure { engine.setLanguage(Locale("ar")) }
+                .onFailure { runCatching { engine.setLanguage(Locale("ar")) } }
         } else {
-            engine.setLanguage(Locale("ar"))
+            runCatching { engine.setLanguage(Locale("ar")) }
             if (showUnavailableNotice) {
                 showArabicVoiceNotice(
                     "Requested Arabic voice unavailable; using the device default."
@@ -190,7 +192,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopArabicSpeech() {
-        if (arabicSpeechReady) arabicTextToSpeech?.stop()
+        if (arabicSpeechReady) runCatching { arabicTextToSpeech?.stop() }
         pendingArabicUtterances.clear()
         pendingUntilTtsReady.clear()
         speechPlaying = false
@@ -210,29 +212,48 @@ class MainActivity : ComponentActivity() {
                     }.getOrDefault(TextToSpeech.LANG_NOT_SUPPORTED)
                     arabicSpeechReady = languageResult != TextToSpeech.LANG_MISSING_DATA &&
                         languageResult != TextToSpeech.LANG_NOT_SUPPORTED
-                    engine.setSpeechRate(0.88f)
-                    engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {
-                            runOnUiThread {
-                                if (utteranceId != null && pendingArabicUtterances.contains(utteranceId)) {
-                                    speechPlaying = true
+                    runCatching { engine.setSpeechRate(0.88f) }
+                    val listenerInstalled = runCatching {
+                        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                            override fun onStart(utteranceId: String?) {
+                                runOnUiThread {
+                                    if (utteranceId != null && pendingArabicUtterances.contains(utteranceId)) {
+                                        speechPlaying = true
+                                    }
                                 }
                             }
-                        }
 
-                        override fun onDone(utteranceId: String?) {
-                            completeArabicUtterance(utteranceId)
-                        }
+                            override fun onDone(utteranceId: String?) {
+                                completeArabicUtterance(utteranceId)
+                            }
 
-                        @Deprecated("Deprecated in Java")
-                        override fun onError(utteranceId: String?) {
-                            completeArabicUtterance(utteranceId)
-                        }
+                            @Deprecated("Deprecated in Java")
+                            override fun onError(utteranceId: String?) {
+                                completeArabicUtterance(utteranceId)
+                            }
 
-                        override fun onError(utteranceId: String?, errorCode: Int) {
-                            completeArabicUtterance(utteranceId)
+                            override fun onError(utteranceId: String?, errorCode: Int) {
+                                completeArabicUtterance(utteranceId)
+                            }
+                        })
+                    }.getOrDefault(false)
+
+                    if (!listenerInstalled) {
+                        // Without completion callbacks, the speaking indicator
+                        // could remain stuck. Disable TTS instead of retaining
+                        // an untrackable queue.
+                        arabicSpeechReady = false
+                        val hadWaitingSpeech = pendingUntilTtsReady.isNotEmpty()
+                        pendingUntilTtsReady.clear()
+                        pendingArabicUtterances.clear()
+                        speechPlaying = false
+                        if (hadWaitingSpeech) {
+                            showArabicVoiceNotice(
+                                "Arabic text-to-speech could not start reliably. Check your device's TTS settings."
+                            )
                         }
-                    })
+                        return@runOnUiThread
+                    }
 
                     if (arabicSpeechReady) {
                         while (pendingUntilTtsReady.isNotEmpty()) {
@@ -314,11 +335,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        arabicTextToSpeech?.stop()
+        runCatching { arabicTextToSpeech?.stop() }
         pendingArabicUtterances.clear()
         pendingUntilTtsReady.clear()
         arabicSpeechReady = false
-        arabicTextToSpeech?.shutdown()
+        runCatching { arabicTextToSpeech?.shutdown() }
         arabicTextToSpeech = null
         super.onDestroy()
     }
