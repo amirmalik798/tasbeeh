@@ -327,6 +327,19 @@ internal fun hasCompleteQuranicText(items: List<DhikrItem>): Boolean {
 }
 
 internal fun hasAllQuranicTextAndTranslations(
+    definitions: List<QuranicDuaDefinition>,
+    versesByKey: Map<String, Triple<String, String, String>>
+): Boolean = definitions.all { definition ->
+    definition.ayahKeys.all { key ->
+        versesByKey[key]?.let { (arabic, transliteration, translation) ->
+            arabic.isNotBlank() &&
+                transliteration.isNotBlank() &&
+                translation.isNotBlank()
+        } == true
+    }
+}
+
+internal fun hasAllSurahAyahTextAndTranslations(
     definitions: List<QuranSurahDefinition>,
     versesByKey: Map<String, QuranAyahText>
 ): Boolean = definitions.all { definition ->
