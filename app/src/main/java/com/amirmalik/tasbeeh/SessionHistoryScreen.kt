@@ -42,18 +42,15 @@ private val HistoryGreen = Color(0xFF74B48A)
 
 @Composable
 internal fun SessionHistoryScreen(
-    sessions: List<SavedSession>,
-    currentSessionId: String?,
     onBack: () -> Unit
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(sessions) {
+    LaunchedEffect(session) {
         while (true) {
             now = System.currentTimeMillis()
             delay(1000)
         }
     }
-    val allSessions = remember(sessions) { sessions.sortedByDescending { it.startedAt } }
 
     Column(Modifier.fillMaxSize().background(HistoryInk).statusBarsPadding().navigationBarsPadding()) {
         Row(
@@ -69,18 +66,17 @@ internal fun SessionHistoryScreen(
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
                 Text("YOUR PRACTICE", color = HistoryGold, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
-                Text("Session history", color = HistoryIvory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Text("Current session", color = HistoryIvory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
             }
-            Text("${allSessions.size} sessions", color = HistoryMuted, fontSize = 11.sp)
         }
 
-        if (allSessions.isEmpty()) {
+        if (session == null) {
             Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Schedule, contentDescription = null, tint = HistoryGold, modifier = Modifier.size(42.dp))
                     Spacer(Modifier.height(16.dp))
-                    Text("No sessions yet", color = HistoryIvory, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Your completed and in-progress sessions will appear here.", color = HistoryMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
+                    Text("No current session", color = HistoryIvory, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Your current session and its pause/resume timeline will appear here.", color = HistoryMuted, fontSize = 13.sp, textAlign = TextAlign.Center)
                 }
             }
         } else {
@@ -89,9 +85,7 @@ internal fun SessionHistoryScreen(
                     .padding(horizontal = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                allSessions.forEach { item ->
-                    SessionHistoryCard(item, now, item.id == currentSessionId)
-                }
+                SessionHistoryCard(session, now, true)
                 Spacer(Modifier.height(12.dp))
             }
         }
