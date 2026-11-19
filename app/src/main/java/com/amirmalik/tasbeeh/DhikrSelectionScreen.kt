@@ -16,6 +16,10 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.amirmalik.tasbeeh.data.CustomDhikr
 
 internal data class DhikrItem(
     val id: String,
@@ -35,7 +40,8 @@ internal data class DhikrItem(
     val arabic: String,
     val transliteration: String,
     val meaning: String,
-    val reference: String = ""
+    val reference: String = "",
+    val customId: String? = null
 )
 
 internal object DhikrCatalog {
@@ -70,14 +76,35 @@ internal object DhikrCatalog {
 @Composable
 internal fun DhikrSelectionScreen(
     currentDhikr: String,
+    currentCustomDhikrId: String?,
+    customDhikrs: List<CustomDhikr>,
     onBack: () -> Unit,
-    onSelect: (DhikrItem) -> Unit
+    onSelect: (DhikrItem) -> Unit,
+    onCreateCustom: () -> Unit,
+    onEditCustom: (CustomDhikr) -> Unit,
+    onDeleteCustom: (CustomDhikr) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
-    val categories = listOf("All", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Protection", "Daily Du'a")
-    val filteredItems = remember(query, category) {
-        DhikrCatalog.items.filter { item ->
+    var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
+    val categories = listOf("All", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Protection", "Daily Du'a", "My Dhikr")
+    val customItems = remember(customDhikrs) {
+        customDhikrs.map { custom ->
+            DhikrItem(
+                id = "custom-${custom.id}",
+                value = custom.title,
+                title = custom.title,
+                category = "My Dhikr",
+                arabic = custom.arabic,
+                transliteration = custom.transliteration,
+                meaning = custom.meaning,
+                customId = custom.id
+            )
+        }
+    }
+    val allItems = remember(customItems) { DhikrCatalog.items + customItems }
+    val filteredItems = remember(query, category, allItems) {
+        allItems.filter { item ->
             val matchesCategory = category == "All" || item.category == category
             val q = query.trim()
             val matchesSearch = q.isBlank() ||
@@ -112,9 +139,12 @@ internal fun DhikrSelectionScreen(
                     .border(1.dp, Color(0xFFD6A63D).copy(alpha = .38f), RoundedCornerShape(50))
                     .padding(horizontal = 11.dp, vertical = 7.dp)
             ) {
-                Text("22 DHIKRS", color = Color(0xFFFFD875), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
+                Text("${allItems.size} DHIKRS", color = Color(0xFFFFD875), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
             }
         }
+
+        CreateDhikrAction(onClick = onCreateCustom)
+        Spacer(Modifier.height(13.dp))
 
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             OutlinedTextField(
@@ -182,7 +212,19 @@ internal fun DhikrSelectionScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
-                    DhikrOptionCard(item = item, selected = item.value == currentDhikr, onClick = { onSelect(item) })
+                    val isSelected = if (item.customId != null) {
+                        item.customId == currentCustomDhikrId
+                    } else {
+                        currentCustomDhikrId == null && item.value == currentDhikr
+                    }
+                    val custom = item.customId?.let { id -> customDhikrs.firstOrNull { it.id == id } }
+                    DhikrOptionCard(
+                        item = item,
+                        selected = isSelected,
+                        onClick = { onSelect(item) },
+                        onEdit = custom?.let { entry -> { onEditCustom(entry) } },
+                        onDelete = custom?.let { entry -> { pendingDelete = entry } }
+                    )
                 }
             }
         }
@@ -190,8 +232,66 @@ internal fun DhikrSelectionScreen(
     }
 }
 
+    pendingDelete?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = Color(0xFF171B17),
+            title = { Text("Delete this dhikr?", color = Color(0xFFFFF8EA)) },
+            text = {
+                Text(
+                    "${entry.title} will be removed from your personal collection. Your completed session history will remain.",
+                    color = Color(0xFFC4BCA9)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteCustom(entry)
+                    pendingDelete = null
+                }) { Text("DELETE", color = Color(0xFFFF9B82)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("KEEP", color = Color(0xFFFFD56A)) }
+            }
+        )
+    }
+}
+
 @Composable
-private fun DhikrOptionCard(item: DhikrItem, selected: Boolean, onClick: () -> Unit) {
+private fun CreateDhikrAction(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).clickable(onClick = onClick),
+        color = Color(0xFF151C16),
+        shape = RoundedCornerShape(19.dp),
+        border = BorderStroke(1.dp, Color(0xFFD5A642).copy(alpha = .58f))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF3B2D13)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFFFFD875), modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Create your own dhikr", color = Color(0xFFFFE6A0), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Add Arabic, pronunciation and meaning", color = Color(0xFFAFAE9E), fontSize = 10.sp)
+            }
+            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFFFD56A), modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun DhikrOptionCard(
+    item: DhikrItem,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
+) {
     val gold = Color(0xFFFFD56A)
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
@@ -211,8 +311,18 @@ private fun DhikrOptionCard(item: DhikrItem, selected: Boolean, onClick: () -> U
                     Text(item.category.uppercase(), color = if (selected) Color(0xFFFFD875) else Color(0xFF9FAD96), fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
                 }
                 if (selected) {
-                    Spacer(Modifier.width(7.dp))
+                    Spacer(Modifier.width(6.dp))
                     Icon(Icons.Default.Check, contentDescription = "Selected", tint = gold, modifier = Modifier.size(17.dp))
+                }
+                if (onEdit != null) {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit custom dhikr", tint = Color(0xFFB8B49F), modifier = Modifier.size(15.dp))
+                    }
+                }
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete custom dhikr", tint = Color(0xFFC98C78), modifier = Modifier.size(15.dp))
+                    }
                 }
             }
             Spacer(Modifier.height(11.dp))
