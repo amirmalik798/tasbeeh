@@ -556,6 +556,17 @@ class TasbeehStore(private val context: Context) {
                 val duration = if (item.has("durationMs") && !item.isNull("durationMs")) {
                     item.optLong("durationMs").coerceAtLeast(0L)
                 } else null
+                val decodedEvents = decodeEvents(item.optJSONArray("events"))
+                // Older versions allowed an unlimited event list. Compact it on
+                // read while capturing its full accumulated duration first.
+                val recoveredDuration = if (duration == null &&
+                    decodedEvents.size > MAX_SESSION_TIMELINE_EVENTS
+                ) accumulatedActiveDurationFromEvents(decodedEvents, startedAt, endedAt) else null
+                val sessionEvents = if (decodedEvents.isEmpty()) {
+                    legacySessionEvents(startedAt, endedAt)
+                } else {
+                    boundedSessionEvents(decodedEvents)
+                }
                 SavedSession(
                     id = item.optString("id").takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
                     dhikr = dhikr,
@@ -567,15 +578,10 @@ class TasbeehStore(private val context: Context) {
                     meaning = item.optString("meaning", ""),
                     status = SessionStatus.fromStoredValue(item.optString("status", "ACTIVE")),
                     endedAt = endedAt,
-                    durationMs = duration,
+                    durationMs = duration ?: recoveredDuration,
                     activeSegmentStartedAt = item.optLong("activeSegmentStartedAt").takeIf { it > 0L }
                         ?: if (item.optString("status") == SessionStatus.ACTIVE.name && endedAt == null) startedAt.takeIf { it > 0L } else null,
-                    events = decodeEvents(item.optJSONArray("events")).ifEmpty {
-                        buildList {
-                            if (startedAt > 0L) add(SessionEvent(SessionEventType.STARTED, startedAt))
-                            if (endedAt != null) add(SessionEvent(SessionEventType.ENDED, endedAt))
-                        }
-                    }
+                    events = sessionEvents
                 )
             }
         }
