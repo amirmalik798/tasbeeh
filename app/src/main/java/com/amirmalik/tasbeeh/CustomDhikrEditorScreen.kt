@@ -84,7 +84,7 @@ internal fun CustomDhikrEditorScreen(
                 Text(
                     if (existing == null) "PERSONAL COLLECTION" else "EDIT YOUR DHIKR",
                     color = EditorGold,
-                    fontSize = 9.sp,
+                    fontSize = 10.sp,
                     letterSpacing = 2.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -234,7 +234,7 @@ internal fun CustomDhikrEditorScreen(
                             Text(
                                 if (showPreview) "HIDE" else "SHOW",
                                 color = EditorGold,
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = .8.sp
                             )
@@ -384,12 +384,12 @@ private fun EditorSectionLabel(title: String, number: String) {
         Text(
             title,
             color = EditorGold,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.35.sp
         )
         Spacer(Modifier.weight(1f))
-        Text(number, color = EditorMuted, fontSize = 10.sp, letterSpacing = 1.sp)
+        Text(number, color = EditorMuted, fontSize = 11.sp, letterSpacing = 1.sp)
     }
 }
 
