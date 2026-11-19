@@ -19,6 +19,19 @@ private val Context.tasbeehDataStore by preferencesDataStore(name = "tasbeeh_sta
 const val SESSION_IDLE_TIMEOUT_MS = 15L * 60L * 1000L
 const val DEFAULT_APP_FONT_SCALE = 1.12f
 
+internal fun isPreviouslyCompletedRound(
+    storedCount: Int,
+    target: Int,
+    lastCompletedCount: Int?,
+    lastCompletedDhikr: String?,
+    currentDhikr: String
+): Boolean {
+    return storedCount >= target ||
+        (lastCompletedCount != null &&
+            lastCompletedCount == storedCount &&
+            lastCompletedDhikr == currentDhikr)
+}
+
 enum class SessionStatus {
     ACTIVE,
     PAUSED,
@@ -98,6 +111,8 @@ class TasbeehStore(private val context: Context) {
         val sound = booleanPreferencesKey("sound")
         val haptics = booleanPreferencesKey("haptics")
         val fontScale = floatPreferencesKey("font_scale")
+        val lastCompletedCount = intPreferencesKey("last_completed_count")
+        val lastCompletedDhikr = stringPreferencesKey("last_completed_dhikr")
         val sessions = stringPreferencesKey("sessions")
         val openSession = stringPreferencesKey("open_session")
         val customDhikrs = stringPreferencesKey("custom_dhikrs")
@@ -180,12 +195,31 @@ class TasbeehStore(private val context: Context) {
 
             val target = open?.target ?: (prefs[Keys.target] ?: fallbackTarget).coerceIn(1, 9999)
             val storedCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
-            val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
-            val previousRoundCompleted = latestSaved?.status == SessionStatus.COMPLETED &&
-                latestSaved.count == storedCount
+            var lastCompletedCount = prefs[Keys.lastCompletedCount]
+            var lastCompletedDhikr = prefs[Keys.lastCompletedDhikr]
+
+            // Upgrade older installations once: infer the most recent completed
+            // round from history, then use compact markers on subsequent taps.
+            if (lastCompletedCount == null && lastCompletedDhikr == null) {
+                val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
+                if (latestSaved?.status == SessionStatus.COMPLETED) {
+                    lastCompletedCount = latestSaved.count
+                    lastCompletedDhikr = latestSaved.dhikr
+                    prefs[Keys.lastCompletedCount] = latestSaved.count
+                    prefs[Keys.lastCompletedDhikr] = latestSaved.dhikr
+                }
+            }
+
+            val previousRoundCompleted = isPreviouslyCompletedRound(
+                storedCount = storedCount,
+                target = target,
+                lastCompletedCount = lastCompletedCount,
+                lastCompletedDhikr = lastCompletedDhikr,
+                currentDhikr = dhikr
+            )
             // A completed round always starts its next round at 1, even if the
             // user changed the default target while the previous round was open.
-            val baseCount = if (open == null && (storedCount >= target || previousRoundCompleted)) 0 else storedCount
+            val baseCount = if (open == null && previousRoundCompleted) 0 else storedCount
             val nextCount = baseCount + 1
 
             val updated = if (open == null) {
@@ -221,6 +255,8 @@ class TasbeehStore(private val context: Context) {
                     pausedAt = null
                 )
                 prefs[Keys.sessions] = appendSession(prefs[Keys.sessions].orEmpty(), completed)
+                prefs[Keys.lastCompletedCount] = completed.count
+                prefs[Keys.lastCompletedDhikr] = completed.dhikr
                 prefs.remove(Keys.openSession)
             } else {
                 prefs[Keys.openSession] = encodeSession(updated)
@@ -237,12 +273,18 @@ class TasbeehStore(private val context: Context) {
             val open = decodeOpenSession(prefs[Keys.openSession].orEmpty())
             if (open?.status == SessionStatus.PAUSED) return@edit
             if (open == null) {
-                val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
-                if (
-                    latestSaved?.status == SessionStatus.COMPLETED &&
-                    latestSaved.count == currentCount &&
-                    latestSaved.dhikr == prefs[Keys.dhikr]
-                ) {
+                var completedCount = prefs[Keys.lastCompletedCount]
+                var completedDhikr = prefs[Keys.lastCompletedDhikr]
+                if (completedCount == null && completedDhikr == null) {
+                    val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
+                    if (latestSaved?.status == SessionStatus.COMPLETED) {
+                        completedCount = latestSaved.count
+                        completedDhikr = latestSaved.dhikr
+                        prefs[Keys.lastCompletedCount] = latestSaved.count
+                        prefs[Keys.lastCompletedDhikr] = latestSaved.dhikr
+                    }
+                }
+                if (completedCount == currentCount && completedDhikr == prefs[Keys.dhikr]) {
                     return@edit
                 }
             }
