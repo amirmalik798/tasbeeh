@@ -129,7 +129,7 @@ internal fun recitationPlaybackFailureMessage(
             causes.any { it is java.net.SocketTimeoutException } ->
             "The connection to the recitation provider timed out before the recitation could load. Check your internet connection and try again."
         causes.any { it is java.net.UnknownHostException } ->
-            "No internet connection or DNS service is available. Reconnect and try the recorded recitation again."
+            "No internet connection or DNS service is available, so Android cannot resolve the recitation provider. Reconnect and try the recorded recitation again."
         causes.any { it is java.net.ConnectException } ->
             "The recitation provider could not be reached. Check your internet connection and try again."
         causes.any { it is java.io.FileNotFoundException } ->
