@@ -113,6 +113,13 @@ data class CustomDhikr(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+internal fun sessionSnapshotForDisplay(session: SavedSession?, counterValue: Int): SavedSession? =
+    session?.takeIf {
+        it.status == SessionStatus.ACTIVE ||
+            it.status == SessionStatus.PAUSED ||
+            (it.status == SessionStatus.COMPLETED && counterValue == it.count)
+    }
+
 data class TasbeehState(
     val count: Int = 0,
     val target: Int = 33,
