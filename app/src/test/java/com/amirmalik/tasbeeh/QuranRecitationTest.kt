@@ -107,7 +107,7 @@ class QuranRecitationTest {
         val partial = (1..6).associate { number ->
             "${surah.number}:$number" to QuranAyahText(number, "Arabic", "Transliteration", "Translation")
         }
-        assertFalse(hasAllQuranicTextAndTranslations(listOf(surah), partial))
+        assertFalse(hasAllSurahAyahTextAndTranslations(listOf(surah), partial))
 
         val complete = surah.ayahKeys.associate { key ->
             key to QuranAyahText(
@@ -117,7 +117,7 @@ class QuranRecitationTest {
                 translation = "Translation"
             )
         }
-        assertTrue(hasAllQuranicTextAndTranslations(listOf(surah), complete))
+        assertTrue(hasAllSurahAyahTextAndTranslations(listOf(surah), complete))
     }
 
     @Test
