@@ -3,6 +3,8 @@ package com.amirmalik.tasbeeh
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -25,12 +27,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.amirmalik.tasbeeh.data.CustomDhikr
@@ -91,6 +98,7 @@ internal fun DhikrSelectionScreen(
     var category by remember { mutableStateOf("All") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
     val categories = listOf("All", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Protection", "Daily Du'a", "My Dhikr")
+    val keyboardController = LocalSoftwareKeyboardController.current
     val customItems = remember(customDhikrs) {
         customDhikrs.map { custom ->
             DhikrItem(
@@ -169,8 +177,13 @@ internal fun DhikrSelectionScreen(
                 BasicTextField(
                     value = query,
                     onValueChange = { query = it },
-                    modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 12.dp),
+                    modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 12.dp)
+                        .semantics {
+                            contentDescription = "Search dhikr by name, Arabic, pronunciation or meaning"
+                        },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() }),
                     textStyle = TextStyle(
                         color = Color(0xFFFFF8EA),
                         fontSize = 15.sp
@@ -257,7 +270,19 @@ internal fun DhikrSelectionScreen(
         Spacer(Modifier.height(9.dp))
         if (filteredItems.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("No dhikr found. Try another search.", color = Color(0xFFB0AA9C), fontSize = 13.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("No dhikr found", color = Color(0xFFFFF8EA), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(5.dp))
+                    Text("Try another name or clear your filters.", color = Color(0xFFB0AA9C), fontSize = 12.sp)
+                    Spacer(Modifier.height(9.dp))
+                    TextButton(onClick = {
+                        query = ""
+                        category = "All"
+                        keyboardController?.hide()
+                    }) {
+                        Text("CLEAR SEARCH & FILTERS", color = Color(0xFFFFD56A), fontSize = 11.sp)
+                    }
+                }
             }
         } else {
             LazyColumn(
@@ -326,7 +351,15 @@ private fun DhikrOptionCard(
     ) {
         Column(Modifier.padding(horizontal = 15.dp, vertical = 13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(item.title, color = Color(0xFFFFF8EA), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(
+                    item.title,
+                    color = Color(0xFFFFF8EA),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Box(
                     Modifier.clip(RoundedCornerShape(50))
                         .background(if (selected) Color(0xFF4A3919) else Color(0xFF222820))
