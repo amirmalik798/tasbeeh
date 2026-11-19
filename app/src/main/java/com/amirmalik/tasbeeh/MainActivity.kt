@@ -236,7 +236,7 @@ class MainActivity : ComponentActivity() {
                                 completeArabicUtterance(utteranceId)
                             }
                         })
-                    }.getOrDefault(false)
+                    }.isSuccess
 
                     if (!listenerInstalled) {
                         // Without completion callbacks, the speaking indicator
@@ -436,8 +436,8 @@ private fun TasbeehApp(
     val context = LocalContext.current
 
     fun launchStoreOperation(
-        operation: suspend () -> Unit,
-        onSuccess: () -> Unit = {}
+        onSuccess: () -> Unit = {},
+        operation: suspend () -> Unit
     ) {
         scope.launch {
             try {
