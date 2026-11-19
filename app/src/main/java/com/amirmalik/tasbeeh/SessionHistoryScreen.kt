@@ -10,8 +10,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clock
-import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Timer
@@ -52,6 +50,7 @@ internal fun SessionHistoryScreen(
 ) {
     var selectedFilter by remember { mutableStateOf("All") }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val totalSessions = sessions.size + (if (openSession != null) 1 else 0)
     val completed = remember(sessions) { sessions.filter { it.status == SessionStatus.COMPLETED } }
     val totalCount = remember(completed) { completed.sumOf { it.count.toLong() } }
     val totalActiveMs = remember(completed) { completed.sumOf { it.activeDurationMs ?: 0L } }
@@ -98,7 +97,7 @@ internal fun SessionHistoryScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, HistoryGold.copy(alpha = .35f))
             ) {
                 Text(
-                    "${sessions.size + if (openSession != null) 1 else 0} SESSIONS",
+                    "$totalSessions SESSIONS",
                     color = Color(0xFFFFD875),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
