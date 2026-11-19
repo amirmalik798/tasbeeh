@@ -179,7 +179,12 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     } else {
         selectedCustomDhikr?.meaning.orEmpty().ifBlank { selectedDhikr?.meaning.orEmpty() }
     }
-    val effectiveTarget = activeSession?.target ?: state.target
+    val completedRoundStillDisplayed =
+        state.currentSession?.status == SessionStatus.COMPLETED &&
+            state.count == state.currentSession.count
+    val effectiveTarget = activeSession?.target
+        ?: state.currentSession?.takeIf { completedRoundStillDisplayed }?.target
+        ?: state.target
     val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
     val sessionCompleted = state.currentSession?.status == SessionStatus.COMPLETED
     val canUndo = state.count > 0 && !sessionPaused && !sessionCompleted
