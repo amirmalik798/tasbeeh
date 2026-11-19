@@ -53,16 +53,12 @@ internal fun SessionHistoryScreen(
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val totalSessions = sessions.size + (if (openSession != null) 1 else 0)
     val completed = remember(sessions) { sessions.filter { it.status == SessionStatus.COMPLETED } }
-    val trackedCompleted = remember(completed) { completed.filter { it.activeDurationMs != null } }
     val totalCount = remember(sessions, openSession) {
         sessions.sumOf { it.count.toLong() } + (openSession?.count ?: 0).toLong()
     }
-    val totalActiveMs = trackedCompleted.let { tracked ->
-        val archivedDuration = sessions
-            .filter { it.activeDurationMs != null }
-            .sumOf { it.activeDurationMs ?: 0L }
-        archivedDuration + (openSession?.activeDurationAt(now) ?: 0L)
-    }
+    val totalActiveMs = sessions
+        .filter { it.activeDurationMs != null }
+        .sumOf { it.activeDurationMs ?: 0L } + (openSession?.activeDurationAt(now) ?: 0L)
     val hasTrackedTime = sessions.any { it.activeDurationMs != null } || openSession != null
     val filtered = remember(sessions, selectedFilter) {
         sessions.filter {
