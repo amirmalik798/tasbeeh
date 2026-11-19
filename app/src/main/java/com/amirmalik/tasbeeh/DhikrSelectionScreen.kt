@@ -146,8 +146,7 @@ internal fun DhikrSelectionScreen(
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
-                Text("DHIKR LIBRARY", color = Color(0xFFFFD56A), fontSize = 10.sp, letterSpacing = 2.1.sp, fontWeight = FontWeight.Bold)
-                Text("Choose your remembrance", color = Color(0xFFFFF8EA), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("DHIKR LIBRARY", color = Color(0xFFFFD56A), fontSize = 12.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold)
             }
             Box(
                 Modifier.clip(RoundedCornerShape(50)).background(Color(0xFF252014))

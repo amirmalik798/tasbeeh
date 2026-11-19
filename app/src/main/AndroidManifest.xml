@@ -7,7 +7,7 @@
     </queries>
     <application
         android:allowBackup="true"
-        android:label="Serene Dhikr"
+        android:label="NOOR-E-DHIKR"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"

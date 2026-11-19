@@ -1,4 +1,4 @@
-# Tasbeeh — Android
+# NOOR-E-DHIKR — Android
 
 Native Android dhikr counter built with Kotlin and Jetpack Compose.
 

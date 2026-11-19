@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
             engine.setLanguage(Locale("ar"))
             Toast.makeText(this, "Requested Arabic voice unavailable; using the device default.", Toast.LENGTH_LONG).show()
         }
-        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "serene-dhikr-arabic")
+        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "noor-e-dhikr-arabic")
     }
 
     private fun stopArabicSpeech() {
@@ -202,7 +202,7 @@ private fun TasbeehStartupScreen() {
                 KaabaMark(Modifier.size(29.dp))
             }
             Spacer(Modifier.height(18.dp))
-            Text("SERENE DHIKR", color = Ivory, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
+            Text("NOOR-E-DHIKR", color = Ivory, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
             Spacer(Modifier.height(7.dp))
             Text("Preparing your remembrance", color = Muted, fontSize = 12.sp)
             Spacer(Modifier.height(22.dp))
@@ -384,12 +384,6 @@ private fun TasbeehApp(
             ) {
                 Header(
                     onHistory = { showHistoryScreen = true },
-                    onSpeak = {
-                        val arabic = activeDhikrArabic.orEmpty()
-                        if (isSpeaking) onStopSpeech() else onSpeakArabic(arabic, state.ttsVoicePreference)
-                    },
-                    isSpeaking = isSpeaking,
-                    canSpeak = !activeDhikrArabic.isNullOrBlank(),
                     onSettings = { showSettings = true }
                 )
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
@@ -473,7 +467,15 @@ private fun TasbeehApp(
                     QuickChip("Target · ${effectiveTarget}", Modifier.weight(1f)) { showTarget = true }
                     QuickChip("Change dhikr", Modifier.weight(1f)) { showDhikrScreen = true }
                 }
-                Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "Developed by: Amir Malik (2026)",
+                    color = Muted.copy(alpha = .72f),
+                    fontSize = 9.sp,
+                    letterSpacing = .55.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 7.dp)
+                )
             }
             AnimatedVisibility(
                 visible = state.count >= effectiveTarget,
@@ -492,34 +494,36 @@ private fun TasbeehApp(
         if (!showDhikrScreen && !showHistoryScreen && showReset) AlertDialog(
             onDismissRequest = { showReset = false },
             containerColor = Panel,
-            title = { Text("Reset this session?", color = Ivory) },
+            title = { Text("Reset counter?", color = Ivory) },
             text = {
-                Text(
+                Column {
+                    Text(
+                        if (sessionIsOpen) {
+                            "Your current session will be saved as incomplete, then the counter will return to zero."
+                        } else {
+                            "Your count will return to zero."
+                        },
+                        color = Muted
+                    )
                     if (sessionIsOpen) {
-                        "Save this current session as incomplete, or discard it and reset the counter."
-                    } else {
-                        "Your current count will return to zero."
-                    },
-                    color = Muted
-                )
+                        TextButton(
+                            onClick = {
+                                scope.launch { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) }
+                                showReset = false
+                            },
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
+                        ) {
+                            Text("Discard this session instead", color = Color(0xFFFF9B82), fontSize = 12.sp)
+                        }
+                    }
+                }
             },
             confirmButton = {
-                if (sessionIsOpen) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        TextButton(onClick = {
-                            scope.launch { store.resetCounter(saveSession = true, now = System.currentTimeMillis()) }
-                            showReset = false
-                        }) { Text("SAVE & RESET", color = Gold) }
-                        TextButton(onClick = {
-                            scope.launch { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) }
-                            showReset = false
-                        }) { Text("RESET WITHOUT SAVING", color = Color(0xFFFF9B82)) }
-                    }
-                } else {
-                    TextButton(onClick = {
-                        scope.launch { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) }
-                        showReset = false
-                    }) { Text("RESET COUNTER", color = Gold) }
+                TextButton(onClick = {
+                    scope.launch { store.resetCounter(saveSession = true, now = System.currentTimeMillis()) }
+                    showReset = false
+                }) {
+                    Text(if (sessionIsOpen) "SAVE & RESET" else "RESET COUNTER", color = Gold)
                 }
             },
             dismissButton = { TextButton(onClick = { showReset = false }) { Text("CANCEL", color = Muted) } }
@@ -534,6 +538,10 @@ private fun TasbeehApp(
         }
         if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
             state = state,
+            activeArabic = activeDhikrArabic,
+            isSpeaking = isSpeaking,
+            onSpeakArabic = { onSpeakArabic(activeDhikrArabic.orEmpty(), state.ttsVoicePreference) },
+            onStopSpeech = onStopSpeech,
             onDismiss = { showSettings = false },
             onSave = { sound, haptics, fontScale, voice ->
                 scope.launch {
@@ -549,9 +557,6 @@ private fun TasbeehApp(
 @Composable
 private fun Header(
     onHistory: () -> Unit,
-    onSpeak: () -> Unit,
-    isSpeaking: Boolean,
-    canSpeak: Boolean,
     onSettings: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth().padding(top = 9.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -564,11 +569,11 @@ private fun Header(
             ) { KaabaMark(Modifier.size(23.dp)) }
             Column {
                 Text(
-                    "SERENE DHIKR",
+                    "NOOR-E-DHIKR",
                     color = Ivory,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.65.sp,
+                    letterSpacing = 1.2.sp,
                     maxLines = 1
                 )
                 Text("THE ART OF REMEMBRANCE", color = Muted, fontSize = 10.sp, letterSpacing = 1.15.sp, maxLines = 1)
@@ -577,18 +582,6 @@ private fun Header(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconButton(onClick = onHistory, modifier = Modifier.size(48.dp).background(Panel, CircleShape)) {
                 Icon(Icons.Default.History, "Session history", tint = Gold, modifier = Modifier.size(19.dp))
-            }
-            IconButton(
-                onClick = onSpeak,
-                enabled = canSpeak,
-                modifier = Modifier.size(48.dp).background(Panel, CircleShape)
-            ) {
-                Icon(
-                    if (isSpeaking) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
-                    contentDescription = if (isSpeaking) "Stop Arabic recitation" else "Play Arabic recitation",
-                    tint = if (canSpeak) Gold else Muted,
-                    modifier = Modifier.size(19.dp)
-                )
             }
             IconButton(onClick = onSettings, modifier = Modifier.size(48.dp).background(Panel, CircleShape)) {
                 Icon(Icons.Default.Tune, "Settings", tint = Gold, modifier = Modifier.size(19.dp))
@@ -1290,6 +1283,10 @@ private fun TargetDialog(
 @Composable
 private fun SettingsDialog(
     state: TasbeehState,
+    activeArabic: String?,
+    isSpeaking: Boolean,
+    onSpeakArabic: () -> Unit,
+    onStopSpeech: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (Boolean, Boolean, Float, String) -> Unit
 ) {
@@ -1315,6 +1312,40 @@ private fun SettingsDialog(
             ) {
                 SettingToggle("Counting sound", "A soft sound on every increment", sound) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
+
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Arabic recitation", color = Ivory, fontSize = 14.sp)
+                        Text(
+                            if (activeArabic.isNullOrBlank()) "No Arabic text for the selected dhikr"
+                            else "Listen to the selected dhikr",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
+                    }
+                    FilledTonalButton(
+                        onClick = { if (isSpeaking) onStopSpeech() else onSpeakArabic() },
+                        enabled = !activeArabic.isNullOrBlank(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = Panel2,
+                            contentColor = GoldLight,
+                            disabledContainerColor = Panel2.copy(alpha = .55f),
+                            disabledContentColor = Muted
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
+                            contentDescription = null,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (isSpeaking) "STOP" else "PLAY", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
 
                 Spacer(Modifier.height(3.dp))
                 Text("ARABIC RECITATION VOICE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
