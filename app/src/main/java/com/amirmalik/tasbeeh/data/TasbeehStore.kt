@@ -25,7 +25,7 @@ enum class SessionStatus {
 
     companion object {
         fun fromStoredValue(value: String?): SessionStatus =
-            entries.firstOrNull { it.name == value } ?: COMPLETED
+            values().firstOrNull { it.name == value } ?: COMPLETED
     }
 }
 
@@ -123,7 +123,14 @@ class TasbeehStore(private val context: Context) {
     ) {
         context.tasbeehDataStore.edit { prefs ->
             count?.let { prefs[Keys.count] = it.coerceAtLeast(0) }
-            target?.let { prefs[Keys.target] = it.coerceIn(1, 9999) }
+            target?.let {
+                val nextTarget = it.coerceIn(1, 9999)
+                val hasOpenSession = decodeOpenSession(prefs[Keys.openSession].orEmpty()) != null
+                if (!hasOpenSession && prefs[Keys.target] != nextTarget && (prefs[Keys.count] ?: 0) > 0) {
+                    prefs[Keys.count] = 0
+                }
+                prefs[Keys.target] = nextTarget
+            }
             dhikr?.let { prefs[Keys.dhikr] = it }
             soundEnabled?.let { prefs[Keys.sound] = it }
             hapticsEnabled?.let { prefs[Keys.haptics] = it }
@@ -166,8 +173,12 @@ class TasbeehStore(private val context: Context) {
 
             val target = open?.target ?: (prefs[Keys.target] ?: fallbackTarget).coerceIn(1, 9999)
             val storedCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
-            // After a completed target, the next tap naturally begins a fresh round at 1.
-            val baseCount = if (open == null && storedCount >= target) 0 else storedCount
+            val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
+            val previousRoundCompleted = latestSaved?.status == SessionStatus.COMPLETED &&
+                latestSaved.count == storedCount
+            // A completed round always starts its next round at 1, even if the
+            // user changed the default target while the previous round was open.
+            val baseCount = if (open == null && (storedCount >= target || previousRoundCompleted)) 0 else storedCount
             val nextCount = baseCount + 1
 
             val updated = if (open == null) {
@@ -218,6 +229,25 @@ class TasbeehStore(private val context: Context) {
 
             val open = decodeOpenSession(prefs[Keys.openSession].orEmpty())
             if (open?.status == SessionStatus.PAUSED) return@edit
+            if (open == null) {
+                val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
+                if (latestSaved?.status == SessionStatus.COMPLETED && latestSaved.count == currentCount) {
+                    return@edit
+                }
+            }
+            if (open?.status == SessionStatus.ACTIVE &&
+                now - open.lastActivityAt >= SESSION_IDLE_TIMEOUT_MS
+            ) {
+                val pauseAt = open.lastActivityAt + SESSION_IDLE_TIMEOUT_MS
+                prefs[Keys.openSession] = encodeSession(
+                    open.copy(
+                        activeDurationMs = (open.activeDurationMs ?: 0L) + SESSION_IDLE_TIMEOUT_MS,
+                        status = SessionStatus.PAUSED,
+                        pausedAt = pauseAt
+                    )
+                )
+                return@edit
+            }
 
             val nextCount = (currentCount - 1).coerceAtLeast(0)
             prefs[Keys.count] = nextCount
