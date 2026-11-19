@@ -259,34 +259,39 @@ internal class OpenDuaCatalogRepository(context: Context) {
         val version = OpenDuaCatalogParser.DATA_VERSION
         fun emptySnapshot() = OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
 
-        if (preferences.getString("data_version", null) != version) return emptySnapshot()
-        val rawItems = preferences.getString("items", null) ?: return emptySnapshot()
-        val rawCategories = preferences.getString("categories", null) ?: return emptySnapshot()
-        val storedChecksum = preferences.getString("cache_sha256", null) ?: return emptySnapshot()
-        val sourceEntryCount = preferences.getInt("source_entry_count", 0)
-        val canonicalDuaCount = preferences.getInt("canonical_dua_count", 0)
-        val recordingCount = preferences.getInt("recording_count", 0)
-
-        if (sourceEntryCount != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
-            canonicalDuaCount !in 1..OpenDuaCatalogParser.EXPECTED_DUA_COUNT ||
-            recordingCount !in 0..OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
-        ) return emptySnapshot()
-
-        val calculatedChecksum = openDuaCacheChecksum(
-            version,
-            rawItems,
-            rawCategories,
-            sourceEntryCount,
-            canonicalDuaCount,
-            recordingCount
-        )
-        if (!MessageDigest.isEqual(
-                storedChecksum.toByteArray(Charsets.US_ASCII),
-                calculatedChecksum.toByteArray(Charsets.US_ASCII)
-            )
-        ) return emptySnapshot()
-
+        // A damaged preference value must never crash the library screen.
         return runCatching {
+            if (preferences.getString("data_version", null) != version) {
+                return@runCatching emptySnapshot()
+            }
+            val rawItems = preferences.getString("items", null)
+                ?: return@runCatching emptySnapshot()
+            val rawCategories = preferences.getString("categories", null)
+                ?: return@runCatching emptySnapshot()
+            val storedChecksum = preferences.getString("cache_sha256", null)
+            val sourceEntryCount = preferences.getInt("source_entry_count", 0)
+            val canonicalDuaCount = preferences.getInt("canonical_dua_count", 0)
+            val recordingCount = preferences.getInt("recording_count", 0)
+
+            if (sourceEntryCount != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
+                canonicalDuaCount !in 1..OpenDuaCatalogParser.EXPECTED_DUA_COUNT ||
+                recordingCount !in 0..OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
+            ) return@runCatching emptySnapshot()
+
+            val calculatedChecksum = openDuaCacheChecksum(
+                version,
+                rawItems,
+                rawCategories,
+                sourceEntryCount,
+                canonicalDuaCount,
+                recordingCount
+            )
+            if (storedChecksum != null && !MessageDigest.isEqual(
+                    storedChecksum.toByteArray(Charsets.US_ASCII),
+                    calculatedChecksum.toByteArray(Charsets.US_ASCII)
+                )
+            ) return@runCatching emptySnapshot()
+
             val rawItemsArray = JSONArray(rawItems)
             val items = decodeItems(rawItemsArray)
             val categoriesArray = JSONArray(rawCategories)
@@ -311,6 +316,12 @@ internal class OpenDuaCatalogRepository(context: Context) {
             if (!isComplete) {
                 emptySnapshot()
             } else {
+                // Migrate an older, structurally complete v0.0.4 cache by
+                // recording its checksum. Do not discard a good offline copy
+                // just because it was saved before checksum support existed.
+                if (storedChecksum == null) {
+                    preferences.edit().putString("cache_sha256", calculatedChecksum).apply()
+                }
                 OpenDuaCatalogSnapshot(
                     items = items,
                     categories = categories,
