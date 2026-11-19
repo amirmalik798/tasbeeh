@@ -316,7 +316,7 @@ internal fun DhikrSelectionScreen(
             title = { Text("Delete this dhikr?", color = Color(0xFFFFF8EA)) },
             text = {
                 Text(
-                    "${entry.title} will be removed from your personal collection. Your completed session history will remain.",
+                    "${entry.title} will be removed from your personal collection. Your current session record will remain available in Session History.",
                     color = Color(0xFFC4BCA9)
                 )
             },
