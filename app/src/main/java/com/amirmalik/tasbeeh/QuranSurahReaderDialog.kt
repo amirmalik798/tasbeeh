@@ -32,6 +32,7 @@ internal fun QuranSurahReaderDialog(
     item: DhikrItem,
     isSpeaking: Boolean,
     isPreparingRecitation: Boolean,
+    isResolvingQuranRecitation: Boolean,
     activeRecitationTitle: String,
     selectedQuranReciter: QuranReciter,
     hasInternetConnection: Boolean,
@@ -98,9 +99,12 @@ internal fun QuranSurahReaderDialog(
                 FilledTonalButton(
                     onClick = {
                         if (isThisSurahActive) onStopRecitation()
-                        else onPlayQuranRecitation(item.title, item.quranAyahKeys)
+                        else if (!isResolvingQuranRecitation) {
+                            onPlayQuranRecitation(item.title, item.quranAyahKeys)
+                        }
                     },
-                    enabled = isThisSurahActive || (hasInternetConnection && canPlay),
+                    enabled = isThisSurahActive ||
+                        (!isResolvingQuranRecitation && hasInternetConnection && canPlay),
                     modifier = Modifier.fillMaxWidth(),
                     colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
                         containerColor = Color(0xFF263629),
@@ -111,6 +115,7 @@ internal fun QuranSurahReaderDialog(
                 ) {
                     Text(
                         when {
+                            isResolvingQuranRecitation -> "PREPARING SELECTED RECITER"
                             isThisSurahActive && isPreparingRecitation -> "STOP PREPARING RECITATION"
                             isThisSurahActive -> "STOP RECITATION"
                             else -> "PLAY FULL SURAH · ${selectedQuranReciter.displayName.uppercase()}"
