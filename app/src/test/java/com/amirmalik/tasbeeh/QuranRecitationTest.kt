@@ -85,4 +85,49 @@ class QuranRecitationTest {
         assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(customItem.quranAyahKeys))
     }
 
+    @Test
+    fun anyExplicitAyahSelectionUsesQuranAudioPathEvenWhenItsMappingIsInvalid() {
+        assertTrue(QuranRecitationAudio.shouldAttemptQuranFoundation(listOf("2:255")))
+        assertTrue(QuranRecitationAudio.shouldAttemptQuranFoundation(listOf("2:999")))
+        assertFalse(QuranRecitationAudio.shouldAttemptQuranFoundation(emptyList()))
+    }
+
+    @Test
+    fun mediaPlayerIoFailureExplainsTheStreamReadProblemAndShowsDiagnosticCodes() {
+        val message = quranPlaybackFailureMessage(
+            mediaPlayerWhat = android.media.MediaPlayer.MEDIA_ERROR_IO,
+            mediaPlayerExtra = -2147483648
+        )
+        assertTrue(message.contains("could not read", ignoreCase = true))
+        assertTrue(message.contains("MediaPlayer code: -1004"))
+        assertTrue(message.contains("detail: -2147483648"))
+    }
+
+    @Test
+    fun unsupportedAudioFormatHasAnActionableExplanation() {
+        val message = quranPlaybackFailureMessage(
+            mediaPlayerWhat = android.media.MediaPlayer.MEDIA_ERROR_UNSUPPORTED
+        )
+        assertTrue(message.contains("not supported", ignoreCase = true))
+    }
+
+    @Test
+    fun unknownHostFailureExplainsDnsOrConnectivityCause() {
+        val message = quranPlaybackFailureMessage(java.net.UnknownHostException("verses.quran.foundation"))
+        assertTrue(message.contains("DNS", ignoreCase = true))
+        assertTrue(message.contains("Quran Foundation"))
+    }
+
+    @Test
+    fun timeoutFailureExplainsThatTheAudioServerDidNotRespond() {
+        val message = quranPlaybackFailureMessage(java.net.SocketTimeoutException("timeout"))
+        assertTrue(message.contains("timed out", ignoreCase = true))
+    }
+
+    @Test
+    fun missingAudioFileReportsThatTheRequestedRecitationWasNotFound() {
+        val message = quranPlaybackFailureMessage(java.io.FileNotFoundException("404"))
+        assertTrue(message.contains("not found", ignoreCase = true))
+    }
+
 }
