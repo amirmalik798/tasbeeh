@@ -95,17 +95,13 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     val activeDhikrTransliteration = selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
     var completionRecordedFor by remember { mutableIntStateOf(-1) }
 
-    BackHandler(enabled = showCustomDhikrEditor || showDhikrScreen || showHistory || showSettings) {
-        when {
-            showCustomDhikrEditor -> {
-                showCustomDhikrEditor = false
-                editingCustomDhikr = null
-            }
-            showDhikrScreen -> showDhikrScreen = false
-            else -> {
-                showHistory = false
-                showSettings = false
-            }
+    // The editor owns its own BackHandler so it can ask before discarding edits.
+    BackHandler(enabled = showDhikrScreen || showHistory || showSettings) {
+        if (showDhikrScreen) {
+            showDhikrScreen = false
+        } else {
+            showHistory = false
+            showSettings = false
         }
     }
 
