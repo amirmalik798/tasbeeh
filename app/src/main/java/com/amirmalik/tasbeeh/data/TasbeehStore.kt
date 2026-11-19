@@ -72,10 +72,10 @@ class TasbeehStore(private val context: Context) {
 
     suspend fun saveCustomDhikr(dhikr: CustomDhikr) {
         val cleaned = dhikr.copy(
-            title = dhikr.title.trim(),
-            arabic = dhikr.arabic.trim(),
-            transliteration = dhikr.transliteration.trim(),
-            meaning = dhikr.meaning.trim()
+            title = dhikr.title.trim().take(60),
+            arabic = dhikr.arabic.trim().take(800),
+            transliteration = dhikr.transliteration.trim().take(800),
+            meaning = dhikr.meaning.trim().take(500)
         )
         if (cleaned.id.isBlank() || cleaned.title.isBlank()) return
 
@@ -162,7 +162,7 @@ class TasbeehStore(private val context: Context) {
                             id = id,
                             title = title.take(60),
                             arabic = item.optString("arabic").take(800),
-                            transliteration = item.optString("transliteration").take(180),
+                            transliteration = item.optString("transliteration").take(800),
                             meaning = item.optString("meaning").take(500),
                             createdAt = item.optLong("createdAt")
                         )
