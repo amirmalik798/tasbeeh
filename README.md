@@ -9,7 +9,7 @@ Native Android dhikr counter built with Kotlin and Jetpack Compose.
 The lightweight Gradle bootstrap scripts download Gradle 8.9 when it is not already cached. Java 17 is required.
 
 ## GitHub Actions
-Pushes and pull requests targeting `main` run the Android CI workflow. It runs unit tests, assembles the debug APK, and uploads `Tasbeeh-debug-apk` as a 7-day GitHub Actions artifact. You can also trigger it manually from the Actions tab.
+Pushes and pull requests targeting `main` run the Android CI workflow. It runs unit tests, assembles the debug APK, and uploads `Noor-e-Dhikr-debug-apk` as a 7-day GitHub Actions artifact. You can also trigger it manually from the Actions tab.
 
 ## Experience
 - Kaaba-inspired Kiswah black, muted emerald and warm gold.

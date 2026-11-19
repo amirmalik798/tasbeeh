@@ -46,10 +46,13 @@ internal fun SessionHistoryScreen(
     onBack: () -> Unit
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(session) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(1000)
+    LaunchedEffect(session?.id, session?.status) {
+        now = System.currentTimeMillis()
+        if (session?.status == SessionStatus.ACTIVE) {
+            while (true) {
+                delay(1000)
+                now = System.currentTimeMillis()
+            }
         }
     }
 
@@ -67,7 +70,16 @@ internal fun SessionHistoryScreen(
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
                 Text("YOUR PRACTICE", color = HistoryGold, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
-                Text("Current session", color = HistoryIvory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (session == null || session.status == SessionStatus.ACTIVE || session.status == SessionStatus.PAUSED) {
+                        "Current session"
+                    } else {
+                        "Latest session"
+                    },
+                    color = HistoryIvory,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
 
@@ -86,7 +98,11 @@ internal fun SessionHistoryScreen(
                     .padding(horizontal = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                SessionHistoryCard(session, now, true)
+                SessionHistoryCard(
+                    session = session,
+                    now = now,
+                    isCurrent = session.status == SessionStatus.ACTIVE || session.status == SessionStatus.PAUSED
+                )
                 Spacer(Modifier.height(12.dp))
             }
         }
@@ -108,10 +124,13 @@ private fun SessionHistoryCard(session: SavedSession, now: Long, isCurrent: Bool
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(session.dhikr, color = HistoryIvory, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        if (isCurrent) {
-                            Spacer(Modifier.width(7.dp))
-                            Text("CURRENT", color = HistoryGreen, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Spacer(Modifier.width(7.dp))
+                        Text(
+                            if (isCurrent) "CURRENT" else "LATEST",
+                            color = if (isCurrent) HistoryGreen else HistoryMuted,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                     Spacer(Modifier.height(3.dp))
                     Text(formatSessionDate(session.startedAt), color = HistoryMuted, fontSize = 11.sp)

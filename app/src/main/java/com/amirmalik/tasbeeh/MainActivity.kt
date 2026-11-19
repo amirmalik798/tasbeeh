@@ -24,6 +24,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -42,8 +43,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -533,7 +536,12 @@ private fun TasbeehApp(
                             }
                         }
                     }
-                    SmallAction(Icons.Default.Refresh, "RESET", true, Modifier.weight(1f)) { showReset = true }
+                    SmallAction(
+                        Icons.Default.Refresh,
+                        "RESET",
+                        state.count > 0 || sessionIsOpen,
+                        Modifier.weight(1f)
+                    ) { showReset = true }
                 }
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 11.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -680,6 +688,22 @@ private fun KaabaMark(modifier: Modifier = Modifier) {
     }
 }
 
+internal fun isInsideTasbeehTapTarget(
+    x: Float,
+    y: Float,
+    width: Float,
+    height: Float
+): Boolean {
+    if (width <= 0f || height <= 0f) return false
+    val radiusX = width * .355f
+    val radiusY = height * .325f
+    val normalizedX = (x - width * .5f) / radiusX
+    val normalizedY = (y - height * .425f) / radiusY
+    // 1.18 includes the outside edge of the beads while rejecting the
+    // invisible corners of the square Canvas hit area.
+    return normalizedX * normalizedX + normalizedY * normalizedY <= 1.18f
+}
+
 @Composable
 private fun TasbeehStrand(
     count: Int,
@@ -727,18 +751,34 @@ private fun TasbeehStrand(
             .alpha(if (enabled) 1f else .58f)
             .semantics {
                 contentDescription = if (enabled) {
-                    "Tasbeeh counter: $count repetitions. Tap to count one."
+                    "Tasbeeh counter: $count repetitions. Tap inside the bead circle to count one."
                 } else {
                     "Tasbeeh counter paused at $count repetitions. Resume the session to continue."
                 }
                 role = Role.Button
-                if (!enabled) stateDescription = "Session paused"
+                if (enabled) {
+                    onClick(label = "Count one dhikr") {
+                        onCount()
+                        true
+                    }
+                } else {
+                    stateDescription = "Session paused"
+                }
             }
             .then(
-                if (enabled) Modifier.clickable(
-                    onClickLabel = "Count one dhikr",
-                    onClick = onCount
-                ) else Modifier
+                if (enabled) Modifier.pointerInput(onCount) {
+                    detectTapGestures { tap ->
+                        if (isInsideTasbeehTapTarget(
+                                x = tap.x,
+                                y = tap.y,
+                                width = size.width.toFloat(),
+                                height = size.height.toFloat()
+                            )
+                        ) {
+                            onCount()
+                        }
+                    }
+                } else Modifier
             )
     ) {
         val minDimension = size.minDimension
@@ -1218,7 +1258,12 @@ private fun SessionControlButton(
 private fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Column(
         modifier.height(62.dp).clip(RoundedCornerShape(19.dp)).background(Panel)
-            .clickable(enabled = enabled, onClick = onClick).padding(vertical = 8.dp),
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics {
+                role = Role.Button
+                if (!enabled) stateDescription = "Unavailable"
+            }
+            .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
     ) {
         Icon(icon, contentDescription = label, tint = if (enabled) Gold else Muted.copy(alpha = .35f), modifier = Modifier.size(19.dp))
