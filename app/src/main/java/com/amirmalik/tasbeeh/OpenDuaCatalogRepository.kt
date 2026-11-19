@@ -6,6 +6,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -14,8 +15,30 @@ internal data class OpenDuaCatalogSnapshot(
     val categories: List<String>,
     val dataVersion: String,
     val canonicalDuaCount: Int = 0,
-    val recordingCount: Int = 0
+    val recordingCount: Int = 0,
+    val cachePersisted: Boolean = true
 )
+
+internal fun openDuaCacheChecksum(
+    version: String,
+    rawItems: String,
+    rawCategories: String,
+    sourceEntryCount: Int,
+    canonicalDuaCount: Int,
+    recordingCount: Int
+): String {
+    val cachePayload = listOf(
+        version,
+        sourceEntryCount.toString(),
+        canonicalDuaCount.toString(),
+        recordingCount.toString(),
+        rawItems,
+        rawCategories
+    ).joinToString(separator = "\n")
+    return MessageDigest.getInstance("SHA-256")
+        .digest(cachePayload.toByteArray(Charsets.UTF_8))
+        .joinToString(separator = "") { byte -> "%02x".format(byte) }
+}
 
 /**
  * Parser for OpenDua's immutable, versioned catalogue release.
@@ -233,42 +256,71 @@ internal class OpenDuaCatalogRepository(context: Context) {
     private val preferences = context.getSharedPreferences("open_dua_catalog_v004", Context.MODE_PRIVATE)
 
     fun loadCachedSnapshot(): OpenDuaCatalogSnapshot {
-        val cachedVersion = preferences.getString("data_version", null)
-        if (cachedVersion != OpenDuaCatalogParser.DATA_VERSION) {
-            return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
-        }
         val version = OpenDuaCatalogParser.DATA_VERSION
-        val rawItems = preferences.getString("items", null)
-            ?: return OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
-        if (preferences.getInt("source_entry_count", 0) != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
-            preferences.getInt("canonical_dua_count", 0) !in 1..OpenDuaCatalogParser.EXPECTED_DUA_COUNT ||
-            preferences.getInt("recording_count", 0) !in 0..OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
-        ) {
-            return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
-        }
+        fun emptySnapshot() = OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
+
+        if (preferences.getString("data_version", null) != version) return emptySnapshot()
+        val rawItems = preferences.getString("items", null) ?: return emptySnapshot()
+        val rawCategories = preferences.getString("categories", null) ?: return emptySnapshot()
+        val storedChecksum = preferences.getString("cache_sha256", null) ?: return emptySnapshot()
+        val sourceEntryCount = preferences.getInt("source_entry_count", 0)
+        val canonicalDuaCount = preferences.getInt("canonical_dua_count", 0)
+        val recordingCount = preferences.getInt("recording_count", 0)
+
+        if (sourceEntryCount != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
+            canonicalDuaCount !in 1..OpenDuaCatalogParser.EXPECTED_DUA_COUNT ||
+            recordingCount !in 0..OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
+        ) return emptySnapshot()
+
+        val calculatedChecksum = openDuaCacheChecksum(
+            version,
+            rawItems,
+            rawCategories,
+            sourceEntryCount,
+            canonicalDuaCount,
+            recordingCount
+        )
+        if (!MessageDigest.isEqual(
+                storedChecksum.toByteArray(Charsets.US_ASCII),
+                calculatedChecksum.toByteArray(Charsets.US_ASCII)
+            )
+        ) return emptySnapshot()
+
         return runCatching {
-            val items = decodeItems(JSONArray(rawItems))
-            val rawCategories = preferences.getString("categories", "[]") ?: "[]"
+            val rawItemsArray = JSONArray(rawItems)
+            val items = decodeItems(rawItemsArray)
             val categoriesArray = JSONArray(rawCategories)
             val categories = (0 until categoriesArray.length())
-                .map { categoriesArray.optString(it) }
+                .map { categoriesArray.optString(it).trim() }
                 .filter { it.isNotBlank() }
-            val sourceEntryCount = items.map { it.sourceEntryId }.distinct().size
-            if (sourceEntryCount != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
-                categories.size != OpenDuaCatalogParser.EXPECTED_CATEGORY_COUNT ||
-                items.map { it.id }.distinct().size != items.size
-            ) {
-                OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
+            val sourceIds = items.map { it.sourceEntryId }.toSet()
+
+            val isComplete = items.size == rawItemsArray.length() &&
+                sourceIds.size == OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT &&
+                categories.size == OpenDuaCatalogParser.EXPECTED_CATEGORY_COUNT &&
+                categories.distinct().size == categories.size &&
+                items.map { it.id }.distinct().size == items.size &&
+                items.all { item ->
+                    item.id.isNotBlank() &&
+                        item.title.isNotBlank() &&
+                        item.value.isNotBlank() &&
+                        item.sourceEntryId.isNotBlank() &&
+                        item.categories.isNotEmpty()
+                }
+
+            if (!isComplete) {
+                emptySnapshot()
             } else {
                 OpenDuaCatalogSnapshot(
-                    items,
-                    categories,
-                    version,
-                    OpenDuaCatalogParser.EXPECTED_DUA_COUNT,
-                    OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
+                    items = items,
+                    categories = categories,
+                    dataVersion = version,
+                    canonicalDuaCount = canonicalDuaCount,
+                    recordingCount = recordingCount,
+                    cachePersisted = true
                 )
             }
-        }.getOrDefault(OpenDuaCatalogSnapshot(emptyList(), emptyList(), version))
+        }.getOrDefault(emptySnapshot())
     }
 
     fun loadCachedItems(): List<DhikrItem> = loadCachedSnapshot().items
@@ -299,16 +351,29 @@ internal class OpenDuaCatalogRepository(context: Context) {
 
             val encodedItems = JSONArray()
             snapshot.items.forEach { item -> encodedItems.put(encodeItem(item)) }
-            val encodedCategories = JSONArray(snapshot.categories)
-            preferences.edit()
-                .putString("items", encodedItems.toString())
-                .putString("categories", encodedCategories.toString())
+            val rawItems = encodedItems.toString()
+            val rawCategories = JSONArray(snapshot.categories).toString()
+            val sourceEntryCount = OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT
+            val checksum = openDuaCacheChecksum(
+                snapshot.dataVersion,
+                rawItems,
+                rawCategories,
+                sourceEntryCount,
+                snapshot.canonicalDuaCount,
+                snapshot.recordingCount
+            )
+            // commit() runs on Dispatchers.IO here and confirms the full snapshot
+            // is on disk before it is advertised as an offline-ready cache.
+            val persisted = preferences.edit()
+                .putString("items", rawItems)
+                .putString("categories", rawCategories)
                 .putString("data_version", snapshot.dataVersion)
-                .putInt("source_entry_count", OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT)
+                .putInt("source_entry_count", sourceEntryCount)
                 .putInt("canonical_dua_count", snapshot.canonicalDuaCount)
                 .putInt("recording_count", snapshot.recordingCount)
-                .apply()
-            snapshot
+                .putString("cache_sha256", checksum)
+                .commit()
+            snapshot.copy(cachePersisted = persisted)
         } finally {
             connection.disconnect()
         }
