@@ -396,8 +396,9 @@ internal class QuranicDuaRepository(context: Context) {
             items = items,
             isComplete = complete,
             refreshedFromNetwork = refreshedCount > 0,
-            cachePersisted = complete && allWritesSucceeded &&
-                QuranicDuaCatalog.surahs.all { cacheFile(it.number).exists() },
+            // This flag reports disk-write success for fetched chapters;
+            // catalogue completeness is reported independently above.
+            cachePersisted = allWritesSucceeded,
             completedSurahCount = cachedSurahs.size
         )
     }
