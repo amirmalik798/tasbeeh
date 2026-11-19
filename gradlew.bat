@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "GRADLE_VERSION=8.9"
+set "GRADLE_VERSION=8.11.1"
 if defined GRADLE_USER_HOME (
   set "GRADLE_CACHE=%GRADLE_USER_HOME%\tasbeeh\gradle-%GRADLE_VERSION%"
 ) else (
