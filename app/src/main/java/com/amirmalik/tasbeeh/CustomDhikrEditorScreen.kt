@@ -66,7 +66,7 @@ internal fun CustomDhikrEditorScreen(
         if (isDirty) showDiscardDialog = true else onBack()
     }
 
-    BackHandler(enabled = true) { requestLeave() }
+    BackHandler(enabled = !showDiscardDialog) { requestLeave() }
 
     Column(Modifier.fillMaxSize().background(EditorInk).statusBarsPadding()) {
         Row(
@@ -271,7 +271,10 @@ internal fun CustomDhikrEditorScreen(
                         }
                     }
                     if (showPreview) {
-                        HorizontalDivider(color = Color(0xFF34392F))
+                        Box(
+                            Modifier.fillMaxWidth().height(1.dp)
+                                .background(Color(0xFF34392F))
+                        )
                         Spacer(Modifier.height(13.dp))
                         Text(
                             cleanTitle.ifBlank { "Your dhikr name" },
