@@ -67,6 +67,8 @@ import com.amirmalik.tasbeeh.data.sessionSnapshotForDisplay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onStart
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -305,25 +307,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             var storageRetryCount by remember { mutableIntStateOf(0) }
             var storageReadError by remember { mutableStateOf(false) }
-            val savedState by produceState<TasbeehState?>(
-                initialValue = null,
-                key1 = store,
-                key2 = storageRetryCount
-            ) {
-                storageReadError = false
-                value = null
-                try {
-                    store.migrateToSingleSession()
-                    store.state.collect { value = it }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Exception) {
-                    // Do not replace a failed read with default preferences:
-                    // that could make existing user data appear to be erased.
-                    Log.e("Noor-e-Dhikr", "Unable to load saved state", error)
-                    storageReadError = true
-                }
+            val savedStateFlow = remember(store, storageRetryCount) {
+                store.state
+                    .onStart {
+                        storageReadError = false
+                        store.migrateToSingleSession()
+                    }
+                    .catch { error ->
+                        if (error is CancellationException) throw error
+                        // Do not replace a failed read with default preferences:
+                        // that could make existing user data appear to be erased.
+                        Log.e("Noor-e-Dhikr", "Unable to load saved state", error)
+                        storageReadError = true
+                    }
             }
+            val savedState by savedStateFlow.collectAsState(initial = null)
             val saved = savedState
             when {
                 storageReadError -> TasbeehStorageRecoveryScreen(
@@ -953,8 +951,8 @@ internal fun isInsideTasbeehTapTarget(
 private fun TasbeehStrand(
     count: Int,
     onCount: () -> Unit,
-    enabled: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     val rotation = remember { Animatable(count.toFloat()) }
     val pressure = remember { Animatable(0f) }
