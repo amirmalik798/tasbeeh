@@ -104,6 +104,7 @@ data class TasbeehState(
     val dhikr: String = "SubhanAllah",
     val soundEnabled: Boolean = false,
     val hapticsEnabled: Boolean = true,
+    val ttsVoicePreference: String = "female",
     val fontScale: Float = DEFAULT_APP_FONT_SCALE,
     val currentSession: SavedSession? = null,
     val customDhikrs: List<CustomDhikr> = emptyList(),
@@ -117,6 +118,7 @@ class TasbeehStore(private val context: Context) {
         val dhikr = stringPreferencesKey("dhikr")
         val sound = booleanPreferencesKey("sound")
         val haptics = booleanPreferencesKey("haptics")
+        val ttsVoicePreference = stringPreferencesKey("tts_voice_preference")
         val fontScale = floatPreferencesKey("font_scale")
         val currentSession = stringPreferencesKey("current_session")
 
@@ -137,6 +139,7 @@ class TasbeehStore(private val context: Context) {
             dhikr = prefs[Keys.dhikr] ?: "SubhanAllah",
             soundEnabled = prefs[Keys.sound] ?: false,
             hapticsEnabled = prefs[Keys.haptics] ?: true,
+            ttsVoicePreference = prefs[Keys.ttsVoicePreference]?.takeIf { it == "male" || it == "female" } ?: "female",
             fontScale = (prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE).coerceIn(1.0f, 1.25f),
             currentSession = decodeSession(prefs[Keys.currentSession].orEmpty()),
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
@@ -190,7 +193,8 @@ class TasbeehStore(private val context: Context) {
         dhikr: String? = null,
         soundEnabled: Boolean? = null,
         hapticsEnabled: Boolean? = null,
-        fontScale: Float? = null
+        fontScale: Float? = null,
+        ttsVoicePreference: String? = null
     ) {
         context.tasbeehDataStore.edit { prefs ->
             count?.let { prefs[Keys.count] = it.coerceAtLeast(0) }
@@ -207,6 +211,7 @@ class TasbeehStore(private val context: Context) {
             dhikr?.let { prefs[Keys.dhikr] = it }
             soundEnabled?.let { prefs[Keys.sound] = it }
             hapticsEnabled?.let { prefs[Keys.haptics] = it }
+            ttsVoicePreference?.let { if (it == "male" || it == "female") prefs[Keys.ttsVoicePreference] = it }
             fontScale?.let { prefs[Keys.fontScale] = it.coerceIn(1.0f, 1.25f) }
         }
     }
