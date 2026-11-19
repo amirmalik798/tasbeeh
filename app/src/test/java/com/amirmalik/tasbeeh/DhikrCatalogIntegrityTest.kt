@@ -77,7 +77,8 @@ class DhikrCatalogIntegrityTest {
             put(definition.id, definition.ayahKeys.dropLast(1))
         }
         assertFalse(hasCompleteQuranicCache(completeItems, missingAyah))
-        assertFalse(hasCompleteQuranicCache(completeItems, emptyMap()))
+        // A valid v2 cache written before per-ayah metadata must remain usable offline.
+        assertTrue(hasCompleteQuranicCache(completeItems, emptyMap()))
     }
 
     @Test

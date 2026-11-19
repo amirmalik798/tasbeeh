@@ -116,7 +116,8 @@ internal fun hasCompleteQuranicCache(
     return QuranicDuaCatalog.additions.all { definition ->
         val item = itemsById[definition.id]
         item != null &&
-            completedAyahKeysById[definition.id] == definition.ayahKeys &&
+            (completedAyahKeysById[definition.id] == null ||
+                completedAyahKeysById[definition.id] == definition.ayahKeys) &&
             item.quranAyahKeys == definition.ayahKeys
     }
 }
@@ -138,8 +139,10 @@ internal class QuranicDuaRepository(context: Context) {
                     val item = array.optJSONObject(index) ?: continue
                     val keys = item.optJSONArray("ayahKeys") ?: JSONArray()
                     val id = item.optString("id")
-                    val completedKeys = item.optJSONArray("completedAyahKeys") ?: JSONArray()
-                    completedAyahKeysById[id] = (0 until completedKeys.length()).map { completedKeys.optString(it) }
+                    item.optJSONArray("completedAyahKeys")?.let { completedKeys ->
+                        completedAyahKeysById[id] =
+                            (0 until completedKeys.length()).map { completedKeys.optString(it) }
+                    }
                     add(
                         DhikrItem(
                             id = id,
