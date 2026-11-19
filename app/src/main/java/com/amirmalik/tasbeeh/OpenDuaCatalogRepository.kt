@@ -182,7 +182,7 @@ internal object OpenDuaCatalogParser {
 
                 val referenceParts = buildList {
                     val sourceReference = entry.optString("sourceReference").trim()
-                    if (sourceReference.isNotBlank()) add("Hisn al-Muslim $#$sourceReference")
+                    if (sourceReference.isNotBlank()) add("Hisn al-Muslim #${sourceReference}")
                     chapterTitles[entry.optString("chapterId")]?.let(::add)
                     variationLabel?.let(::add)
                 }
