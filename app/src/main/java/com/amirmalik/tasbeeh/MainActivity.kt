@@ -113,9 +113,19 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
     val selectedCustomDhikr = state.customDhikrs.firstOrNull { it.id == state.selectedCustomDhikrId }
     val selectedDhikr = DhikrCatalog.byValue(state.dhikr)
-    val activeDhikrTitle = selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
-    val activeDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
-    val activeDhikrTransliteration = selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
+    // An in-progress session displays its captured content. Editing the saved
+    // custom entry affects the next session, never the session already underway.
+    val activeDhikrTitle = state.openSession?.dhikr ?: selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
+    val activeDhikrArabic = if (state.openSession != null) {
+        state.openSession.arabic.takeIf { it.isNotBlank() }
+    } else {
+        selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
+    }
+    val activeDhikrTransliteration = if (state.openSession != null) {
+        state.openSession.transliteration.takeIf { it.isNotBlank() }
+    } else {
+        selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
+    }
     val effectiveTarget = state.openSession?.target ?: state.target
     val latestSessionIsCurrentCompletion = state.sessions.firstOrNull()?.let { latest ->
         latest.status == SessionStatus.COMPLETED &&
