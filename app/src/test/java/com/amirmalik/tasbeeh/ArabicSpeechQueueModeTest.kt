@@ -1,68 +1,46 @@
 package com.amirmalik.tasbeeh
 
-import android.speech.tts.TextToSpeech
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ArabicSpeechQueueModeTest {
 
     @Test
-    fun manualPlaybackReplacesPendingCountSpeech() {
+    fun manualPlaybackReplacesPendingRecitations() {
         assertEquals(
-            TextToSpeech.QUEUE_FLUSH,
+            RECITATION_QUEUE_REPLACE,
             arabicSpeechQueueMode(manualPlayback = true)
         )
     }
 
     @Test
-    fun countPlaybackAppendsToPendingSpeech() {
+    fun countPlaybackAppendsToPendingRecitations() {
         assertEquals(
-            TextToSpeech.QUEUE_ADD,
+            RECITATION_QUEUE_APPEND,
             arabicSpeechQueueMode(manualPlayback = false)
         )
     }
+
     @Test
-    fun playbackCanBeStoppedWhenCurrentDhikrHasNoArabicText() {
-        org.junit.Assert.assertTrue(
+    fun stopControlRemainsEnabledWhileRecitationIsPlaying() {
+        assertTrue(
             arabicPlaybackControlEnabled(hasArabicText = false, isSpeaking = true)
         )
     }
 
     @Test
-    fun playbackCannotStartWhenNoArabicTextIsAvailable() {
-        org.junit.Assert.assertFalse(
+    fun playbackCannotStartWhenNoRecordedAudioIsAvailable() {
+        assertFalse(
             arabicPlaybackControlEnabled(hasArabicText = false, isSpeaking = false)
         )
     }
 
     @Test
-    fun playbackCanStartWhenArabicTextIsAvailable() {
-        org.junit.Assert.assertTrue(
+    fun playbackCanStartWhenRecordedAudioIsAvailable() {
+        assertTrue(
             arabicPlaybackControlEnabled(hasArabicText = true, isSpeaking = false)
         )
     }
-
-
-
-    @Test
-    fun maleVoiceNameMatchesMalePreference() {
-        assertEquals(true, arabicVoiceNameMatchesPreference("ar-male", "male"))
-    }
-
-    @Test
-    fun femaleVoiceNameDoesNotMatchMalePreference() {
-        assertEquals(false, arabicVoiceNameMatchesPreference("ar-female", "male"))
-        assertEquals(false, arabicVoiceNameMatchesPreference("ar-woman", "male"))
-    }
-
-    @Test
-    fun femaleVoiceNameMatchesFemalePreference() {
-        assertEquals(true, arabicVoiceNameMatchesPreference("ar-female", "female"))
-    }
-
-    @Test
-    fun voiceWithoutGenderMarkerIsTreatedAsUnknown() {
-        org.junit.Assert.assertNull(arabicVoiceNameMatchesPreference("ar-standard", "male"))
-    }
-
 }

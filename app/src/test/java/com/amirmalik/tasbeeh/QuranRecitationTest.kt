@@ -70,7 +70,7 @@ class QuranRecitationTest {
     }
 
     @Test
-    fun customDhikrWithoutAyahMappingRemainsDeviceTtsEligible() {
+    fun customDhikrWithoutAyahMappingDoesNotGetRoutedToQuranFoundation() {
         val customItem = DhikrItem(
             id = "custom-user-entry",
             value = "My own dua",
@@ -89,12 +89,14 @@ class QuranRecitationTest {
     fun anyExplicitAyahSelectionUsesQuranAudioPathEvenWhenItsMappingIsInvalid() {
         assertTrue(QuranRecitationAudio.shouldAttemptQuranFoundation(listOf("2:255")))
         assertTrue(QuranRecitationAudio.shouldAttemptQuranFoundation(listOf("2:999")))
+        assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(listOf("2:999")))
+        assertNull(QuranRecitationAudio.audioUrlForAyah("2:287"))
         assertFalse(QuranRecitationAudio.shouldAttemptQuranFoundation(emptyList()))
     }
 
     @Test
     fun mediaPlayerIoFailureExplainsTheStreamReadProblemAndShowsDiagnosticCodes() {
-        val message = quranPlaybackFailureMessage(
+        val message = recitationPlaybackFailureMessage(
             mediaPlayerWhat = android.media.MediaPlayer.MEDIA_ERROR_IO,
             mediaPlayerExtra = -2147483648
         )
@@ -105,7 +107,7 @@ class QuranRecitationTest {
 
     @Test
     fun unsupportedAudioFormatHasAnActionableExplanation() {
-        val message = quranPlaybackFailureMessage(
+        val message = recitationPlaybackFailureMessage(
             mediaPlayerWhat = android.media.MediaPlayer.MEDIA_ERROR_UNSUPPORTED
         )
         assertTrue(message.contains("not supported", ignoreCase = true))
@@ -113,21 +115,33 @@ class QuranRecitationTest {
 
     @Test
     fun unknownHostFailureExplainsDnsOrConnectivityCause() {
-        val message = quranPlaybackFailureMessage(java.net.UnknownHostException("verses.quran.foundation"))
+        val message = recitationPlaybackFailureMessage(java.net.UnknownHostException("verses.quran.foundation"))
         assertTrue(message.contains("DNS", ignoreCase = true))
-        assertTrue(message.contains("Quran Foundation"))
+        assertTrue(message.contains("recitation provider"))
     }
 
     @Test
     fun timeoutFailureExplainsThatTheAudioServerDidNotRespond() {
-        val message = quranPlaybackFailureMessage(java.net.SocketTimeoutException("timeout"))
+        val message = recitationPlaybackFailureMessage(java.net.SocketTimeoutException("timeout"))
         assertTrue(message.contains("timed out", ignoreCase = true))
     }
 
     @Test
     fun missingAudioFileReportsThatTheRequestedRecitationWasNotFound() {
-        val message = quranPlaybackFailureMessage(java.io.FileNotFoundException("404"))
+        val message = recitationPlaybackFailureMessage(java.io.FileNotFoundException("404"))
         assertTrue(message.contains("not found", ignoreCase = true))
     }
 
+
+    @Test
+    fun expandedQuranicCatalogueHasOneHundredExplicitlyMappedEntries() {
+        val originalQuranic = DhikrCatalog.items.count { it.quranAyahKeys.isNotEmpty() }
+        assertEquals(37, originalQuranic)
+        assertEquals(63, QuranicDuaCatalog.additions.size)
+        assertEquals(100, originalQuranic + QuranicDuaCatalog.additions.size)
+        QuranicDuaCatalog.additions.forEach { item ->
+            assertTrue("Missing ayah mapping for " + item.id, item.ayahKeys.isNotEmpty())
+            assertEquals(item.ayahKeys.size, QuranRecitationAudio.audioUrlsForAyahs(item.ayahKeys).size)
+        }
+    }
 }

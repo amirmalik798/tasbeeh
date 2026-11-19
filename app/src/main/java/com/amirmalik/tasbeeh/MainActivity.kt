@@ -65,10 +65,8 @@ import com.amirmalik.tasbeeh.data.TasbeehState
 import com.amirmalik.tasbeeh.data.TasbeehStore
 import com.amirmalik.tasbeeh.data.sessionSnapshotForDisplay
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onStart
 import java.util.ArrayDeque
@@ -88,44 +86,43 @@ private val Muted = Color(0xFF9A9B8D)
 internal const val RECITATION_QUEUE_REPLACE = 0
 internal const val RECITATION_QUEUE_APPEND = 1
 
-internal fun recitationQueueMode(manualPlayback: Boolean): Int =
+internal fun arabicSpeechQueueMode(manualPlayback: Boolean): Int =
     if (manualPlayback) RECITATION_QUEUE_REPLACE else RECITATION_QUEUE_APPEND
 
-internal fun recitationPlaybackControlEnabled(hasRecitation: Boolean, isPlaying: Boolean): Boolean =
-    hasRecitation || isPlaying
+internal fun arabicPlaybackControlEnabled(hasArabicText: Boolean, isSpeaking: Boolean): Boolean =
+    hasArabicText || isSpeaking
 
-internal fun quranPlaybackFailureMessage(
+internal fun recitationPlaybackFailureMessage(
     error: Throwable? = null,
     mediaPlayerWhat: Int? = null,
-    mediaPlayerExtra: Int? = null,
-    source: String = "Quran Foundation"
+    mediaPlayerExtra: Int? = null
 ): String {
     val codes = setOfNotNull(mediaPlayerWhat, mediaPlayerExtra)
     val causes = generateSequence(error) { it.cause }.take(8).toList()
     val causeMessage = when {
         android.media.MediaPlayer.MEDIA_ERROR_IO in codes ->
-            "Android could not read the $source audio stream. The connection may have dropped or the server may have interrupted the audio."
+            "Android could not read the recorded recitation stream. The connection may have dropped or the server may have interrupted the audio."
         android.media.MediaPlayer.MEDIA_ERROR_TIMED_OUT in codes ||
             causes.any { it is java.net.SocketTimeoutException } ->
-            "The connection to $source timed out before the recitation could load. Check your internet connection and try again."
+            "The connection to the recitation provider timed out before the recitation could load. Check your internet connection and try again."
         causes.any { it is java.net.UnknownHostException } ->
-            "Android could not resolve the $source audio server. Check your internet connection or DNS settings."
+            "Android could not resolve the recitation provider. Check your internet connection or DNS settings."
         causes.any { it is java.net.ConnectException } ->
-            "Android could not connect to the $source audio server. The server may be unavailable or your network may be blocking it."
+            "Android could not connect to the recitation provider. The server may be unavailable or your network may be blocking it."
         causes.any { it is java.io.FileNotFoundException } ->
-            "The requested recitation audio file was not found on $source."
+            "The requested recitation audio file was not found on the audio provider."
         android.media.MediaPlayer.MEDIA_ERROR_MALFORMED in codes ->
-            "The audio stream returned by $source is damaged or incomplete, so Android cannot decode it."
+            "The audio stream returned by the recording is damaged or incomplete, so Android cannot decode it."
         android.media.MediaPlayer.MEDIA_ERROR_UNSUPPORTED in codes ->
-            "The audio format returned by $source is not supported by this Android media player."
+            "The audio format returned by the recording format is not supported by this Android media player."
         android.media.MediaPlayer.MEDIA_ERROR_SERVER_DIED in codes ->
             "Android's media playback service stopped unexpectedly. Try playing the recitation again."
         android.media.MediaPlayer.MEDIA_ERROR_NOT_VALID_FOR_PROGRESSIVE_PLAYBACK in codes ->
             "Android cannot stream this audio file in its current format."
         causes.any { it is java.io.IOException } ->
-            "The network or audio stream was interrupted while Android was reading the $source recording."
+            "The network or audio stream was interrupted while Android was reading the recorded recitation."
         else -> error?.localizedMessage?.takeIf { it.isNotBlank() }
-            ?: "Android reported an unknown error while loading the $source recording."
+            ?: "Android reported an unknown error while loading the recorded recitation."
     }
     val diagnostics = buildList {
         mediaPlayerWhat?.let { add("MediaPlayer code: $it") }
@@ -139,25 +136,22 @@ internal fun quranPlaybackFailureMessage(
 }
 
 class MainActivity : ComponentActivity() {
-    private data class PendingRecitation(val url: String, val source: String)
-
     private var speechPlaying by mutableStateOf(false)
-    private val pendingRecitations = ArrayDeque<PendingRecitation>()
-    private var quranMediaPlayer: MediaPlayer? = null
-    private var currentRecitationSource: String = "Quran Foundation"
+    private val pendingRecitationUrls = ArrayDeque<String>()
+    private var recitationMediaPlayer: MediaPlayer? = null
 
     private fun refreshSpeechPlayingState() {
         if (isFinishing || isDestroyed) return
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
-            speechPlaying = pendingRecitations.isNotEmpty() || quranMediaPlayer != null
+            speechPlaying = recitationMediaPlayer != null || pendingRecitationUrls.isNotEmpty()
         }
     }
 
-    private fun stopRecitation() {
-        pendingRecitations.clear()
-        val player = quranMediaPlayer
-        quranMediaPlayer = null
+    private fun stopRecitationAudio() {
+        pendingRecitationUrls.clear()
+        val player = recitationMediaPlayer
+        recitationMediaPlayer = null
         if (player != null) {
             runCatching { player.setOnPreparedListener(null) }
             runCatching { player.setOnCompletionListener(null) }
@@ -174,12 +168,12 @@ class MainActivity : ComponentActivity() {
             if (isFinishing || isDestroyed) return@runOnUiThread
             runCatching {
                 android.app.AlertDialog.Builder(this)
-                    .setTitle("Recorded recitation unavailable")
+                    .setTitle("Recitation unavailable")
                     .setMessage(message)
                     .setPositiveButton("OK", null)
                     .show()
             }.onFailure { dialogError ->
-                Log.w("Noor-e-Dhikr", "Could not display Quran playback error dialog", dialogError)
+                Log.w("Noor-e-Dhikr", "Could not display recitation playback error dialog", dialogError)
                 runCatching {
                     Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                 }
@@ -187,14 +181,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun failCurrentQuranItem(
+    private fun failCurrentRecitation(
         error: Throwable? = null,
         mediaPlayerWhat: Int? = null,
         mediaPlayerExtra: Int? = null
     ) {
-        val player = quranMediaPlayer
-        quranMediaPlayer = null
-        pendingRecitations.clear()
+        val player = recitationMediaPlayer
+        recitationMediaPlayer = null
+        pendingRecitationUrls.clear()
         if (player != null) {
             runCatching { player.setOnPreparedListener(null) }
             runCatching { player.setOnCompletionListener(null) }
@@ -203,29 +197,22 @@ class MainActivity : ComponentActivity() {
             runCatching { player.release() }
         }
 
-        val message = quranPlaybackFailureMessage(
-            error = error,
-            mediaPlayerWhat = mediaPlayerWhat,
-            mediaPlayerExtra = mediaPlayerExtra,
-            source = currentRecitationSource
-        )
-        Log.w("Noor-e-Dhikr", "$currentRecitationSource recitation stream failed: $message", error)
+        val message = recitationPlaybackFailureMessage(error, mediaPlayerWhat, mediaPlayerExtra)
+        Log.w("Noor-e-Dhikr", "recitation stream failed: $message", error)
         showRecitationPlaybackError(message)
         refreshSpeechPlayingState()
     }
 
-    private fun startNextRecitation() {
-        if (isFinishing || isDestroyed || quranMediaPlayer != null) return
-        if (pendingRecitations.isEmpty()) {
+    private fun startNextRecitationAudio() {
+        if (isFinishing || isDestroyed || recitationMediaPlayer != null) return
+        if (pendingRecitationUrls.isEmpty()) {
             refreshSpeechPlayingState()
             return
         }
 
-        val recitation = pendingRecitations.removeFirst()
-        val url = recitation.url
-        currentRecitationSource = recitation.source
+        val url = pendingRecitationUrls.removeFirst()
         val player = MediaPlayer()
-        quranMediaPlayer = player
+        recitationMediaPlayer = player
 
         try {
             player.setAudioAttributes(
@@ -235,25 +222,25 @@ class MainActivity : ComponentActivity() {
                     .build()
             )
             player.setOnPreparedListener { prepared ->
-                if (quranMediaPlayer !== player || isFinishing || isDestroyed) {
+                if (recitationMediaPlayer !== player || isFinishing || isDestroyed) {
                     runCatching { prepared.release() }
                     return@setOnPreparedListener
                 }
                 runCatching { prepared.start() }
-                    .onFailure { failCurrentQuranItem(it) }
+                    .onFailure { failCurrentRecitation(it) }
             }
             player.setOnCompletionListener { completed ->
-                if (quranMediaPlayer === player) {
-                    quranMediaPlayer = null
+                if (recitationMediaPlayer === player) {
+                    recitationMediaPlayer = null
                     runCatching { completed.release() }
-                    startNextRecitation()
+                    startNextRecitationAudio()
                 } else {
                     runCatching { completed.release() }
                 }
             }
             player.setOnErrorListener { _, what, extra ->
-                if (quranMediaPlayer === player) {
-                    failCurrentQuranItem(mediaPlayerWhat = what, mediaPlayerExtra = extra)
+                if (recitationMediaPlayer === player) {
+                    failCurrentRecitation(mediaPlayerWhat = what, mediaPlayerExtra = extra)
                 } else {
                     runCatching { player.release() }
                 }
@@ -263,60 +250,62 @@ class MainActivity : ComponentActivity() {
             player.prepareAsync()
             refreshSpeechPlayingState()
         } catch (error: Exception) {
-            failCurrentQuranItem(error)
+            failCurrentRecitation(error)
         }
     }
 
-    private fun enqueueRecitations(urls: List<String>, source: String, queueMode: Int) {
-        val safeUrls = urls.map { it.trim() }
-            .filter {
-                it.startsWith("https://verses.quran.foundation/") ||
-                    it.startsWith("https://audio.opendua.org/")
-            }
-            .filter { it.endsWith(".mp3") }
-            .distinct()
-        if (safeUrls.isEmpty()) return
+    private fun isTrustedRecitationUrl(url: String): Boolean =
+        url.startsWith("https://verses.quran.foundation/") ||
+            url.startsWith("https://audio.staging.opendua.org/") ||
+            url.startsWith("https://audio.opendua.org/")
 
-        if (queueMode == RECITATION_QUEUE_REPLACE) {
-            stopRecitation()
-        }
-        safeUrls.forEach { url ->
-            pendingRecitations.addLast(PendingRecitation(url, source))
-        }
-        refreshSpeechPlayingState()
-        startNextRecitation()
-    }
-
-    private fun playRecitation(
-        quranAyahKeys: List<String>,
-        openDuaAudioUrls: List<String>,
-        queueMode: Int
-    ) {
-        // A Qur'anic item must always use Quran Foundation. Never fall back to
-        // synthetic speech or a different source when its ayah mapping is absent.
-        if (quranAyahKeys.isNotEmpty()) {
-            val urls = QuranRecitationAudio.audioUrlsForAyahs(quranAyahKeys)
-            if (!QuranRecitationAudio.shouldUseQuranFoundation(quranAyahKeys) || urls.isEmpty()) {
-                showRecitationPlaybackError(
-                    "This Qur'anic passage does not have a valid Quran Foundation audio mapping. No other voice or TTS fallback is used."
-                )
-                return
+    private fun playRecitations(urls: List<String>, queueMode: Int) {
+        if (isFinishing || isDestroyed) return
+        val safeUrls = urls.map { it.trim() }.filter { isTrustedRecitationUrl(it) }
+        if (safeUrls.isEmpty()) {
+            if (urls.isNotEmpty()) {
+                showRecitationPlaybackError("The selected recitation URL was not from a supported HTTPS audio host.")
+            } else {
+                runCatching {
+                    Toast.makeText(this, "A recorded recitation is not available for this entry.", Toast.LENGTH_SHORT).show()
+                }
             }
-            enqueueRecitations(urls, "Quran Foundation", queueMode)
             return
         }
 
-        // Non-Qur'anic entries use the recording explicitly published for that
-        // OpenDua recitation block. Custom entries without recordings stay silent.
-        enqueueRecitations(openDuaAudioUrls, "OpenDua", queueMode)
+        if (queueMode == RECITATION_QUEUE_REPLACE) stopRecitationAudio()
+        safeUrls.forEach { pendingRecitationUrls.addLast(it) }
+        refreshSpeechPlayingState()
+        startNextRecitationAudio()
+    }
+
+    private fun stopRecitationPlayback() {
+        stopRecitationAudio()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(9, 11, 10)
         window.navigationBarColor = android.graphics.Color.rgb(9, 11, 10)
-        val store = TasbeehStore(applicationContext)        val store = TasbeehStore(applicationContext)
+        val store = TasbeehStore(applicationContext)
         setContent {
+            val openDuaRepository = remember { OpenDuaCatalogRepository(applicationContext) }
+            val quranicDuaRepository = remember { QuranicDuaRepository(applicationContext) }
+            var openDuaItems by remember { mutableStateOf(openDuaRepository.loadCachedItems()) }
+            var extendedQuranicItems by remember { mutableStateOf(quranicDuaRepository.loadCachedItems()) }
+            LaunchedEffect(openDuaRepository, quranicDuaRepository) {
+                launch {
+                    runCatching { openDuaItems = openDuaRepository.refresh() }
+                        .onFailure { Log.w("Noor-e-Dhikr", "OpenDua catalogue refresh failed; using cached entries", it) }
+                }
+                launch {
+                    runCatching { extendedQuranicItems = quranicDuaRepository.refresh() }
+                        .onFailure { Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; using cached references", it) }
+                }
+            }
+            val catalogItems = remember(openDuaItems, extendedQuranicItems) {
+                (DhikrCatalog.items + extendedQuranicItems + openDuaItems).distinctBy { it.id }
+            }
             var storageRetryCount by remember { mutableIntStateOf(0) }
             var storageReadError by remember { mutableStateOf(false) }
             val savedStateFlow = remember(store, storageRetryCount) {
@@ -344,10 +333,9 @@ class MainActivity : ComponentActivity() {
                     state = saved,
                     store = store,
                     isSpeaking = speechPlaying,
-                    onSpeakRecitation = { queueMode, quranAyahKeys, openDuaAudioUrls ->
-                        playRecitation(quranAyahKeys, openDuaAudioUrls, queueMode)
-                    },
-                    onStopRecitation = { stopRecitation() }
+                    catalogItems = catalogItems,
+                    onPlayRecitation = { urls, queueMode -> playRecitations(urls, queueMode) },
+                    onStopSpeech = { stopRecitationPlayback() }
                 ) {
                     if (saved.hapticsEnabled) {
                         runCatching {
@@ -360,7 +348,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        stopRecitation()
+        stopRecitationAudio()
         super.onDestroy()
     }
 }
@@ -447,19 +435,13 @@ private fun TasbeehApp(
     state: TasbeehState,
     store: TasbeehStore,
     isSpeaking: Boolean,
-    onSpeakRecitation: (Int, List<String>, List<String>) -> Unit,
-    onStopRecitation: () -> Unit,
+    catalogItems: List<DhikrItem>,
+    onPlayRecitation: (List<String>, Int) -> Unit,
+    onStopSpeech: () -> Unit,
     onTap: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var openDuaItems by remember { mutableStateOf<List<DhikrItem>>(emptyList()) }
-    var openDuaCatalogLoading by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        openDuaItems = withContext(Dispatchers.IO) { OpenDuaCatalog.load(context) }
-        openDuaCatalogLoading = false
-    }
-    val builtInDhikrs = remember(openDuaItems) { DhikrCatalog.items + openDuaItems }
 
     fun launchStoreOperation(
         onSuccess: () -> Unit = {},
@@ -491,7 +473,7 @@ private fun TasbeehApp(
     var showCustomDhikrEditor by remember { mutableStateOf(false) }
     var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
     val selectedCustomDhikr = state.customDhikrs.firstOrNull { it.id == state.selectedCustomDhikrId }
-    val selectedDhikr = builtInDhikrs.firstOrNull { it.value == state.dhikr }
+    val selectedDhikr = catalogItems.firstOrNull { it.value == state.dhikr }
     // Keep the completed session's captured content visible until the user
     // starts the next round. The next count still uses the currently selected
     // Dhikr, so editing a custom entry affects future sessions only.
@@ -537,25 +519,29 @@ private fun TasbeehApp(
     }
     val countDhikrMeaning = activeSession?.meaning ?: selectedDhikrMeaning
     val activeQuranAyahKeys = if (state.selectedCustomDhikrId == null) {
-        builtInDhikrs.firstOrNull { it.value == activeDhikrTitle }?.quranAyahKeys.orEmpty()
+        catalogItems.firstOrNull { it.value == activeDhikrTitle }?.quranAyahKeys.orEmpty()
     } else {
         emptyList()
     }
-    val activeOpenDuaAudioUrls = if (state.selectedCustomDhikrId == null) {
-        builtInDhikrs.firstOrNull { it.value == activeDhikrTitle }?.recitationUrls.orEmpty()
+    val countQuranAyahKeys = if (activeSession == null && state.selectedCustomDhikrId == null) {
+        catalogItems.firstOrNull { it.value == countDhikrTitle }?.quranAyahKeys.orEmpty()
     } else {
         emptyList()
     }
-    val countQuranAyahKeys = if (state.selectedCustomDhikrId == null) {
-        builtInDhikrs.firstOrNull { it.value == countDhikrTitle }?.quranAyahKeys.orEmpty()
-    } else {
-        emptyList()
+
+    fun recitationUrlsFor(title: String, quranKeys: List<String>, isCustom: Boolean): List<String> {
+        if (isCustom) return emptyList()
+        val item = catalogItems.firstOrNull { it.value == title }
+        val resolvedAyahKeys = quranKeys.ifEmpty { item?.quranAyahKeys.orEmpty() }
+        return item?.recitationAudioUrls?.takeIf { it.isNotEmpty() }
+            ?: QuranRecitationAudio.audioUrlsForAyahs(resolvedAyahKeys)
     }
-    val countOpenDuaAudioUrls = if (state.selectedCustomDhikrId == null) {
-        builtInDhikrs.firstOrNull { it.value == countDhikrTitle }?.recitationUrls.orEmpty()
-    } else {
-        emptyList()
-    }
+    val activeRecitationUrls = recitationUrlsFor(
+        activeDhikrTitle, activeQuranAyahKeys, state.selectedCustomDhikrId != null
+    )
+    val countRecitationUrls = recitationUrlsFor(
+        countDhikrTitle, countQuranAyahKeys, state.selectedCustomDhikrId != null
+    )
     val effectiveTarget = sessionForDisplay?.target ?: state.target
     val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
     val canUndo = canUndoCount(state.count, state.currentSession?.status)
@@ -583,12 +569,8 @@ private fun TasbeehApp(
                 now = now
             )
             if (outcome == CountOutcome.COUNTED) {
-                if (state.soundEnabled) {
-                    onSpeakRecitation(
-                        recitationQueueMode(manualPlayback = false),
-                        countQuranAyahKeys,
-                        countOpenDuaAudioUrls
-                    )
+                if (state.soundEnabled && countRecitationUrls.isNotEmpty()) {
+                    onPlayRecitation(countRecitationUrls, arabicSpeechQueueMode(manualPlayback = false))
                 }
                 onTap()
             }
@@ -607,7 +589,7 @@ private fun TasbeehApp(
             showCustomDhikrEditor -> {
                 CustomDhikrEditorScreen(
                     existing = editingCustomDhikr,
-                    existingTitles = builtInDhikrs.map { it.title } + state.customDhikrs
+                    existingTitles = catalogItems.map { it.title } + state.customDhikrs
                         .filterNot { it.id == editingCustomDhikr?.id }
                         .map { it.title },
                     onBack = {
@@ -633,11 +615,10 @@ private fun TasbeehApp(
             }
             showDhikrScreen -> {
                 DhikrSelectionScreen(
+                    catalogItems = catalogItems,
                     currentDhikr = state.dhikr,
                     currentCustomDhikrId = state.selectedCustomDhikrId,
                     customDhikrs = state.customDhikrs,
-                    builtInDhikrs = builtInDhikrs,
-                    catalogueLoading = openDuaCatalogLoading,
                     onBack = { showDhikrScreen = false },
                     onSelect = { item ->
                         when {
@@ -651,7 +632,7 @@ private fun TasbeehApp(
                             }
                             item.customId == null &&
                                 (state.selectedCustomDhikrId != null || item.value != state.dhikr) -> {
-                                val builtIn = builtInDhikrs.firstOrNull { it.value == item.value }
+                                val builtIn = catalogItems.firstOrNull { it.value == item.value }
                                 launchStoreOperation(
                                     onSuccess = { showDhikrScreen = false }
                                 ) {
@@ -894,19 +875,17 @@ private fun TasbeehApp(
         }
         if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
             state = state,
-            activeArabic = activeDhikrArabic,
             quranAyahKeys = activeQuranAyahKeys,
-            openDuaAudioUrls = activeOpenDuaAudioUrls,
+            activeAudioUrls = activeRecitationUrls,
             isSpeaking = isSpeaking,
-            onSpeakRecitation = { queueMode ->
-                onSpeakRecitation(queueMode, activeQuranAyahKeys, activeOpenDuaAudioUrls)
+            onPlayRecitation = {
+                onPlayRecitation(activeRecitationUrls, arabicSpeechQueueMode(manualPlayback = true))
             },
-            onStopRecitation = onStopRecitation,
+            onStopSpeech = onStopSpeech,
             onDismiss = { showSettings = false },
             onSave = { sound, haptics, fontScale ->
                 launchStoreOperation(onSuccess = { showSettings = false }) {
-                    store.update(soundEnabled = sound, hapticsEnabled = haptics,
-                        fontScale = fontScale)
+                    store.update(soundEnabled = sound, hapticsEnabled = haptics, fontScale = fontScale)
                 }
             }
         )
@@ -1696,25 +1675,18 @@ private fun TargetDialog(
 @Composable
 private fun SettingsDialog(
     state: TasbeehState,
-    activeArabic: String?,
     quranAyahKeys: List<String>,
-    openDuaAudioUrls: List<String>,
+    activeAudioUrls: List<String>,
     isSpeaking: Boolean,
-    onSpeakRecitation: (Int) -> Unit,
-    onStopRecitation: () -> Unit,
+    onPlayRecitation: () -> Unit,
+    onStopSpeech: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (Boolean, Boolean, Float) -> Unit
 ) {
     var sound by remember(state.soundEnabled) { mutableStateOf(state.soundEnabled) }
     var haptics by remember(state.hapticsEnabled) { mutableStateOf(state.hapticsEnabled) }
     var fontScale by remember(state.fontScale) { mutableFloatStateOf(state.fontScale) }
-
-    val hasRecordedRecitation = quranAyahKeys.isNotEmpty() || openDuaAudioUrls.isNotEmpty()
-    val fontSizes = listOf(
-        "Standard" to 1.0f,
-        "Comfort" to 1.12f,
-        "Large" to 1.25f
-    )
+    val fontSizes = listOf("Standard" to 1.0f, "Comfort" to 1.12f, "Large" to 1.25f)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1726,8 +1698,8 @@ private fun SettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 SettingToggle(
-                    "Play recitation on count",
-                    "Play recorded recitations only. Qur'anic passages use Quran Foundation; OpenDua entries use their published reciter recordings.",
+                    "Recorded recitation on count",
+                    "Play Quran Foundation or OpenDua recordings when available",
                     sound
                 ) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
@@ -1740,23 +1712,19 @@ private fun SettingsDialog(
                         Text("Recorded recitation", color = Ivory, fontSize = 14.sp)
                         Text(
                             when {
-                                quranAyahKeys.isNotEmpty() -> "Quran Foundation · internet required"
-                                openDuaAudioUrls.isNotEmpty() -> "OpenDua · Muhammad Jumah · internet required"
-                                activeArabic.isNullOrBlank() -> "No recitation is available for this entry"
-                                else -> "No published recording for this entry"
+                                activeAudioUrls.isEmpty() -> "No recorded recitation is available for this entry"
+                                quranAyahKeys.isNotEmpty() -> "Qur'anic recitation · internet required"
+                                else -> "OpenDua recitation · internet required"
                             },
                             color = Muted,
                             fontSize = 12.sp
                         )
                     }
                     FilledTonalButton(
-                        onClick = {
-                            if (isSpeaking) onStopRecitation()
-                            else onSpeakRecitation(recitationQueueMode(manualPlayback = true))
-                        },
-                        enabled = recitationPlaybackControlEnabled(
-                            hasRecitation = hasRecordedRecitation,
-                            isPlaying = isSpeaking
+                        onClick = { if (isSpeaking) onStopSpeech() else onPlayRecitation() },
+                        enabled = arabicPlaybackControlEnabled(
+                            hasArabicText = activeAudioUrls.isNotEmpty(),
+                            isSpeaking = isSpeaking
                         ),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = Panel2,
@@ -1779,46 +1747,29 @@ private fun SettingsDialog(
                 if (quranAyahKeys.isNotEmpty()) {
                     Spacer(Modifier.height(5.dp))
                     Text(
-                        "RECITER: ${QuranRecitationAudio.RECITER_NAME.uppercase()} · ${QuranRecitationAudio.RECITATION_STYLE.uppercase()}",
+                        "RECITER: " + QuranRecitationAudio.RECITER_NAME.uppercase() + " · " +
+                            QuranRecitationAudio.RECITATION_STYLE.uppercase(),
                         color = Gold,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = .7.sp
                     )
                     Text(
-                        "The complete cited ayah(s) are streamed in sequence from Quran Foundation.",
+                        "Complete cited ayahs are streamed in sequence from Quran Foundation.",
                         color = Muted,
                         fontSize = 11.sp,
                         lineHeight = 16.sp
                     )
                     Text(
-                        "Audio: Quran.Foundation · ${QuranRecitationAudio.RECITER_NAME}",
+                        "Audio: Quran.Foundation · " + QuranRecitationAudio.RECITER_NAME,
                         color = Color(0xFF83B994),
                         fontSize = 10.sp
                     )
-                } else if (openDuaAudioUrls.isNotEmpty()) {
+                } else if (activeAudioUrls.isNotEmpty()) {
                     Spacer(Modifier.height(5.dp))
+                    Text("RECORDED AUDIO · OPENDUA", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "RECITER: MUHAMMAD JUMAH",
-                        color = Gold,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = .7.sp
-                    )
-                    Text(
-                        "OpenDua recordings are matched to the source recitation blocks and streamed directly.",
-                        color = Muted,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                    )
-                    Text(
-                        "Recitation by Muhammad Jumah for OpenDua · CC BY 4.0",
-                        color = Color(0xFF83B994),
-                        fontSize = 10.sp
-                    )
-                } else {
-                    Text(
-                        "No published recording is available for this entry. The app does not synthesize or imitate recitation.",
+                        "Audio is streamed from the recording linked to this OpenDua entry.",
                         color = Muted,
                         fontSize = 11.sp,
                         lineHeight = 16.sp
@@ -1833,28 +1784,16 @@ private fun SettingsDialog(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp
                 )
-                Text(
-                    "Adjust text throughout the entire app.",
-                    color = Muted,
-                    fontSize = 12.sp
-                )
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
+                Text("Adjust text throughout the entire app.", color = Muted, fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     fontSizes.forEach { (label, scale) ->
                         FilterChip(
                             selected = kotlin.math.abs(fontScale - scale) < .01f,
                             onClick = { fontScale = scale },
                             modifier = Modifier.weight(1f),
                             label = {
-                                Text(
-                                    label,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center,
-                                    fontSize = 11.sp,
-                                    maxLines = 1
-                                )
+                                Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
+                                    fontSize = 11.sp, maxLines = 1)
                             },
                             shape = RoundedCornerShape(12.dp),
                             colors = FilterChipDefaults.filterChipColors(
@@ -1884,9 +1823,9 @@ private fun SettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                onSave(sound, haptics, fontScale)
-            }) { Text("SAVE SETTINGS", color = Gold) }
+            TextButton(onClick = { onSave(sound, haptics, fontScale) }) {
+                Text("SAVE SETTINGS", color = Gold)
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("CANCEL", color = Muted) }

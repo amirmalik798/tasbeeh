@@ -27,17 +27,20 @@ The counter, preferences, custom dhikr collection and single current-session rec
 
 ## Dhikr library sources and attribution
 
-The built-in library contains 100 selected remembrances and supplications from the Qur'an and Sunnah. Qur'anic passages are referenced by surah and ayah; narrations include their hadith collection and number. The collection was cross-checked against Hisn al-Muslim and OpenDua's versioned reference material. Transliteration is provided as a pronunciation aid; recitation and tajwid should be learned from a qualified teacher or reliable reciter.
+The library combines the 100-entry curated built-in collection, 63 additional Qur'anic supplications/passages (for 100 Qur'anic entries total), and up to 87 published OpenDua supplications, for a 250-entry catalogue when the OpenDua API returns its complete target set. OpenDua categories, recitation blocks, citation metadata and linked recordings are read from its versioned API. New API results are cached locally; the curated collection remains available while offline. Category and review metadata are shown as source data, not as a claim that every entry has received independent scholarly review.
 
-OpenDua editorial material and transliteration references are attributed under CC BY 4.0:
+Qur'anic passages carry explicit surah/ayah mappings. Arabic text is refreshed from AlQuran Cloud's Uthmani edition and the English meaning from the Sahih International translation, with the source and translator credited. Audio is streamed as complete cited ayahs from Quran Foundation. The current Quran Foundation Content API requires app credentials, so no client secret is embedded in the Android app. The Sleep filter starts with the four Quls (al-Kafirun, al-Ikhlas, al-Falaq and an-Nas), Ayat al-Kursi, and the final two ayahs of al-Baqarah. Transliteration is a pronunciation aid; recitation and tajwid should be learned from a qualified teacher or reliable reciter.
 
-OpenDua dataset v0.0.4 (https://opendua.org), by Ihsan Labs at the Human Development Fund. Based on Hisn al-Muslim by Sa'id ibn Ali ibn Wahf al-Qahtani. OpenDua editorial text, dataset structure and the recitation by Muhammad Jumah are licensed CC BY 4.0. OpenDua makes no ownership claim over the underlying religious texts.
+Qur'anic text source: AlQuran Cloud (https://alquran.cloud), using the Uthmani text edition. English translation: Sahih International (served as en.sahih); translation rights remain with the translator and are attributed in-app and here. See the [AlQuran Cloud API](https://alquran.cloud/api) and its [terms](https://alquran.cloud/terms-and-conditions).
 
-Licence: https://opendua.org/licence/data
+OpenDua API v2 is currently consumed from its public staging preview (https://api.staging.opendua.org). The API SDK documentation describes this as a developer preview and says scholar review may be incomplete. The app preserves entry citations, collections, block order and recitation links from the API. OpenDua editorial material and dataset structure are CC BY 4.0; the underlying religious texts are not claimed by OpenDua. Audio rights are separate and follow the API's rights registry. Review before redistribution:
+- API documentation: https://api.staging.opendua.org/docs
+- OpenDua: https://opendua.org
+- Data licence: https://opendua.org/licence/data
 
 
 ## Qur'anic recitation
 
-Qur'anic selections use streamed human recitation by AbdulBaset AbdulSamad (Mujawwad) from Quran Foundation's documented recitation audio host. Complete cited ayah recordings are streamed in order; a short supplication excerpt may therefore play its complete source ayah. Recordings are streamed on demand and are not bundled, cached by the app, or rehosted. Credit is shown in the app. This feature requires an internet connection. Non-Qur'anic adhkar continue to use the device's Arabic text-to-speech engine, which is not a substitute for tajwid.
+Qur'anic selections use streamed human recitation by AbdulBaset AbdulSamad (Mujawwad) from Quran Foundation's documented recitation audio host. Complete cited ayah recordings are streamed in order; a short supplication excerpt may therefore play its complete source ayah. Recordings are streamed on demand and are not bundled, cached by the app, or rehosted. Credit is shown in the app. This feature requires an internet connection. Non-Qur'anic OpenDua entries use the recitation recordings linked by the API. The app contains no Android TextToSpeech integration and no female/male voice selector. When sound is enabled, the app plays a linked recording if one exists; it does not synthesize speech for entries without audio. This requires an internet connection.
 
-The category filter row places **My Dhikr** immediately after **All**.
+The category filter row places **My Dhikr** immediately after **All**. The remaining categories are populated from the active catalogue. The Sleep category pins the four Quls, Ayat al-Kursi and the last two ayahs of al-Baqarah at the top.

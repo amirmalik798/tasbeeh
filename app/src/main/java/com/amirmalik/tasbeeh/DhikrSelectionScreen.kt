@@ -73,17 +73,15 @@ internal data class DhikrItem(
     val reference: String = "",
     val customId: String? = null,
     val quranAyahKeys: List<String> = emptyList(),
-    val recitationUrls: List<String> = emptyList(),
-    val recitationCredit: String? = null
+    val recitationAudioUrls: List<String> = emptyList()
 )
 
 @Composable
 internal fun DhikrSelectionScreen(
+    catalogItems: List<DhikrItem>,
     currentDhikr: String,
     currentCustomDhikrId: String?,
     customDhikrs: List<CustomDhikr>,
-    builtInDhikrs: List<DhikrItem>,
-    catalogueLoading: Boolean,
     onBack: () -> Unit,
     onSelect: (DhikrItem) -> Unit,
     onCreateCustom: () -> Unit,
@@ -93,13 +91,8 @@ internal fun DhikrSelectionScreen(
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
-    val categories = remember(builtInDhikrs, customDhikrs) {
-        listOf("All", "My Dhikr") + (
-            builtInDhikrs.map { it.category } +
-                customDhikrs.map { "My Dhikr" }
-            ).filter { it.isNotBlank() && it != "All" && it != "My Dhikr" }
-            .distinct()
-            .sortedBy { it.lowercase(Locale.ROOT) }
+    val categories = remember(catalogItems) {
+        listOf("All", "My Dhikr") + catalogItems.map { it.category }.filter { it.isNotBlank() }.distinct()
     }
     val keyboardController = LocalSoftwareKeyboardController.current
     val customItems = remember(customDhikrs) {
@@ -116,15 +109,25 @@ internal fun DhikrSelectionScreen(
             )
         }
     }
-    val allItems = remember(customItems, builtInDhikrs) { builtInDhikrs + customItems }
+    val allItems = remember(customItems, catalogItems) { catalogItems + customItems }
     val filteredItems = remember(query, category, allItems) {
         val normalizedQuery = normalizeDhikrSearchText(query)
-        allItems.filter { item ->
+        val matches = allItems.filter { item ->
             val matchesCategory = category == "All" || item.category == category
             val matchesSearch = normalizedQuery.isBlank() ||
-                listOf(item.title, item.transliteration, item.meaning, item.arabic)
+                listOf(item.title, item.transliteration, item.meaning, item.arabic, item.reference)
                     .any { value -> normalizeDhikrSearchText(value).contains(normalizedQuery) }
             matchesCategory && matchesSearch
+        }
+        if (category == "Sleep") {
+            val sleepPriority = mapOf(
+                "sleep-four-qul" to 0,
+                "sleep-ayat-al-kursi" to 1,
+                "sleep-last-two-baqarah" to 2
+            )
+            matches.sortedBy { sleepPriority[it.id] ?: 3 }
+        } else {
+            matches
         }
     }
     Column(
@@ -268,21 +271,12 @@ internal fun DhikrSelectionScreen(
         }
 
         Spacer(Modifier.height(9.dp))
-        if (catalogueLoading || filteredItems.isEmpty()) {
+        if (filteredItems.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        if (catalogueLoading) "Loading the OpenDua library…" else "No dhikr found",
-                        color = Color(0xFFFFF8EA),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Text("No dhikr found", color = Color(0xFFFFF8EA), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(5.dp))
-                    Text(
-                        if (catalogueLoading) "Preparing the researched duas and their recitations." else "Try another name or clear your filters.",
-                        color = Color(0xFFB0AA9C),
-                        fontSize = 12.sp
-                    )
+                    Text("Try another name or clear your filters.", color = Color(0xFFB0AA9C), fontSize = 12.sp)
                     Spacer(Modifier.height(9.dp))
                     TextButton(onClick = {
                         query = ""
@@ -428,7 +422,8 @@ private fun DhikrOptionCard(
                     color = Color(0xFF7F8C78),
                     fontSize = 9.sp
                 )
-            } else if (item.recitationUrls.isNotEmpty()) {
+            }
+            else if (item.recitationAudioUrls.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "RECORDED RECITATION · OPENDUA",
@@ -438,7 +433,7 @@ private fun DhikrOptionCard(
                     letterSpacing = .55.sp
                 )
                 Text(
-                    item.recitationCredit ?: "Audio streamed from OpenDua",
+                    "Audio streamed from the recording linked to this entry",
                     color = Color(0xFF7F8C78),
                     fontSize = 9.sp
                 )

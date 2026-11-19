@@ -150,7 +150,6 @@ class TasbeehStore(private val context: Context) {
         val dhikr = stringPreferencesKey("dhikr")
         val sound = booleanPreferencesKey("sound")
         val haptics = booleanPreferencesKey("haptics")
-        // Remove the former gendered TTS preference during the next migration.
         val legacyTtsVoicePreference = stringPreferencesKey("tts_voice_preference")
         val fontScale = floatPreferencesKey("font_scale")
         val currentSession = stringPreferencesKey("current_session")
@@ -217,6 +216,7 @@ class TasbeehStore(private val context: Context) {
             prefs.remove(Keys.legacyOpenSession)
             prefs.remove(Keys.legacyLastCompletedCount)
             prefs.remove(Keys.legacyLastCompletedDhikr)
+            // Remove the old gendered TTS preference during the one-time migration.
             prefs.remove(Keys.legacyTtsVoicePreference)
         }
     }
