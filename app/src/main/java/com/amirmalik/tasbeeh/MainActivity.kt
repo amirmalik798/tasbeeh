@@ -540,15 +540,16 @@ class MainActivity : ComponentActivity() {
                 quranIsRefreshing = !hasCompleteQuranicText(extendedQuranicItems)
                 try {
                     val result = quranicDuaRepository.refresh()
-                    // Publish only the complete, validated result (or the previous
-                    // complete cache returned by the repository).
-                    if (result.isComplete) {
+                    // Each chapter is independently validated and atomically cached.
+                    // Publish completed chapters immediately, even if another chapter
+                    // failed, while never exposing a partially fetched chapter.
+                    if (result.items.isNotEmpty()) {
                         extendedQuranicItems = result.items
                     }
                     quranCacheWriteFailed = result.refreshedFromNetwork && !result.cachePersisted
-                    if (!result.refreshedFromNetwork && !result.isComplete) {
+                    if (!result.isComplete) {
                         quranRefreshError =
-                            "Verified Qur'anic text could not be downloaded. The selections remain listed; retry when your connection is stable."
+                            "Verified text is available for ${result.completedSurahCount} of 114 surahs. Some chapters could not be downloaded. Retry when your connection is stable; completed chapters remain saved."
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -859,9 +860,21 @@ private fun TasbeehApp(
     val activeRecitationUrls = recitationUrlsFor(
         activeDhikrTitle, activeQuranAyahKeys, state.selectedCustomDhikrId != null
     )
-    val countRecitationUrls = recitationUrlsFor(
-        countDhikrTitle, countQuranAyahKeys, state.selectedCustomDhikrId != null
-    )
+    val countSelectionItem = if (state.selectedCustomDhikrId == null) {
+        catalogItems.firstOrNull { it.value == countDhikrTitle }
+    } else null
+    val countQuranSurahAyahCount = countSelectionItem
+        ?.takeIf(QuranicDuaCatalog::isFullSurah)
+        ?.quranAyahKeys
+        ?.size ?: 0
+    // A count tap must not enqueue a hundred or more audio files. Short
+    // established selections retain their former automatic playback behavior;
+    // a longer surah is played deliberately from the full-surah reader.
+    val countRecitationUrls = if (countQuranSurahAyahCount > 21) {
+        emptyList()
+    } else {
+        recitationUrlsFor(countDhikrTitle, countQuranAyahKeys, state.selectedCustomDhikrId != null)
+    }
     val effectiveTarget = sessionForDisplay?.target ?: state.target
     val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
     val canUndo = canUndoCount(state.count, state.currentSession?.status)
@@ -882,12 +895,19 @@ private fun TasbeehApp(
 
     fun increment() {
         val now = System.currentTimeMillis()
+        val countIsFullSurah = countSelectionItem?.let(QuranicDuaCatalog::isFullSurah) == true
+        // A complete surah can be very large. Keep a compact preview in the
+        // DataStore session snapshot; the complete text remains in its verified
+        // per-surah cache and is shown in the reader.
+        val sessionArabic = if (countIsFullSurah) countDhikrArabic.orEmpty().take(240) else countDhikrArabic.orEmpty()
+        val sessionTransliteration = if (countIsFullSurah) countDhikrTransliteration.orEmpty().take(240) else countDhikrTransliteration.orEmpty()
+        val sessionMeaning = if (countIsFullSurah) countDhikrMeaning.take(240) else countDhikrMeaning
         launchStoreOperation(label = "Saving your count…") {
             val outcome = store.countDhikr(
                 dhikr = countDhikrTitle,
-                arabic = countDhikrArabic.orEmpty(),
-                transliteration = countDhikrTransliteration.orEmpty(),
-                meaning = countDhikrMeaning,
+                arabic = sessionArabic,
+                transliteration = sessionTransliteration,
+                meaning = sessionMeaning,
                 fallbackTarget = effectiveTarget,
                 now = now
             )
@@ -951,6 +971,12 @@ private fun TasbeehApp(
                     quranIsRefreshing = quranIsRefreshing,
                     quranRefreshError = quranRefreshError,
                     quranCacheWriteFailed = quranCacheWriteFailed,
+                    isSpeaking = isSpeaking,
+                    isPreparingRecitation = isPreparingSpeech,
+                    onPlayRecitation = { urls ->
+                        onPlayRecitation(urls, arabicSpeechQueueMode(manualPlayback = true))
+                    },
+                    onStopRecitation = onStopSpeech,
                     onRetryQuranText = onRetryQuranText,
                     onRetryOpenDuaCatalog = onRetryOpenDuaCatalog,
                     currentDhikr = state.dhikr,
