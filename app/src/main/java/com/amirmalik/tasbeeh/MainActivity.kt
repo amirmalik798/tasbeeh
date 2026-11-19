@@ -697,8 +697,16 @@ private fun TasbeehApp(
         selectedDhikrTransliteration
     }
     val countDhikrMeaning = activeSession?.meaning ?: selectedDhikrMeaning
-    val activeQuranAyahKeys = DhikrCatalog.byValue(activeDhikrTitle)?.quranAyahKeys.orEmpty()
-    val countQuranAyahKeys = DhikrCatalog.byValue(countDhikrTitle)?.quranAyahKeys.orEmpty()
+    val activeQuranAyahKeys = if (state.selectedCustomDhikrId == null) {
+        DhikrCatalog.byValue(activeDhikrTitle)?.quranAyahKeys.orEmpty()
+    } else {
+        emptyList()
+    }
+    val countQuranAyahKeys = if (activeSession == null && state.selectedCustomDhikrId == null) {
+        DhikrCatalog.byValue(countDhikrTitle)?.quranAyahKeys.orEmpty()
+    } else {
+        emptyList()
+    }
     val effectiveTarget = sessionForDisplay?.target ?: state.target
     val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
     val canUndo = canUndoCount(state.count, state.currentSession?.status)
