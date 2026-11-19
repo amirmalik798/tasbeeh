@@ -42,6 +42,7 @@ private val HistoryGreen = Color(0xFF74B48A)
 
 @Composable
 internal fun SessionHistoryScreen(
+    session: SavedSession?,
     onBack: () -> Unit
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
