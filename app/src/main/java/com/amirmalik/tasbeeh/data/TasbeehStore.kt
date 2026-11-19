@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +17,7 @@ import kotlin.math.min
 private val Context.tasbeehDataStore by preferencesDataStore(name = "tasbeeh_state")
 
 const val SESSION_IDLE_TIMEOUT_MS = 15L * 60L * 1000L
+const val DEFAULT_APP_FONT_SCALE = 1.08f
 
 enum class SessionStatus {
     ACTIVE,
@@ -81,6 +83,7 @@ data class TasbeehState(
     val dhikr: String = "SubhanAllah",
     val soundEnabled: Boolean = false,
     val hapticsEnabled: Boolean = true,
+    val fontScale: Float = DEFAULT_APP_FONT_SCALE,
     val sessions: List<SavedSession> = emptyList(),
     val openSession: SavedSession? = null,
     val customDhikrs: List<CustomDhikr> = emptyList(),
@@ -94,6 +97,7 @@ class TasbeehStore(private val context: Context) {
         val dhikr = stringPreferencesKey("dhikr")
         val sound = booleanPreferencesKey("sound")
         val haptics = booleanPreferencesKey("haptics")
+        val fontScale = floatPreferencesKey("font_scale")
         val sessions = stringPreferencesKey("sessions")
         val openSession = stringPreferencesKey("open_session")
         val customDhikrs = stringPreferencesKey("custom_dhikrs")
@@ -107,6 +111,7 @@ class TasbeehStore(private val context: Context) {
             dhikr = prefs[Keys.dhikr] ?: "SubhanAllah",
             soundEnabled = prefs[Keys.sound] ?: false,
             hapticsEnabled = prefs[Keys.haptics] ?: true,
+            fontScale = (prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE).coerceIn(1.0f, 1.25f),
             sessions = decodeSessions(prefs[Keys.sessions].orEmpty()),
             openSession = decodeOpenSession(prefs[Keys.openSession].orEmpty()),
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
@@ -119,7 +124,8 @@ class TasbeehStore(private val context: Context) {
         target: Int? = null,
         dhikr: String? = null,
         soundEnabled: Boolean? = null,
-        hapticsEnabled: Boolean? = null
+        hapticsEnabled: Boolean? = null,
+        fontScale: Float? = null
     ) {
         context.tasbeehDataStore.edit { prefs ->
             count?.let { prefs[Keys.count] = it.coerceAtLeast(0) }
@@ -134,6 +140,7 @@ class TasbeehStore(private val context: Context) {
             dhikr?.let { prefs[Keys.dhikr] = it }
             soundEnabled?.let { prefs[Keys.sound] = it }
             hapticsEnabled?.let { prefs[Keys.haptics] = it }
+            fontScale?.let { prefs[Keys.fontScale] = it.coerceIn(1.0f, 1.25f) }
         }
     }
 
