@@ -918,7 +918,12 @@ private fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -
 }
 
 @Composable
-private fun TargetDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
+private fun TargetDialog(
+    current: Int,
+    onDismiss: () -> Unit,
+    hasOpenSession: Boolean,
+    onSave: (Int) -> Unit
+) {
     var custom by remember { mutableStateOf(current.toString()) }
     val presets = listOf(7, 11, 33, 70, 99, 100, 500, 1000, 5000)
 
@@ -928,6 +933,21 @@ private fun TargetDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> U
         title = { Text("Choose your target", color = Ivory) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (hasOpenSession) {
+                    Surface(
+                        color = Color(0xFF252014),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = .28f))
+                    ) {
+                        Text(
+                            "Your current session keeps its original target. This selection applies to your next session.",
+                            color = GoldLight,
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp,
+                            modifier = Modifier.padding(11.dp)
+                        )
+                    }
+                }
                 Text(
                     "QUICK TARGETS",
                     color = Muted,
@@ -1005,6 +1025,110 @@ private fun TargetDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> U
             TextButton(onClick = onDismiss) { Text("CANCEL", color = Muted) }
         }
     )
+}
+
+@Composable
+private fun SessionTimeStrip(session: com.amirmalik.tasbeeh.data.SavedSession, now: Long) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Panel.copy(alpha = .88f),
+        shape = RoundedCornerShape(13.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF373629))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Timer, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("SESSION TIME", color = Muted, fontSize = 8.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.SemiBold)
+                Text("Active time · pauses excluded", color = Muted, fontSize = 9.sp)
+            }
+            Text(
+                formatSessionDurationShort(session.activeDurationAt(now)),
+                color = GoldLight,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun PausedSessionDialog(
+    session: com.amirmalik.tasbeeh.data.SavedSession,
+    onResume: () -> Unit,
+    onFinish: () -> Unit,
+    onHistory: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = {},
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        ),
+        containerColor = Panel,
+        title = { Text("Welcome back", color = Ivory) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text(
+                    "Your ${session.dhikr} session has been safely paused. You can continue exactly where you left off.",
+                    color = Muted,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                )
+                Surface(
+                    color = Panel2,
+                    shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF393A2E))
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("YOUR PROGRESS", color = Muted, fontSize = 8.sp, letterSpacing = 1.sp)
+                            Text("${session.count} / ${session.target}", color = Ivory, fontSize = 22.sp, fontWeight = FontWeight.Light)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("ACTIVE TIME", color = Muted, fontSize = 8.sp, letterSpacing = 1.sp)
+                            Text(formatSessionDurationShort(session.activeDurationMs ?: 0L), color = Gold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onResume,
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Ink),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("RESUME SESSION", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            }
+        },
+        dismissButton = {
+            Column(horizontalAlignment = Alignment.End) {
+                TextButton(onClick = onFinish) { Text("FINISH AS INCOMPLETE", color = Color(0xFFFF9B82), fontSize = 10.sp) }
+                TextButton(onClick = onHistory) { Text("VIEW HISTORY", color = Muted, fontSize = 10.sp) }
+            }
+        }
+    )
+}
+
+private fun formatSessionDurationShort(durationMs: Long): String {
+    val seconds = durationMs.coerceAtLeast(0L) / 1000L
+    val hours = seconds / 3600L
+    val minutes = (seconds % 3600L) / 60L
+    val remainder = seconds % 60L
+    return when {
+        hours > 0 -> "${hours}h ${minutes}m"
+        minutes > 0 -> "${minutes}m ${remainder}s"
+        else -> "${remainder}s"
+    }
 }
 
 @Composable
