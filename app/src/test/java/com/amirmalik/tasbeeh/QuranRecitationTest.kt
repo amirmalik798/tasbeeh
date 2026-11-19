@@ -9,6 +9,65 @@ import org.junit.Test
 class QuranRecitationTest {
 
     @Test
+    fun quranFoundationReciterCatalogueKeepsDistinctRecitationStylesAndStableIds() {
+        val payload = """
+            {
+              "recitations": [
+                {
+                  "id": 1,
+                  "reciter_name": "AbdulBaset AbdulSamad",
+                  "style": "Mujawwad",
+                  "translated_name": {"name": "AbdulBaset AbdulSamad", "language_name": "english"}
+                },
+                {
+                  "id": 2,
+                  "reciter_name": "AbdulBaset AbdulSamad",
+                  "style": "Murattal",
+                  "translated_name": {"name": "AbdulBaset AbdulSamad", "language_name": "english"}
+                },
+                {
+                  "id": 3,
+                  "reciter_name": "Abdur-Rahman as-Sudais",
+                  "style": null,
+                  "translated_name": {"name": "Abdur-Rahman as-Sudais", "language_name": "english"}
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val reciters = QuranReciterCatalog.parse(payload)
+
+        assertEquals(listOf(1, 2, 3), reciters.map { it.id })
+        assertEquals("AbdulBaset AbdulSamad · Mujawwad", reciters[0].displayName)
+        assertEquals("AbdulBaset AbdulSamad · Murattal", reciters[1].displayName)
+        assertEquals("Abdur-Rahman as-Sudais", reciters[2].displayName)
+        assertEquals(reciters, QuranReciterCatalog.decode(QuranReciterCatalog.encode(reciters)))
+    }
+
+    @Test
+    fun offlineReciterCatalogueContainsThePublishedAyahByAyahOptions() {
+        val reciters = QuranReciterCatalog.fallback
+
+        assertEquals(12, reciters.size)
+        assertEquals(reciters.size, reciters.map { it.id }.distinct().size)
+        assertEquals(QuranReciterCatalog.DEFAULT_RECITER_ID, reciters.first { it.id == 1 }.id)
+        assertTrue(reciters.any { it.id == 2 && it.style == "Murattal" })
+        assertTrue(reciters.any { it.id == 12 && it.style == "Muallim" })
+    }
+
+    @Test
+    fun onlyThe114SurahsAppearInTheDedicatedQuranCategory() {
+        val items = QuranicDuaCatalog.fallbackItems()
+        val quranCategory = items.filter(::isQuranCategorySurah)
+
+        assertEquals(114, quranCategory.size)
+        assertTrue(quranCategory.all(QuranicDuaCatalog::isFullSurah))
+        assertFalse(quranCategory.any { it.id == "quran-four-qul" })
+        assertFalse(quranCategory.any { it.id == "quran-ayat-al-kursi" })
+        assertFalse(quranCategory.any { it.id == "quran-last-two-baqarah" })
+    }
+
+    @Test
     fun ayahKeysResolveToDocumentedQuranFoundationAudioPaths() {
         assertEquals(
             "https://verses.quran.foundation/AbdulBaset/Mujawwad/mp3/002255.mp3",
