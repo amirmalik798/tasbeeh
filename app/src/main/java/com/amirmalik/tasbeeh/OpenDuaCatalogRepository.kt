@@ -173,7 +173,7 @@ internal object OpenDuaCatalogParser {
                             for (recordingIndex in 0 until recordings.length()) {
                                 val recording = recordings.optJSONObject(recordingIndex) ?: continue
                                 val url = recording.optString("url").trim()
-                                if (!url.startsWith("https://audio.opendua.org/")) continue
+                                if (!isTrustedOpenDuaAudioUrl(url)) continue
                                 audioUrls += url
                                 recording.optString("id").trim().takeIf { it.isNotBlank() }
                                     ?.let(recordingIds::add)
