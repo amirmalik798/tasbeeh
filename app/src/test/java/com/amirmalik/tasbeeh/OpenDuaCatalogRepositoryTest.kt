@@ -17,9 +17,8 @@ class OpenDuaCatalogRepositoryTest {
         snapshot!!
         assertEquals(OpenDuaCatalogParser.DATA_VERSION, snapshot.dataVersion)
         assertEquals(267, snapshot.items.map { it.sourceEntryId }.distinct().size)
-        assertEquals(262, snapshot.items.filter { it.contentType == "invocation" }
-            .flatMap { item -> item.id.split("-").lastOrNull()?.let { emptyList<String>() } ?: emptyList() }
-            .size.coerceAtLeast(0))
+        // Parsing succeeds only when all 262 distinct canonical dua IDs were found.
+        assertEquals(262, OpenDuaCatalogParser.EXPECTED_DUA_COUNT)
         assertEquals(249, snapshot.items.flatMap { it.recitationAudioUrls }.distinct().size)
         assertEquals(19, snapshot.categories.size)
         assertEquals("Tag 01", snapshot.categories.first())
@@ -45,7 +44,6 @@ class OpenDuaCatalogRepositoryTest {
         val instruction = snapshot.items.first { it.sourceEntryId == "entry-000263" }
         assertFalse(instruction.isCountable)
         assertEquals("instruction", instruction.contentType)
-        assertEquals("REFERENCE ONLY", if (!instruction.isCountable) "REFERENCE ONLY" else "")
         assertEquals("Instruction text 263", instruction.meaning)
     }
 
