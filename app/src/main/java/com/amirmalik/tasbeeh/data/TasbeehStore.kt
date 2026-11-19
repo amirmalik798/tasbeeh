@@ -13,14 +13,7 @@ import org.json.JSONObject
 
 private val Context.tasbeehDataStore by preferencesDataStore(name = "tasbeeh_state")
 
-data class SavedSession(
-    val id: Long,
-    val dhikr: String,
-    val count: Int,
-    val target: Int,
-    val completedAt: Long
-)
-
+data class SavedSession(val id: Long, val dhikr: String, val count: Int, val target: Int, val completedAt: Long)
 data class TasbeehState(
     val count: Int = 0,
     val target: Int = 33,
@@ -51,13 +44,7 @@ class TasbeehStore(private val context: Context) {
         )
     }
 
-    suspend fun update(
-        count: Int? = null,
-        target: Int? = null,
-        dhikr: String? = null,
-        soundEnabled: Boolean? = null,
-        hapticsEnabled: Boolean? = null
-    ) {
+    suspend fun update(count: Int? = null, target: Int? = null, dhikr: String? = null, soundEnabled: Boolean? = null, hapticsEnabled: Boolean? = null) {
         context.tasbeehDataStore.edit { prefs ->
             count?.let { prefs[Keys.count] = it.coerceAtLeast(0) }
             target?.let { prefs[Keys.target] = it.coerceIn(1, 9999) }
@@ -69,9 +56,9 @@ class TasbeehStore(private val context: Context) {
 
     suspend fun completeSession(session: SavedSession) {
         context.tasbeehDataStore.edit { prefs ->
-            val sessions = decodeSessions(prefs[Keys.sessions].orEmpty()).toMutableList()
-            if (sessions.none { it.id == session.id }) sessions.add(0, session)
-            prefs[Keys.sessions] = encodeSessions(sessions.take(100))
+            val current = decodeSessions(prefs[Keys.sessions].orEmpty()).toMutableList()
+            if (current.none { it.id == session.id }) current.add(0, session)
+            prefs[Keys.sessions] = encodeSessions(current.take(100))
         }
     }
 
@@ -80,28 +67,18 @@ class TasbeehStore(private val context: Context) {
         buildList {
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
-                add(
-                    SavedSession(
-                        id = item.optLong("id"),
-                        dhikr = item.optString("dhikr", "SubhanAllah"),
-                        count = item.optInt("count").coerceAtLeast(0),
-                        target = item.optInt("target").coerceAtLeast(1),
-                        completedAt = item.optLong("completedAt")
-                    )
-                )
+                add(SavedSession(item.optLong("id"), item.optString("dhikr", "SubhanAllah"),
+                    item.optInt("count").coerceAtLeast(0), item.optInt("target").coerceAtLeast(1), item.optLong("completedAt")))
             }
         }
     }.getOrDefault(emptyList())
 
     private fun encodeSessions(sessions: List<SavedSession>): String {
         val array = JSONArray()
-        sessions.forEach { session ->
+        sessions.forEach { s ->
             array.put(JSONObject().apply {
-                put("id", session.id)
-                put("dhikr", session.dhikr)
-                put("count", session.count)
-                put("target", session.target)
-                put("completedAt", session.completedAt)
+                put("id", s.id); put("dhikr", s.dhikr); put("count", s.count)
+                put("target", s.target); put("completedAt", s.completedAt)
             })
         }
         return array.toString()

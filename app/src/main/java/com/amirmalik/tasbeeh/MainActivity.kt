@@ -85,7 +85,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     var showTarget by remember { mutableStateOf(false) }
     var showDhikr by remember { mutableStateOf(false) }
     var motionKey by remember { mutableIntStateOf(0) }
-    var lastCountedCompletion by remember { mutableLongStateOf(0L) }
+    var completionRecordedFor by remember { mutableIntStateOf(-1) }
 
     BackHandler(enabled = showHistory || showSettings) {
         showHistory = false
@@ -97,8 +97,8 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
         val now = System.currentTimeMillis()
         scope.launch {
             store.update(count = next)
-            if (next >= state.target && state.count < state.target && lastCountedCompletion != state.target.toLong()) {
-                lastCountedCompletion = state.target.toLong()
+            if (next >= state.target && state.count < state.target && completionRecordedFor != state.target) {
+                completionRecordedFor = state.target
                 store.completeSession(SavedSession(now, state.dhikr, next, state.target, now))
             }
         }
@@ -135,7 +135,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
 
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
                     val diameter = min(maxWidth, 352.dp)
-                    TasbeehStrand(count = state.count, target = state.target, motionKey = motionKey, modifier = Modifier.size(diameter))
+                    TasbeehStrand(count = state.count, motionKey = motionKey, modifier = Modifier.size(diameter))
                 }
 
                 Spacer(Modifier.height(5.dp))
@@ -196,7 +196,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             onDismissRequest = { showReset = false }, containerColor = Panel,
             title = { Text("Reset this session?", color = Ivory) },
             text = { Text("Your current count will return to zero. Completed sessions remain in history.", color = Muted) },
-            confirmButton = { TextButton(onClick = { scope.launch { store.update(count = 0) }; lastCountedCompletion = 0L; showReset = false }) { Text("RESET COUNT", color = Gold) } },
+            confirmButton = { TextButton(onClick = { scope.launch { store.update(count = 0) }; completionRecordedFor = -1; showReset = false }) { Text("RESET COUNT", color = Gold) } },
             dismissButton = { TextButton(onClick = { showReset = false }) { Text("CANCEL", color = Muted) } }
         )
         if (showTarget) TargetDialog(state.target, { showTarget = false }) { target -> scope.launch { store.update(target = target) }; showTarget = false }
@@ -244,15 +244,15 @@ private fun KaabaMark(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TasbeehStrand(count: Int, target: Int, motionKey: Int, modifier: Modifier = Modifier) {
+private fun TasbeehStrand(count: Int, motionKey: Int, modifier: Modifier = Modifier) {
     val travel = remember { Animatable(0f) }
     val settle = remember { Animatable(0f) }
     LaunchedEffect(motionKey) {
         if (motionKey > 0) {
             travel.snapTo(0f)
-            travel.animateTo(1f, tween(340, easing = FastOutSlowInEasing))
+            travel.animateTo(1f, tween(360, easing = FastOutSlowInEasing))
             settle.snapTo(1f)
-            settle.animateTo(0f, spring(dampingRatio = .38f, stiffness = 360f))
+            settle.animateTo(0f, spring(dampingRatio = .38f, stiffness = 340f))
         }
     }
     Canvas(modifier) {
@@ -262,7 +262,7 @@ private fun TasbeehStrand(count: Int, target: Int, motionKey: Int, modifier: Mod
         val beadCount = 33
         val baseR = size.minDimension * .039f
         val currentSlot = count % beadCount
-        val activeAngle = -PI / 2.0 + currentSlot * (2.0 * PI / beadCount)
+        val stepAngle = 2.0 * PI / beadCount
         val progress = travel.value
         val bob = settle.value
 
@@ -270,44 +270,42 @@ private fun TasbeehStrand(count: Int, target: Int, motionKey: Int, modifier: Mod
             Brush.radialGradient(listOf(Gold.copy(alpha = .105f), Color.Transparent), Offset(cx, cy), radius * 1.55f),
             radius * 1.55f, Offset(cx, cy)
         )
-        // Dark braided cord underneath beads.
         drawCircle(Color(0xFF8D7140).copy(alpha = .42f), radius, style = Stroke(size.minDimension * .008f))
         drawCircle(Color(0xFF050706), radius, style = Stroke(size.minDimension * .003f))
 
         for (i in 0 until beadCount) {
-            val angle = -PI / 2.0 + i * (2.0 * PI / beadCount)
+            val baseAngle = -PI / 2.0 + i * stepAngle
             val isActive = i == currentSlot
-            val wasActive = i == ((currentSlot - 1 + beadCount) % beadCount)
+            val previousActive = i == ((currentSlot - 1 + beadCount) % beadCount)
+            // New active bead travels around the loop. The previously active bead
+            // yields into the next slot so the motion reads as a physical bead sliding
+            // along a continuous cord rather than a stationary highlight.
             val angularOffset = when {
-                isActive -> progress * (2.0 * PI / beadCount)
-                wasActive -> -progress * (2.0 * PI / beadCount)
+                isActive -> -stepAngle * (1f - progress)
+                previousActive -> stepAngle * progress
                 else -> 0.0
             }
-            val a = angle + angularOffset
-            val x = cx + cos(a).toFloat() * radius
-            val y = cy + sin(a).toFloat() * radius
-            val r = baseR * (if (isActive) 1f + .10f * bob else 1f)
-            val shade = if (isActive) GoldLight else if (i < currentSlot) Color(0xFFC39B55) else Color(0xFF76613B)
+            val angle = baseAngle + angularOffset
+            val x = cx + cos(angle).toFloat() * radius
+            val y = cy + sin(angle).toFloat() * radius
+            val r = baseR * (if (isActive) 1f + .12f * bob else 1f)
+            val color = if (isActive) GoldLight else if (i < currentSlot) Color(0xFFC39B55) else Color(0xFF76613B)
 
-            // Cast shadow; volumetric highlight; tiny specular reflection.
-            drawCircle(Color.Black.copy(alpha = .78f), r * 1.14f, Offset(x + r * .16f, y + r * .25f))
+            drawCircle(Color.Black.copy(alpha = .80f), r * 1.15f, Offset(x + r * .16f, y + r * .27f))
             drawCircle(
                 Brush.radialGradient(
                     colors = if (isActive) listOf(Color(0xFFFFF7D8), GoldLight, Color(0xFFAE803B), Color(0xFF553A1B))
-                    else listOf(Color(0xFFF0D28A), shade, Color(0xFF604622), Color(0xFF302516)),
-                    center = Offset(x - r * .33f, y - r * .39f),
+                    else listOf(Color(0xFFF0D28A), color, Color(0xFF604622), Color(0xFF302516)),
+                    center = Offset(x - r * .34f, y - r * .40f),
                     radius = r * 1.72f
                 ),
                 r, Offset(x, y)
             )
-            drawCircle(Color.White.copy(alpha = if (isActive) .76f else .34f), r * .16f, Offset(x - r * .37f, y - r * .42f))
+            drawCircle(Color.White.copy(alpha = if (isActive) .76f else .34f), r * .16f, Offset(x - r * .38f, y - r * .44f))
             drawCircle(Color(0xFF352313).copy(alpha = .48f), r * .88f, Offset(x, y), style = Stroke(r * .05f))
-            if (isActive) {
-                drawCircle(GoldLight.copy(alpha = .22f * (1f - progress)), r * 1.55f, Offset(x, y))
-            }
+            if (isActive) drawCircle(GoldLight.copy(alpha = .22f * (1f - progress)), r * 1.55f, Offset(x, y))
         }
 
-        // Prominent imam bead and silk tassel are physical pieces of the strand.
         val ix = cx
         val iy = cy + radius
         val imamR = baseR * 1.48f
@@ -355,11 +353,10 @@ private fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 
 @Composable
 private fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(
-        modifier = modifier.height(42.dp).clickable(onClick = onClick),
-        color = Panel, shape = RoundedCornerShape(14.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2B3028))
-    ) { Box(contentAlignment = Alignment.Center) { Text(text, color = Ivory, fontSize = 11.sp, fontWeight = FontWeight.Medium) } }
+    Surface(modifier = modifier.height(42.dp).clickable(onClick = onClick), color = Panel,
+        shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2B3028))) {
+        Box(contentAlignment = Alignment.Center) { Text(text, color = Ivory, fontSize = 11.sp, fontWeight = FontWeight.Medium) }
+    }
 }
 
 @Composable
@@ -372,19 +369,12 @@ private fun TargetDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> U
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(33, 99, 100).forEach { target ->
-                        FilterChip(
-                            selected = current == target,
-                            onClick = { onSave(target) },
-                            label = { Text(target.toString()) },
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Gold, selectedLabelColor = Ink, labelColor = Ivory)
-                        )
+                        FilterChip(selected = current == target, onClick = { onSave(target) }, label = { Text(target.toString()) },
+                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Gold, selectedLabelColor = Ink, labelColor = Ivory))
                     }
                 }
-                OutlinedTextField(
-                    value = custom, onValueChange = { custom = it.filter(Char::isDigit).take(4) },
-                    label = { Text("Custom target (1–9999)") }, singleLine = true,
-                    colors = darkFieldColors()
-                )
+                OutlinedTextField(value = custom, onValueChange = { custom = it.filter(Char::isDigit).take(4) },
+                    label = { Text("Custom target (1–9999)") }, singleLine = true, colors = darkFieldColors())
             }
         },
         confirmButton = { TextButton(onClick = { custom.toIntOrNull()?.takeIf { it in 1..9999 }?.let(onSave) }) { Text("SAVE", color = Gold) } },
@@ -401,10 +391,8 @@ private fun DhikrDialog(current: String, onDismiss: () -> Unit, onSelect: (Strin
         text = {
             Column {
                 options.forEach { option ->
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onSelect(option) }.padding(vertical = 11.dp, horizontal = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onSelect(option) }.padding(vertical = 11.dp, horizontal = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
                         Text(option, Modifier.weight(1f), color = if (option == current) Gold else Ivory, fontSize = 14.sp)
                         if (option == current) Icon(Icons.Default.Check, null, tint = Gold, modifier = Modifier.size(17.dp))
                     }
@@ -446,11 +434,8 @@ private fun SettingToggle(title: String, description: String, checked: Boolean, 
 @Composable
 private fun HistoryDialog(sessions: List<SavedSession>, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            Modifier.fillMaxWidth(.92f).fillMaxHeight(.78f), color = Panel,
-            shape = RoundedCornerShape(26.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF383326))
-        ) {
+        Surface(Modifier.fillMaxWidth(.92f).fillMaxHeight(.78f), color = Panel,
+            shape = RoundedCornerShape(26.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF383326))) {
             Column(Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -486,7 +471,7 @@ private fun HistoryDialog(sessions: List<SavedSession>, onDismiss: () -> Unit) {
 
 @Composable
 private fun darkFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Ivory, unfocusedTextColor = Ivory,
-    focusedBorderColor = Gold, unfocusedBorderColor = Color(0xFF45483F),
-    focusedLabelColor = Gold, unfocusedLabelColor = Muted, cursorColor = Gold
+    focusedTextColor = Ivory, unfocusedTextColor = Ivory, focusedBorderColor = Gold,
+    unfocusedBorderColor = Color(0xFF45483F), focusedLabelColor = Gold,
+    unfocusedLabelColor = Muted, cursorColor = Gold
 )
