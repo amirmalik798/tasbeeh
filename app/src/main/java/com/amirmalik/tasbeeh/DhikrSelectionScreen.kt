@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -620,7 +621,7 @@ private fun DhikrOptionCard(
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            Icons.Default.PlayArrow,
+                            Icons.Default.VolumeUp,
                             contentDescription = "Listen to ${item.title}",
                             tint = if (listenEnabled && onListen != null) gold else Color(0xFF667064),
                             modifier = Modifier.size(19.dp)
