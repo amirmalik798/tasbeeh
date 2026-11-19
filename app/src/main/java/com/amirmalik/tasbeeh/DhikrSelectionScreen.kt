@@ -323,20 +323,26 @@ private fun DhikrOptionCard(
                     }
                 }
             }
-            Spacer(Modifier.height(11.dp))
-            Text(
-                item.arabic,
-                modifier = Modifier.fillMaxWidth(),
-                color = Color(0xFFFFE7AD),
-                fontSize = if (item.arabic.length > 90) 18.sp else 23.sp,
-                lineHeight = if (item.arabic.length > 90) 32.sp else 38.sp,
-                textAlign = TextAlign.End,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(Modifier.height(7.dp))
-            Text(item.transliteration, color = gold, fontSize = 11.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(4.dp))
-            Text(item.meaning, color = Color(0xFFBEB9AC), fontSize = 11.sp, lineHeight = 16.sp)
+            if (item.arabic.isNotBlank()) {
+                Spacer(Modifier.height(11.dp))
+                Text(
+                    item.arabic,
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFFFFE7AD),
+                    fontSize = if (item.arabic.length > 90) 18.sp else 23.sp,
+                    lineHeight = if (item.arabic.length > 90) 32.sp else 38.sp,
+                    textAlign = TextAlign.End,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            if (item.transliteration.isNotBlank()) {
+                Spacer(Modifier.height(7.dp))
+                Text(item.transliteration, color = gold, fontSize = 11.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium)
+            }
+            if (item.meaning.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(item.meaning, color = Color(0xFFBEB9AC), fontSize = 11.sp, lineHeight = 16.sp)
+            }
             if (item.reference.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
                 Text(item.reference, color = Color(0xFF7F8C78), fontSize = 9.sp, letterSpacing = .25.sp)
