@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: android-${{ github.ref }}
+  group: serene-dhikr-android-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
