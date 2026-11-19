@@ -17,6 +17,14 @@ internal object DhikrCatalog {
      * the complete cited ayah so the qari's connected recitation is preserved.
      */
     private val quranAyahKeysByDhikrId = mapOf(
+        "sleep-four-qul" to listOf(
+            "109:1", "109:2", "109:3", "109:4", "109:5", "109:6",
+            "112:1", "112:2", "112:3", "112:4",
+            "113:1", "113:2", "113:3", "113:4", "113:5",
+            "114:1", "114:2", "114:3", "114:4", "114:5", "114:6"
+        ),
+        "sleep-ayat-al-kursi" to listOf("2:255"),
+        "sleep-last-two-baqarah" to listOf("2:285", "2:286"),
         "hasbunallah" to listOf("3:173"),
         "inna-lillah" to listOf("2:156"),
         "dua-yunus" to listOf("21:87"),
@@ -57,6 +65,21 @@ internal object DhikrCatalog {
     )
 
     val items: List<DhikrItem> = listOf(
+        d("sleep-four-qul", "4 Qul", "Sleep",
+            "قُلْ يَا أَيُّهَا الْكَافِرُونَ ۝ لَا أَعْبُدُ مَا تَعْبُدُونَ ۝ وَلَا أَنْتُمْ عَابِدُونَ مَا أَعْبُدُ ۝ وَلَا أَنَا عَابِدٌ مَا عَبَدْتُمْ ۝ وَلَا أَنْتُمْ عَابِدُونَ مَا أَعْبُدُ ۝ لَكُمْ دِينُكُمْ وَلِيَ دِينِ ۝ قُلْ هُوَ اللَّهُ أَحَدٌ ۝ اللَّهُ الصَّمَدُ ۝ لَمْ يَلِدْ وَلَمْ يُولَدْ ۝ وَلَمْ يَكُنْ لَهُ كُفُوًا أَحَدٌ ۝ قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ ۝ مِنْ شَرِّ مَا خَلَقَ ۝ وَمِنْ شَرِّ غَاسِقٍ إِذَا وَقَبَ ۝ وَمِنْ شَرِّ النَّفَّاثَاتِ فِي الْعُقَدِ ۝ وَمِنْ شَرِّ حَاسِدٍ إِذَا حَسَدَ ۝ قُلْ أَعُوذُ بِرَبِّ النَّاسِ ۝ مَلِكِ النَّاسِ ۝ إِلَٰهِ النَّاسِ ۝ مِنْ شَرِّ الْوَسْوَاسِ الْخَنَّاسِ ۝ الَّذِي يُوَسْوِسُ فِي صُدُورِ النَّاسِ ۝ مِنَ الْجِنَّةِ وَالنَّاسِ",
+            "Qul yā ayyuhal-kāfirūn. Lā aʿbudu mā taʿbudūn. Wa lā antum ʿābidūna mā aʿbud. Wa lā anā ʿābidun mā ʿabadtum. Wa lā antum ʿābidūna mā aʿbud. Lakum dīnukum wa liya dīn. Qul huwa Allāhu aḥad. Allāhuṣ-ṣamad. Lam yalid wa lam yūlad. Wa lam yakun lahū kufuwan aḥad. Qul aʿūdhu bi-rabbil-falaq. Min sharri mā khalaq. Wa min sharri ghāsiqin idhā waqab. Wa min sharrin-naffāthāti fil-ʿuqad. Wa min sharri ḥāsidin idhā ḥasad. Qul aʿūdhu bi-rabbin-nās. Malikin-nās. Ilāhin-nās. Min sharril-waswāsil-khannās. Alladhī yuwaswisu fī ṣudūrin-nās. Minal-jinnati wan-nās",
+            "The four Qul chapters: Al-Kafirun, Al-Ikhlas, Al-Falaq and An-Nas. Recite the complete surahs.",
+            "Qur'an 109:1–6; 112:1–4; 113:1–5; 114:1–6"),
+        d("sleep-ayat-al-kursi", "Ayat al-Kursi", "Sleep",
+            "اللَّهُ لَا إِلَٰهَ إِلَّا هُوَ الْحَيُّ الْقَيُّومُ ۚ لَا تَأْخُذُهُ سِنَةٌ وَلَا نَوْمٌ ۚ لَهُ مَا فِي السَّمَاوَاتِ وَمَا فِي الْأَرْضِ ۗ مَنْ ذَا الَّذِي يَشْفَعُ عِنْدَهُ إِلَّا بِإِذْنِهِ ۚ يَعْلَمُ مَا بَيْنَ أَيْدِيهِمْ وَمَا خَلْفَهُمْ ۖ وَلَا يُحِيطُونَ بِشَيْءٍ مِنْ عِلْمِهِ إِلَّا بِمَا شَاءَ ۚ وَسِعَ كُرْسِيُّهُ السَّمَاوَاتِ وَالْأَرْضَ ۖ وَلَا يَئُودُهُ حِفْظُهُمَا ۚ وَهُوَ الْعَلِيُّ الْعَظِيمُ",
+            "Allāhu lā ilāha illā huwa al-ḥayyul-qayyūm. Lā taʾkhudhuhū sinatun wa lā nawm. Lahū mā fis-samāwāti wa mā fil-arḍ. Man dhal-ladhī yashfaʿu ʿindahū illā bi-idhnih. Yaʿlamu mā bayna aydīhim wa mā khalfahum. Wa lā yuḥīṭūna bi-shayʾin min ʿilmihī illā bimā shāʾ. Wasiʿa kursiyyuhus-samāwāti wal-arḍ. Wa lā yaʾūduhū ḥifẓuhumā wa huwal-ʿaliyyul-ʿaẓīm",
+            "Allah—there is no deity worthy of worship except Him, the Ever-Living, the Sustainer. Neither drowsiness nor sleep overtakes Him. To Him belongs all that is in the heavens and earth.",
+            "Qur'an 2:255"),
+        d("sleep-last-two-baqarah", "Last 2 Ayah of Surah Al-Baqarah", "Sleep",
+            "آمَنَ الرَّسُولُ بِمَا أُنْزِلَ إِلَيْهِ مِنْ رَبِّهِ وَالْمُؤْمِنُونَ ۚ كُلٌّ آمَنَ بِاللَّهِ وَمَلَائِكَتِهِ وَكُتُبِهِ وَرُسُلِهِ لَا نُفَرِّقُ بَيْنَ أَحَدٍ مِنْ رُسُلِهِ ۚ وَقَالُوا سَمِعْنَا وَأَطَعْنَا ۖ غُفْرَانَكَ رَبَّنَا وَإِلَيْكَ الْمَصِيرُ ۝ لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا وُسْعَهَا ۚ لَهَا مَا كَسَبَتْ وَعَلَيْهَا مَا اكْتَسَبَتْ ۗ رَبَّنَا لَا تُؤَاخِذْنَا إِنْ نَسِينَا أَوْ أَخْطَأْنَا ۚ رَبَّنَا وَلَا تَحْمِلْ عَلَيْنَا إِصْرًا كَمَا حَمَلْتَهُ عَلَى الَّذِينَ مِنْ قَبْلِنَا ۚ رَبَّنَا وَلَا تُحَمِّلْنَا مَا لَا طَاقَةَ لَنَا بِهِ ۖ وَاعْفُ عَنَّا وَاغْفِرْ لَنَا وَارْحَمْنَا ۚ أَنْتَ مَوْلَانَا فَانْصُرْنَا عَلَى الْقَوْمِ الْكَافِرِينَ",
+            "Āmanar-rasūlu bimā unzila ilayhi mir-rabbihī wal-muʾminūn. Kullun āmana billāhi wa malāʾikatihī wa kutubihī wa rusulih. Lā nufarriqu bayna aḥadim-mir-rusulih. Wa qālū samiʿnā wa aṭaʿnā. Ghufrānaka rabbanā wa ilaykal-maṣīr. Lā yukallifullāhu nafsan illā wusʿahā. Lahā mā kasabat wa ʿalayhā maktasabat. Rabbanā lā tuʾākhidhnā in nasīnā aw akhṭaʾnā. Rabbanā wa lā taḥmil ʿalaynā iṣran kamā ḥamaltahū ʿalalladhīna min qablinā. Rabbanā wa lā tuḥammilnā mā lā ṭāqata lanā bih. Waʿfu ʿannā, waghfir lanā, warḥamnā. Anta mawlānā fanṣurnā ʿalal-qawmil-kāfirīn",
+            "The Messenger believes in what was revealed to him from his Lord, and so do the believers. They believe in Allah, His angels, His books and His messengers. Allah does not burden a soul beyond what it can bear. Our Lord, do not hold us accountable if we forget or make a mistake; pardon us, forgive us, have mercy on us and help us.",
+            "Qur'an 2:285–286"),
         d("subhanallah", "SubhanAllah", "Tasbih", "سُبْحَانَ اللَّهِ",
             "Subḥānallāh", "Glory be to Allah.", "Sahih Muslim 2137; Hisn al-Muslim 131"),
         d("alhamdulillah", "Alhamdulillah", "Praise", "الْحَمْدُ لِلَّهِ",
