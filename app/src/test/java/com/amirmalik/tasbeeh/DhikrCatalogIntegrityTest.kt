@@ -2,79 +2,80 @@ package com.amirmalik.tasbeeh
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DhikrCatalogIntegrityTest {
 
     @Test
-    fun builtInLibraryContainsTheOriginalHundredPlusThreeSleepEntries() {
-        assertEquals(103, DhikrCatalog.items.size)
-    }
-
-    @Test
-    fun sleepLibraryStartsWithTheThreeRequestedQuranicRecitations() {
-        val firstSleepIds = DhikrCatalog.items
-            .filter { it.category == "Sleep" }
-            .take(3)
-            .map { it.id }
+    fun dedicatedQuranLibraryContainsOnlyTheFourRequestedSelections() {
+        assertEquals(4, QuranicDuaCatalog.additions.size)
         assertEquals(
-            listOf("sleep-four-qul", "sleep-ayat-al-kursi", "sleep-last-two-baqarah"),
-            firstSleepIds
+            listOf(
+                "Surah al-Fatihah",
+                "4 Qul",
+                "Ayat al-Kursi",
+                "Last two ayahs of Surah al-Baqarah"
+            ),
+            QuranicDuaCatalog.additions.map { it.title }
         )
     }
 
     @Test
-    fun everyEntryHasUniqueIdentityAndSelectionValue() {
-        val items = DhikrCatalog.items
-        assertEquals(items.size, items.map { it.id }.toSet().size)
-        assertEquals(items.size, items.map { it.value }.toSet().size)
-    }
-
-    @Test
-    fun everyEntryHasArabicTransliterationMeaningAndSource() {
-        DhikrCatalog.items.forEach { item ->
-            assertFalse("Blank id", item.id.isBlank())
-            assertFalse("Blank value", item.value.isBlank())
-            assertFalse("Blank category for " + item.id, item.category.isBlank())
-            assertFalse("Missing Arabic for " + item.id, item.arabic.isBlank())
-            assertTrue("Arabic script missing for " + item.id, item.arabic.any { it in '\u0600'..'\u06FF' })
-            assertFalse("Missing transliteration for " + item.id, item.transliteration.isBlank())
-            assertFalse("Missing meaning for " + item.id, item.meaning.isBlank())
-            assertFalse("Missing source for " + item.id, item.reference.isBlank())
-            assertNotNull("Entry must resolve by its stored value: " + item.value, DhikrCatalog.byValue(item.value))
+    fun allQuranSelectionsAreInTheDedicatedQuranCategory() {
+        val items = QuranicDuaCatalog.fallbackItems()
+        assertEquals(4, items.size)
+        items.forEach { item ->
+            assertEquals("Quran", item.category)
+            assertEquals(listOf("Quran"), item.categories)
+            assertTrue(item.isCountable)
+            assertFalse(item.quranAyahKeys.isEmpty())
         }
     }
 
     @Test
-    fun previouslySavedBuiltInSelectionsRemainResolvable() {
-        val previouslySavedValues = listOf(
-            "SubhanAllah",
-            "Alhamdulillah",
-            "Allahu Akbar",
-            "La ilaha illallah",
-            "SubhanAllahi wa bihamdihi",
-            "SubhanAllahil-Azim",
-            "The four beloved phrases",
-            "La hawla wa la quwwata illa billah",
-            "Astaghfirullah",
-            "Astaghfirullaha wa atubu ilayh",
-            "Sayyid al-Istighfar",
-            "Allahumma salli 'ala Muhammad",
-            "La ilaha illallah wahdahu...",
-            "Hasbunallahu wa ni'mal-wakil",
-            "Inna lillahi wa inna ilayhi raji'un",
-            "Dua of Prophet Yunus",
-            "Rabbana atina fid-dunya",
-            "Rabbighfir li",
-            "A'udhu bi kalimatillah",
-            "Bismillahilladhi la yadurru",
-            "Rabbi inni lima anzalta",
-            "Dua for beneficial knowledge"
+    fun quranSelectionIdsValuesAndAyahMappingsAreUniqueAndValid() {
+        val items = QuranicDuaCatalog.fallbackItems()
+        assertEquals(items.size, items.map { it.id }.distinct().size)
+        assertEquals(items.size, items.map { it.value }.distinct().size)
+        items.forEach { item ->
+            assertEquals(
+                "Every ayah in ${item.id} must resolve to Quran Foundation",
+                item.quranAyahKeys.size,
+                QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys).size
+            )
+        }
+    }
+
+    @Test
+    fun theFourQuranEntriesHaveTheExactRequestedSurahVerseRanges() {
+        val items = QuranicDuaCatalog.additions.associateBy { it.id }
+        assertEquals(
+            (1..7).map { "1:$it" },
+            items.getValue("quran-surah-al-fatiha").ayahKeys
         )
-        previouslySavedValues.forEach { value ->
-            assertNotNull("Previously saved Dhikr no longer resolves: " + value, DhikrCatalog.byValue(value))
-        }
+        assertEquals(
+            listOf(
+                "109:1", "109:2", "109:3", "109:4", "109:5", "109:6",
+                "112:1", "112:2", "112:3", "112:4",
+                "113:1", "113:2", "113:3", "113:4", "113:5",
+                "114:1", "114:2", "114:3", "114:4", "114:5", "114:6"
+            ),
+            items.getValue("quran-four-qul").ayahKeys
+        )
+        assertEquals(listOf("2:255"), items.getValue("quran-ayat-al-kursi").ayahKeys)
+        assertEquals(
+            listOf("2:285", "2:286"),
+            items.getValue("quran-last-two-baqarah").ayahKeys
+        )
+    }
+
+    @Test
+    fun categoryOrderIsFixedBeforeOpenDuaCategoriesAndKeepsApiOrder() {
+        val apiCategories = listOf("Morning and evening", "Sleep and waking", "Travel")
+        assertEquals(
+            listOf("All", "Quran", "My Dhikhrs", "Morning and evening", "Sleep and waking", "Travel"),
+            orderedDhikrCategories(apiCategories)
+        )
     }
 }
