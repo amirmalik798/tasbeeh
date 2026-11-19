@@ -86,7 +86,11 @@ internal fun SessionHistoryScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Current session",
+                    when (session?.status) {
+                        SessionStatus.ACTIVE, SessionStatus.PAUSED -> "Current session"
+                        SessionStatus.COMPLETED, SessionStatus.INCOMPLETE -> "Last session"
+                        null -> "Current session"
+                    },
                     color = HistoryIvory,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold
