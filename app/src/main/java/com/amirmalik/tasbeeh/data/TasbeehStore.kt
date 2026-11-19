@@ -238,7 +238,11 @@ class TasbeehStore(private val context: Context) {
             if (open?.status == SessionStatus.PAUSED) return@edit
             if (open == null) {
                 val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
-                if (latestSaved?.status == SessionStatus.COMPLETED && latestSaved.count == currentCount) {
+                if (
+                    latestSaved?.status == SessionStatus.COMPLETED &&
+                    latestSaved.count == currentCount &&
+                    latestSaved.dhikr == prefs[Keys.dhikr]
+                ) {
                     return@edit
                 }
             }
