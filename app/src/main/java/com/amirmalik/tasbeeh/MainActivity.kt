@@ -793,7 +793,7 @@ private fun TasbeehStartupScreen() {
                 KaabaMark(Modifier.size(29.dp))
             }
             Spacer(Modifier.height(18.dp))
-            Text("NOOR-E-DHIKR", color = Ivory, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
+            Text("Serene Dhikr", color = Ivory, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
             Spacer(Modifier.height(7.dp))
             Text("Preparing your remembrance", color = Muted, fontSize = 12.sp)
             Spacer(Modifier.height(22.dp))
@@ -1523,7 +1523,7 @@ private fun Header(
             ) { KaabaMark(Modifier.size(23.dp)) }
             Column {
                 Text(
-                    "NOOR-E-DHIKR",
+                    "Serene Dhikr",
                     color = Ivory,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
