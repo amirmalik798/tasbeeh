@@ -127,7 +127,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             showCustomDhikrEditor -> {
                 CustomDhikrEditorScreen(
                     existing = editingCustomDhikr,
-                    existingTitles = state.customDhikrs
+                    existingTitles = DhikrCatalog.items.map { it.title } + state.customDhikrs
                         .filterNot { it.id == editingCustomDhikr?.id }
                         .map { it.title },
                     onBack = {
