@@ -1,5 +1,7 @@
 package com.amirmalik.tasbeeh
 
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -103,6 +105,9 @@ class MainActivity : ComponentActivity() {
     private val utteranceSequence = AtomicLong(0L)
     private val pendingArabicUtterances = ConcurrentHashMap.newKeySet<String>()
     private val pendingUntilTtsReady = ArrayDeque<PendingArabicSpeech>()
+    private val pendingQuranAudioUrls = ArrayDeque<String>()
+    private var quranMediaPlayer: MediaPlayer? = null
+
 
     private fun showArabicVoiceNotice(message: String) {
         if (hasShownArabicVoiceNotice || isFinishing || isDestroyed) return
@@ -114,7 +119,10 @@ class MainActivity : ComponentActivity() {
         if (isFinishing || isDestroyed) return
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
-            speechPlaying = pendingArabicUtterances.isNotEmpty() || pendingUntilTtsReady.isNotEmpty()
+            speechPlaying = pendingArabicUtterances.isNotEmpty() ||
+                pendingUntilTtsReady.isNotEmpty() ||
+                quranMediaPlayer != null ||
+                pendingQuranAudioUrls.isNotEmpty()
         }
     }
 
@@ -123,13 +131,124 @@ class MainActivity : ComponentActivity() {
         refreshSpeechPlayingState()
     }
 
+    private fun stopQuranAudio() {
+        pendingQuranAudioUrls.clear()
+        val player = quranMediaPlayer
+        quranMediaPlayer = null
+        if (player != null) {
+            runCatching { player.stop() }
+            runCatching { player.release() }
+        }
+    }
+
+    private fun stopDeviceTtsQueue() {
+        if (arabicSpeechReady) runCatching { arabicTextToSpeech?.stop() }
+        pendingArabicUtterances.clear()
+        pendingUntilTtsReady.clear()
+    }
+
+    private fun startNextQuranAudio() {
+        if (isFinishing || isDestroyed || quranMediaPlayer != null) return
+        if (pendingQuranAudioUrls.isEmpty()) {
+            refreshSpeechPlayingState()
+            return
+        }
+
+        val url = pendingQuranAudioUrls.removeFirst()
+        val player = MediaPlayer()
+        quranMediaPlayer = player
+
+        fun failPlayback(error: Throwable? = null) {
+            if (quranMediaPlayer === player) {
+                quranMediaPlayer = null
+                pendingQuranAudioUrls.clear()
+                runCatching { player.release() }
+                Log.w("Noor-e-Dhikr", "Qur'anic recitation stream failed", error)
+                Toast.makeText(
+                    this,
+                    "Qur'anic recitation could not be streamed. Check your internet connection and try again.",
+                    Toast.LENGTH_LONG
+                ).show()
+                refreshSpeechPlayingState()
+            } else {
+                runCatching { player.release() }
+            }
+        }
+
+        try {
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            player.setOnPreparedListener { prepared ->
+                if (quranMediaPlayer !== player || isFinishing || isDestroyed) {
+                    runCatching { prepared.release() }
+                    return@setOnPreparedListener
+                }
+                runCatching { prepared.start() }
+                    .onFailure { failPlayback(it) }
+            }
+            player.setOnCompletionListener { completed ->
+                if (quranMediaPlayer === player) {
+                    quranMediaPlayer = null
+                    runCatching { completed.release() }
+                    startNextQuranAudio()
+                } else {
+                    runCatching { completed.release() }
+                }
+            }
+            player.setOnErrorListener { _, what, extra ->
+                failPlayback(IllegalStateException("MediaPlayer error $what/$extra"))
+                true
+            }
+            player.setDataSource(url)
+            player.prepareAsync()
+            refreshSpeechPlayingState()
+        } catch (error: Exception) {
+            failPlayback(error)
+        }
+    }
+
+    private fun enqueueQuranRecitation(ayahKeys: List<String>, queueMode: Int) {
+        val urls = QuranRecitationAudio.audioUrlsForAyahs(ayahKeys)
+        if (urls.isEmpty()) {
+            Toast.makeText(this, "A recitation is not available for this Qur'anic selection.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        if (queueMode == TextToSpeech.QUEUE_FLUSH) {
+            stopDeviceTtsQueue()
+            stopQuranAudio()
+        } else if (pendingArabicUtterances.isNotEmpty() || pendingUntilTtsReady.isNotEmpty()) {
+            // Do not let a device TTS utterance overlap a streamed qari recording.
+            stopDeviceTtsQueue()
+        }
+
+        pendingQuranAudioUrls.addAll(urls)
+        refreshSpeechPlayingState()
+        startNextQuranAudio()
+    }
+
     private fun speakArabic(
         text: String,
         preferredVoice: String,
         queueMode: Int = TextToSpeech.QUEUE_FLUSH,
-        showUnavailableNotice: Boolean = true
+        showUnavailableNotice: Boolean = true,
+        quranAyahKeys: List<String> = emptyList()
     ) {
         if (text.isBlank()) return
+
+        if (quranAyahKeys.isNotEmpty()) {
+            enqueueQuranRecitation(quranAyahKeys, queueMode)
+            return
+        }
+
+        // Switching back to device TTS must not overlap a previous qari stream.
+        if (quranMediaPlayer != null || pendingQuranAudioUrls.isNotEmpty()) {
+            stopQuranAudio()
+        }
 
         val engine = arabicTextToSpeech
         // Manual playback replaces all queued speech. Count playback appends,
@@ -197,9 +316,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopArabicSpeech() {
-        if (arabicSpeechReady) runCatching { arabicTextToSpeech?.stop() }
-        pendingArabicUtterances.clear()
-        pendingUntilTtsReady.clear()
+        stopDeviceTtsQueue()
+        stopQuranAudio()
         speechPlaying = false
     }
 
@@ -332,12 +450,13 @@ class MainActivity : ComponentActivity() {
                     state = saved,
                     store = store,
                     isSpeaking = speechPlaying,
-                    onSpeakArabic = { text, voice, queueMode ->
+                    onSpeakArabic = { text, voice, queueMode, quranAyahKeys ->
                         speakArabic(
                             text = text,
                             preferredVoice = voice,
                             queueMode = queueMode,
-                            showUnavailableNotice = queueMode == TextToSpeech.QUEUE_FLUSH
+                            showUnavailableNotice = queueMode == TextToSpeech.QUEUE_FLUSH,
+                            quranAyahKeys = quranAyahKeys
                         )
                     },
                     onStopSpeech = { stopArabicSpeech() }
@@ -353,9 +472,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        runCatching { arabicTextToSpeech?.stop() }
-        pendingArabicUtterances.clear()
-        pendingUntilTtsReady.clear()
+        stopArabicSpeech()
         arabicSpeechReady = false
         runCatching { arabicTextToSpeech?.shutdown() }
         arabicTextToSpeech = null
@@ -445,7 +562,7 @@ private fun TasbeehApp(
     state: TasbeehState,
     store: TasbeehStore,
     isSpeaking: Boolean,
-    onSpeakArabic: (String, String, Int) -> Unit,
+    onSpeakArabic: (String, String, Int, List<String>) -> Unit,
     onStopSpeech: () -> Unit,
     onTap: () -> Unit
 ) {
@@ -527,6 +644,8 @@ private fun TasbeehApp(
         selectedDhikrTransliteration
     }
     val countDhikrMeaning = activeSession?.meaning ?: selectedDhikrMeaning
+    val activeQuranAyahKeys = DhikrCatalog.byValue(activeDhikrTitle)?.quranAyahKeys.orEmpty()
+    val countQuranAyahKeys = DhikrCatalog.byValue(countDhikrTitle)?.quranAyahKeys.orEmpty()
     val effectiveTarget = sessionForDisplay?.target ?: state.target
     val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
     val canUndo = canUndoCount(state.count, state.currentSession?.status)
@@ -558,7 +677,8 @@ private fun TasbeehApp(
                     onSpeakArabic(
                         countDhikrArabic,
                         state.ttsVoicePreference,
-                        arabicSpeechQueueMode(manualPlayback = false)
+                        arabicSpeechQueueMode(manualPlayback = false),
+                        countQuranAyahKeys
                     )
                 }
                 onTap()
@@ -864,12 +984,14 @@ private fun TasbeehApp(
         if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
             state = state,
             activeArabic = activeDhikrArabic,
+            quranAyahKeys = activeQuranAyahKeys,
             isSpeaking = isSpeaking,
             onSpeakArabic = { voice ->
                 onSpeakArabic(
                     activeDhikrArabic.orEmpty(),
                     voice,
-                    arabicSpeechQueueMode(manualPlayback = true)
+                    arabicSpeechQueueMode(manualPlayback = true),
+                    activeQuranAyahKeys
                 )
             },
             onStopSpeech = onStopSpeech,
@@ -1668,6 +1790,7 @@ private fun TargetDialog(
 private fun SettingsDialog(
     state: TasbeehState,
     activeArabic: String?,
+    quranAyahKeys: List<String>,
     isSpeaking: Boolean,
     onSpeakArabic: (String) -> Unit,
     onStopSpeech: () -> Unit,
@@ -1695,8 +1818,8 @@ private fun SettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 SettingToggle(
-                    "Arabic TTS on count",
-                    "Speak the selected Arabic dhikr after every increment",
+                    "Arabic recitation on count",
+                    "Use a recorded Qur'anic reciter for Qur'anic passages; device Arabic voice for other dhikr",
                     sound
                 ) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
@@ -1708,8 +1831,11 @@ private fun SettingsDialog(
                     Column(Modifier.weight(1f)) {
                         Text("Arabic recitation", color = Ivory, fontSize = 14.sp)
                         Text(
-                            if (activeArabic.isNullOrBlank()) "No Arabic text for the selected dhikr"
-                            else "Listen to the selected dhikr",
+                            when {
+                                activeArabic.isNullOrBlank() -> "No Arabic text for the selected dhikr"
+                                quranAyahKeys.isNotEmpty() -> "Recorded Qur'anic recitation · internet required"
+                                else -> "Device Arabic text-to-speech · not a tajwid recitation"
+                            },
                             color = Muted,
                             fontSize = 12.sp
                         )
@@ -1738,22 +1864,44 @@ private fun SettingsDialog(
                     }
                 }
 
-                Spacer(Modifier.height(3.dp))
-                Text("ARABIC RECITATION VOICE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                Text("Preferred voice, when available in your device's Arabic TTS engine.", color = Muted, fontSize = 12.sp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("female" to "Female", "male" to "Male").forEach { (value, label) ->
-                        FilterChip(
-                            selected = ttsVoice == value,
-                            onClick = { ttsVoice = value },
-                            modifier = Modifier.weight(1f),
-                            label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Gold, selectedLabelColor = Ink,
-                                containerColor = Panel2, labelColor = Ivory
+                if (quranAyahKeys.isNotEmpty()) {
+                    Spacer(Modifier.height(5.dp))
+                    Text(
+                        "RECITER: ${QuranRecitationAudio.RECITER_NAME.uppercase()} · ${QuranRecitationAudio.RECITATION_STYLE.uppercase()}",
+                        color = Gold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = .7.sp
+                    )
+                    Text(
+                        "The complete cited ayah(s) are streamed in sequence. This is a human recitation, not generated TTS.",
+                        color = Muted,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                    Text(
+                        "Audio: Quran.Foundation · ${QuranRecitationAudio.RECITER_NAME}",
+                        color = Color(0xFF83B994),
+                        fontSize = 10.sp
+                    )
+                } else {
+                    Spacer(Modifier.height(3.dp))
+                    Text("DEVICE ARABIC TTS VOICE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                    Text("For non-Qur'anic adhkar only. Device voices vary and do not guarantee tajwid.", color = Muted, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("female" to "Female", "male" to "Male").forEach { (value, label) ->
+                            FilterChip(
+                                selected = ttsVoice == value,
+                                onClick = { ttsVoice = value },
+                                modifier = Modifier.weight(1f),
+                                label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Gold, selectedLabelColor = Ink,
+                                    containerColor = Panel2, labelColor = Ivory
+                                )
                             )
-                        )
+                        }
                     }
                 }
 

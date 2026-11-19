@@ -11,6 +11,51 @@ package com.amirmalik.tasbeeh
  * against Hisn al-Muslim and OpenDua dataset v0.0.4.
  */
 internal object DhikrCatalog {
+    /**
+     * Keys identify the complete Qur'anic ayah(s) to play for each selected
+     * supplication. Some entries are excerpts from a verse; recitation plays
+     * the complete cited ayah so the qari's connected recitation is preserved.
+     */
+    private val quranAyahKeysByDhikrId = mapOf(
+        "hasbunallah" to listOf("3:173"),
+        "inna-lillah" to listOf("2:156"),
+        "dua-yunus" to listOf("21:87"),
+        "rabbana-atina" to listOf("2:201"),
+        "moses-dua" to listOf("28:24"),
+        "ayat-al-kursi" to listOf("2:255"),
+        "surah-ikhlas" to listOf("112:1", "112:2", "112:3", "112:4"),
+        "surah-falaq" to listOf("113:1", "113:2", "113:3", "113:4", "113:5"),
+        "surah-nas" to listOf("114:1", "114:2", "114:3", "114:4", "114:5", "114:6"),
+        "rabbana-sabr-tawaffana" to listOf("7:126"),
+        "hasbiyallah" to listOf("9:129"),
+        "musa-shrah-sadri" to listOf("20:25", "20:26", "20:27", "20:28"),
+        "rabbi-zidni-ilma" to listOf("20:114"),
+        "rabbana-taqabbal" to listOf("2:127"),
+        "rabbana-muslimayni" to listOf("2:128"),
+        "rabbana-sabr-thabbit" to listOf("2:250"),
+        "rabbana-la-tuakhidhna" to listOf("2:286"),
+        "rabbana-la-tuzigh" to listOf("3:8"),
+        "rabbana-amanna-3-16" to listOf("3:16"),
+        "zakariya-good-offspring" to listOf("3:38"),
+        "rabbana-amanna-3-53" to listOf("3:53"),
+        "rabbana-ghfir-3-147" to listOf("3:147"),
+        "rabbana-ma-khalaqta" to listOf("3:191"),
+        "rabbana-tudkhil-nar" to listOf("3:192"),
+        "rabbana-samina" to listOf("3:193"),
+        "rabbana-wa-atina-promise" to listOf("3:194"),
+        "adam-repentance" to listOf("7:23"),
+        "rabbana-not-wrongdoers" to listOf("7:47"),
+        "shuaib-judgment" to listOf("7:89"),
+        "ibrahim-safe-city" to listOf("14:35"),
+        "cave-youth" to listOf("18:10"),
+        "ayub-healing" to listOf("21:83"),
+        "zakariya-no-heir" to listOf("21:89"),
+        "believers-mercy" to listOf("23:109"),
+        "rabbighfir-warham" to listOf("23:118"),
+        "rabbana-righteous-family" to listOf("25:74"),
+        "sulayman-gratitude" to listOf("27:19")
+    )
+
     val items: List<DhikrItem> = listOf(
         d("subhanallah", "SubhanAllah", "Tasbih", "سُبْحَانَ اللَّهِ",
             "Subḥānallāh", "Glory be to Allah.", "Sahih Muslim 2137; Hisn al-Muslim 131"),
@@ -434,7 +479,9 @@ internal object DhikrCatalog {
             "Yā Muqallibal-qulūb, thabbit qalbī ʿalā dīnik",
             "O Turner of the hearts, keep my heart firm upon Your religion.",
             "Jamiʿ at-Tirmidhi 2140")
-    )
+    ).map { item ->
+        item.copy(quranAyahKeys = quranAyahKeysByDhikrId[item.id].orEmpty())
+    }
 
     fun byValue(value: String): DhikrItem? = items.firstOrNull { it.value == value }
 }

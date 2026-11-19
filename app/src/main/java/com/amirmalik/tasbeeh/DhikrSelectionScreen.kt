@@ -71,7 +71,8 @@ internal data class DhikrItem(
     val transliteration: String,
     val meaning: String,
     val reference: String = "",
-    val customId: String? = null
+    val customId: String? = null,
+    val quranAyahKeys: List<String> = emptyList()
 )
 
 @Composable
@@ -88,7 +89,7 @@ internal fun DhikrSelectionScreen(
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
-    val categories = listOf("All", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Morning & Evening", "After Prayer", "In Prayer", "Sleep", "Protection", "Daily Du'a", "My Dhikr")
+    val categories = listOf("All", "My Dhikr", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Morning & Evening", "After Prayer", "In Prayer", "Sleep", "Protection", "Daily Du'a")
     val keyboardController = LocalSoftwareKeyboardController.current
     val customItems = remember(customDhikrs) {
         customDhikrs.map { custom ->
@@ -392,6 +393,16 @@ private fun DhikrOptionCard(
             if (item.reference.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
                 Text(item.reference, color = Color(0xFF7F8C78), fontSize = 10.sp, letterSpacing = .25.sp)
+            }
+            if (item.quranAyahKeys.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "QUR'AN RECITATION · ABDULBASET ABDULSAMAD",
+                    color = Color(0xFF83B994),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = .55.sp
+                )
             }
         }
     }

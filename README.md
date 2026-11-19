@@ -34,3 +34,10 @@ OpenDua editorial material and transliteration references are attributed under C
 OpenDua dataset v0.0.4 (https://opendua.org), by Ihsan Labs at the Human Development Fund. Based on Hisn al-Muslim by Sa'id ibn Ali ibn Wahf al-Qahtani. OpenDua editorial text, dataset structure and the recitation by Muhammad Jumah are licensed CC BY 4.0. OpenDua makes no ownership claim over the underlying religious texts.
 
 Licence: https://opendua.org/licence/data
+
+
+## Qur'anic recitation
+
+Qur'anic selections use streamed human recitation by AbdulBaset AbdulSamad (Mujawwad) from Quran Foundation's documented recitation audio host. Complete cited ayah recordings are streamed in order; a short supplication excerpt may therefore play its complete source ayah. Recordings are streamed on demand and are not bundled, cached by the app, or rehosted. Credit is shown in the app. This feature requires an internet connection. Non-Qur'anic adhkar continue to use the device's Arabic text-to-speech engine, which is not a substitute for tajwid.
+
+The category filter row places **My Dhikr** immediately after **All**.
