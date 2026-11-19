@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -92,11 +94,13 @@ internal fun isCounterSelectableDhikr(item: DhikrItem): Boolean = item.customId 
 internal fun isQuranCategorySurah(item: DhikrItem): Boolean =
     QuranicDuaCatalog.isFullSurah(item)
 
-internal fun orderedDhikrCategories(openDuaCategories: List<String>): List<String> =
-    (listOf("All", "Quran", "My Dhikhrs") + openDuaCategories
-        .map { it.trim() }
-        .filter { it.isNotBlank() })
-        .distinct()
+internal fun orderedDhikrCategories(openDuaCategories: List<String>): List<String> {
+    val pinned = listOf("All", "Favorites", "My Dhikhrs", "Quran")
+    val topics = openDuaCategories.map { it.trim() }
+        .filter { it.isNotBlank() }
+        .filterNot { topic -> pinned.any { it.equals(topic, ignoreCase = true) } }
+    return (pinned + topics).distinct()
+}
 
 @Composable
 internal fun DhikrSelectionScreen(
@@ -112,12 +116,17 @@ internal fun DhikrSelectionScreen(
     quranCacheWriteFailed: Boolean,
     selectedQuranReciter: QuranReciter,
     activeRecitationTitle: String,
+    activeRecitationArtist: String,
+    activeRecitationSubtitle: String,
     onPlayQuranRecitation: (String, List<String>) -> Unit,
     isSpeaking: Boolean,
     isPreparingRecitation: Boolean,
     isResolvingQuranRecitation: Boolean,
     onPlayRecitation: (String, String, List<String>) -> Unit,
+    onToggleRecitationPlayback: () -> Unit,
     onStopRecitation: () -> Unit,
+    favoriteItemIds: Set<String>,
+    onToggleFavorite: (String) -> Unit,
     onRetryQuranText: () -> Unit,
     onRetryOpenDuaCatalog: () -> Unit,
     currentDhikr: String,
@@ -130,7 +139,7 @@ internal fun DhikrSelectionScreen(
     onDeleteCustom: (CustomDhikr, onDeleted: () -> Unit) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("My Dhikhrs") }
+    var category by remember { mutableStateOf("All") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
     var readingSurah by remember { mutableStateOf<DhikrItem?>(null) }
     val categories = remember(openDuaCategories) {
@@ -168,11 +177,13 @@ internal fun DhikrSelectionScreen(
             item to (fields + item.categories).map(::normalizeDhikrSearchText)
         }
     }
-    val filteredItems = remember(query, category, searchableItems) {
+    val filteredItems = remember(query, category, searchableItems, favoriteItemIds) {
         val normalizedQuery = normalizeDhikrSearchText(query)
         searchableItems.asSequence().filter { (item, searchableFields) ->
             val matchesCategory = when (category) {
                 "All" -> true
+                "Favorites" -> item.id in favoriteItemIds
+                "My Dhikhrs" -> item.customId != null
                 "Quran" -> isQuranCategorySurah(item)
                 else -> category in item.categories || item.category == category
             }
@@ -294,6 +305,17 @@ internal fun DhikrSelectionScreen(
             }
         }
 
+        RecitationPlaybackBar(
+            title = activeRecitationTitle,
+            artist = activeRecitationArtist,
+            subtitle = activeRecitationSubtitle,
+            isPlaying = isSpeaking,
+            isPreparing = isPreparingRecitation || isResolvingQuranRecitation,
+            onTogglePlayback = onToggleRecitationPlayback,
+            onStop = onStopRecitation,
+            modifier = Modifier.padding(horizontal = 20.dp).padding(top = 8.dp)
+        )
+
         Spacer(Modifier.height(13.dp))
         Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
             Row(
@@ -370,13 +392,27 @@ internal fun DhikrSelectionScreen(
         if (filteredItems.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No dhikr found", color = Color(0xFFFFF8EA), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (category == "Favorites") "No favorites yet" else "No dhikr found",
+                        color = Color(0xFFFFF8EA),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     Spacer(Modifier.height(5.dp))
-                    Text("Try another name or clear your filters.", color = Color(0xFFB0AA9C), fontSize = 12.sp)
+                    Text(
+                        if (category == "Favorites") {
+                            "Tap the star on any Quran or dua entry to save it here."
+                        } else {
+                            "Try another name or clear your filters."
+                        },
+                        color = Color(0xFFB0AA9C),
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
                     Spacer(Modifier.height(9.dp))
                     TextButton(onClick = {
                         query = ""
-                        category = "My Dhikhrs"
+                        category = "All"
                         keyboardController?.hide()
                     }) {
                         Text("CLEAR SEARCH & FILTERS", color = Color(0xFFFFD56A), fontSize = 11.sp)
@@ -403,6 +439,9 @@ internal fun DhikrSelectionScreen(
                         selected = isSelected,
                         enabled = !isStoreBusy,
                         selectable = isCounterSelectableDhikr(item),
+                        favorite = item.id in favoriteItemIds,
+                        onToggleFavorite = { onToggleFavorite(item.id) },
+                        selectedQuranReciter = selectedQuranReciter,
                         showListenButton = true,
                         listenEnabled = hasRecording && hasInternetConnection &&
                             !isPreparingRecitation && !isResolvingQuranRecitation,
@@ -462,6 +501,7 @@ internal fun DhikrSelectionScreen(
             selectedQuranReciter = selectedQuranReciter,
             hasInternetConnection = hasInternetConnection,
             onPlayQuranRecitation = onPlayQuranRecitation,
+            onToggleRecitationPlayback = onToggleRecitationPlayback,
             onStopRecitation = onStopRecitation,
             onDismiss = { readingSurah = null }
         )
@@ -593,6 +633,9 @@ private fun DhikrOptionCard(
     enabled: Boolean,
     onClick: () -> Unit,
     selectable: Boolean,
+    favorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    selectedQuranReciter: QuranReciter,
     showListenButton: Boolean,
     listenEnabled: Boolean,
     showQuranSurahSummary: Boolean = false,
@@ -657,6 +700,18 @@ private fun DhikrOptionCard(
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium
                     )
+                    IconButton(
+                        onClick = onToggleFavorite,
+                        enabled = enabled,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                            contentDescription = if (favorite) "Remove ${item.title} from favorites" else "Add ${item.title} to favorites",
+                            tint = if (favorite) gold else Color(0xFF8E968A),
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                     if (showListenButton) {
                         IconButton(
                             onClick = { onListen?.invoke() },
@@ -683,6 +738,18 @@ private fun DhikrOptionCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                IconButton(
+                    onClick = onToggleFavorite,
+                    enabled = enabled,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        if (favorite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (favorite) "Remove ${item.title} from favorites" else "Add ${item.title} to favorites",
+                        tint = if (favorite) gold else Color(0xFF8E968A),
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
                 if (showListenButton) {
                     IconButton(
                         onClick = { onListen?.invoke() },
@@ -697,12 +764,23 @@ private fun DhikrOptionCard(
                         )
                     }
                 }
+            }
+            Spacer(Modifier.height(5.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     Modifier.clip(RoundedCornerShape(50))
                         .background(if (selected) Color(0xFF4A3919) else Color(0xFF222820))
                         .padding(horizontal = 9.dp, vertical = 5.dp)
                 ) {
-                    Text(item.category.uppercase(), color = if (selected) Color(0xFFFFD875) else Color(0xFF9FAD96), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
+                    Text(
+                        item.category.uppercase(),
+                        color = if (selected) Color(0xFFFFD875) else Color(0xFF9FAD96),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = .7.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 if (selected) {
                     Spacer(Modifier.width(6.dp))
@@ -718,6 +796,7 @@ private fun DhikrOptionCard(
                         Text("REFERENCE", color = Color(0xFFE7C17C), fontSize = 8.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+                Spacer(Modifier.weight(1f))
                 if (onEdit != null) {
                     IconButton(onClick = onEdit, enabled = enabled, modifier = Modifier.size(30.dp)) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit custom dhikr", tint = Color(0xFFB8B49F), modifier = Modifier.size(15.dp))
@@ -799,7 +878,7 @@ private fun DhikrOptionCard(
             if (item.quranAyahKeys.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "QUR'AN RECITATION · ABDULBASET ABDULSAMAD",
+                    "QUR'AN RECITATION · ${selectedQuranReciter.displayName.uppercase()}",
                     color = Color(0xFF83B994),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,

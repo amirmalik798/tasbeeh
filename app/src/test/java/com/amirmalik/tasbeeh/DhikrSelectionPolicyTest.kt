@@ -1,10 +1,21 @@
 package com.amirmalik.tasbeeh
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DhikrSelectionPolicyTest {
+
+    @Test
+    fun libraryCategoriesKeepTheRequestedPinnedOrderBeforeOpenDuaTopics() {
+        assertEquals(
+            listOf("All", "Favorites", "My Dhikhrs", "Quran", "Morning and Evening", "Travel"),
+            orderedDhikrCategories(
+                listOf("Quran", "Morning and Evening", "Favorites", "Travel", "My Dhikhrs", "All")
+            )
+        )
+    }
 
     @Test
     fun blankSelectionCanBeRecoveredWhenNoSelectionOrSessionExists() {

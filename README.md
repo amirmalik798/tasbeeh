@@ -22,7 +22,7 @@ Pushes and pull requests targeting `main` run the Android CI workflow. It runs u
 - Undo, reset confirmation, target presets, custom dhikr and haptic feedback.
 
 ## Persistence
-The counter, preferences, custom dhikr collection and single current-session record are committed to Preferences DataStore. The previous multi-session history keys are migrated once and removed. DataStore survives process death and normal restarts. Existing Quran/OpenDua counter selections are cleared during migration; their content remains available in the library and their previous session records remain in Session History. The counter is enabled only for an entry in **My Dhikhrs**. Clearing app storage or uninstalling removes local app-private data.
+The counter, preferences, custom dhikr collection, Favorites and single current-session record are committed to Preferences DataStore. Favorites store stable library item IDs, so starring or unstarring Quran, OpenDua or personal Dhikr entries survives catalogue refreshes and normal app restarts without copying catalogue content. The previous multi-session history keys are migrated once and removed. DataStore survives process death and normal restarts. Existing Quran/OpenDua counter selections are cleared during migration; their content remains available in the library and their previous session records remain in Session History. The counter is enabled only for an entry in **My Dhikhrs**. Clearing app storage or uninstalling removes local app-private data.
 
 Recorded audio is played by an Android Media3 `MediaSessionService`, not by the Activity. Playback continues when the app UI is backgrounded or the screen is off, with a system media notification and lock-screen / Bluetooth media controls. The service maintains a bounded, trusted-URL playlist checkpoint so playback can be resumed if Android terminates the service process. As with any Android foreground service, the OS, battery restrictions, loss of connectivity, or user force-stop can still interrupt playback; the service is not a guarantee against every device/vendor shutdown.
 
@@ -31,15 +31,18 @@ Recorded audio is played by an Android Media3 `MediaSessionService`, not by the 
 The built-in library is now sourced from two separate collections. The category order is fixed:
 
 1. **All**
-2. **Quran**
+2. **Favorites**
 3. **My Dhikhrs**
-4. **OpenDua topical categories**, in the exact order published by OpenDua
+4. **Quran**
+5. **OpenDua topical categories**, in the exact order published by OpenDua
 
 The **Quran** category presents only the **114 surahs**, in canonical order. Each row shows its surah number, name and total ayah count; selecting the row opens the full reader. The original quick selections — 4 Qul (al-Kafirun, al-Ikhlas, al-Falaq and an-Nas), Ayat al-Kursi, and the last two ayahs of Surah al-Baqarah — remain available under **All**, and Surah al-Fatihah keeps its existing saved-selection identity. The reader shows verified Arabic Uthmani text, transliteration and Sahih International English translation ayah by ayah.
 
 Preferences includes a Quran Foundation reciter selector. It loads the public ayah-by-ayah recitation catalogue, keeps different recitation styles as distinct choices, and caches the list for offline use. The selected provider recitation ID is saved in Preferences DataStore and is used consistently by Quran sound buttons and the full-surah reader. Before playback, the app resolves the selected reciter's actual verse URLs from Quran Foundation in bounded pages and validates that the complete requested ayah sequence is available. If an audio URL cannot be resolved, it rejects the incomplete playlist rather than playing a partial surah.
 
-**My Dhikhrs** is the only category that can be selected on the main Tasbeeh counter. Quran and OpenDua entries are browseable reference content and cannot be selected or counted. Each dua with a supplied recording has a sound-icon-only button on its library card; entries without a supplied recording show the disabled audio control. Recitation playback is started from these individual controls or from the full-surah reader, not automatically from counter taps or Preferences.
+**My Dhikhrs** is the only category that can be selected on the main Tasbeeh counter. Quran and OpenDua entries are browseable reference content and cannot be selected or counted. Each library card has a favorite star action; recorded-audio controls sit at the top-right, separate from the title and category/reference metadata. Each dua with a supplied recording has a sound-icon-only button; entries without a supplied recording show the disabled audio control. Recitation playback is started from these individual controls or from the full-surah reader, not automatically from counter taps or Preferences.
+
+When a Quran or OpenDua recitation is active, an in-app playback bar appears on the home and library screens. It identifies the current surah or dua by name and shows the recording details, with pause/resume and stop controls. The full-surah reader also offers pause/resume and stop for its active surah. These controls use the shared Media3 playback session, so they control the same audio that continues in the background.
 
 Qur'anic text is fetched from AlQuran Cloud in complete chapter units. Each fully validated surah is saved independently using an atomic private cache file. Interrupted downloads therefore retain previously completed chapters, and the next refresh requests only missing chapters. The category remains browsable offline; cached surahs and the legacy four-entry text cache remain readable. Recitation streaming requires an internet connection. The app does not embed Quran Foundation credentials or synthesize speech.
 
