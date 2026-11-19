@@ -9,8 +9,20 @@ import org.junit.Test
 class DhikrCatalogIntegrityTest {
 
     @Test
-    fun builtInLibraryContainsExactlyOneHundredEntries() {
-        assertEquals(100, DhikrCatalog.items.size)
+    fun builtInLibraryContainsTheOriginalHundredPlusThreeSleepEntries() {
+        assertEquals(103, DhikrCatalog.items.size)
+    }
+
+    @Test
+    fun sleepLibraryStartsWithTheThreeRequestedQuranicRecitations() {
+        val firstSleepIds = DhikrCatalog.items
+            .filter { it.category == "Sleep" }
+            .take(3)
+            .map { it.id }
+        assertEquals(
+            listOf("sleep-four-qul", "sleep-ayat-al-kursi", "sleep-last-two-baqarah"),
+            firstSleepIds
+        )
     }
 
     @Test
