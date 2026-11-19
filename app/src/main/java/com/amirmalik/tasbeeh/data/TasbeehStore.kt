@@ -236,11 +236,7 @@ class TasbeehStore(private val context: Context) {
                     status = SessionStatus.ACTIVE
                 )
             } else {
-                existing!!.copy(
-                    count = nextCount,
-                    // A legacy recovered session may not have a known start time.
-                    startedAt = existing.startedAt.takeIf { it > 0L } ?: now
-                )
+                existing!!.copy(count = nextCount)
             }
 
             prefs[Keys.count] = nextCount
