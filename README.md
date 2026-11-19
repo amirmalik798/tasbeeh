@@ -17,7 +17,9 @@ Pushes and pull requests targeting `main` run the Android CI workflow. It runs u
 - Active bead advances around the strand on every count; the previous bead yields to the next slot with spring settling.
 - Imam bead and tassel.
 - Count, target, dhikr and preferences persisted using Android Preferences DataStore.
-- Session completion history, undo, reset confirmation, target presets and haptic feedback.
+- One persistent current session with pause/resume, start/end timestamps and elapsed duration.
+- A focused Session History screen showing only the current or most recently completed session.
+- Undo, reset confirmation, target presets, custom dhikr and haptic feedback.
 
 ## Persistence
-Count and preferences are committed to Preferences DataStore after every change. DataStore survives process death and normal restarts. Clearing app storage or uninstalling removes local app-private data.
+The counter, preferences, custom dhikr collection and single current-session record are committed to Preferences DataStore. The previous multi-session history keys are migrated once and removed. DataStore survives process death and normal restarts. Clearing app storage or uninstalling removes local app-private data.
