@@ -37,6 +37,7 @@ internal fun QuranSurahReaderDialog(
     selectedQuranReciter: QuranReciter,
     hasInternetConnection: Boolean,
     onPlayQuranRecitation: (String, List<String>) -> Unit,
+    onToggleRecitationPlayback: () -> Unit,
     onStopRecitation: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -57,7 +58,7 @@ internal fun QuranSurahReaderDialog(
         translationAyahs.all { it.isNotBlank() }
     val canPlay = item.quranAyahKeys.isNotEmpty() &&
         item.quranAyahKeys.all { QuranRecitationAudio.audioUrlForAyah(it) != null }
-    val isThisSurahActive = (isSpeaking || isPreparingRecitation) &&
+    val isThisSurahActive = activeRecitationTitle.isNotBlank() &&
         activeRecitationTitle.equals(item.title, ignoreCase = true)
     val accent = Color(0xFFFFD56A)
 
@@ -96,33 +97,58 @@ internal fun QuranSurahReaderDialog(
                 }
 
                 Spacer(Modifier.height(9.dp))
-                FilledTonalButton(
-                    onClick = {
-                        if (isThisSurahActive) onStopRecitation()
-                        else if (!isResolvingQuranRecitation) {
-                            onPlayQuranRecitation(item.title, item.quranAyahKeys)
+                if (isThisSurahActive) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        FilledTonalButton(
+                            onClick = onToggleRecitationPlayback,
+                            enabled = !isResolvingQuranRecitation,
+                            modifier = Modifier.weight(1f),
+                            colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                                containerColor = Color(0xFF263629),
+                                contentColor = Color(0xFFFFE7AD)
+                            )
+                        ) {
+                            Text(
+                                if (isSpeaking) "PAUSE RECITATION" else "RESUME RECITATION",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
-                    },
-                    enabled = isThisSurahActive ||
-                        (!isResolvingQuranRecitation && hasInternetConnection && canPlay),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF263629),
-                        contentColor = Color(0xFFFFE7AD),
-                        disabledContainerColor = Color(0xFF202720),
-                        disabledContentColor = Color(0xFF838B7F)
-                    )
-                ) {
-                    Text(
-                        when {
-                            isResolvingQuranRecitation -> "PREPARING SELECTED RECITER"
-                            isThisSurahActive && isPreparingRecitation -> "STOP PREPARING RECITATION"
-                            isThisSurahActive -> "STOP RECITATION"
-                            else -> "PLAY FULL SURAH · ${selectedQuranReciter.displayName.uppercase()}"
-                        },
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                        FilledTonalButton(
+                            onClick = onStopRecitation,
+                            modifier = Modifier.weight(1f),
+                            colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                                containerColor = Color(0xFF39251F),
+                                contentColor = Color(0xFFFFB69C)
+                            )
+                        ) {
+                            Text("STOP RECITATION", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                } else {
+                    FilledTonalButton(
+                        onClick = { if (!isResolvingQuranRecitation) onPlayQuranRecitation(item.title, item.quranAyahKeys) },
+                        enabled = !isResolvingQuranRecitation && hasInternetConnection && canPlay,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
+                            containerColor = Color(0xFF263629),
+                            contentColor = Color(0xFFFFE7AD),
+                            disabledContainerColor = Color(0xFF202720),
+                            disabledContentColor = Color(0xFF838B7F)
+                        )
+                    ) {
+                        Text(
+                            when {
+                                isResolvingQuranRecitation -> "PREPARING SELECTED RECITER"
+                                else -> "PLAY FULL SURAH · ${selectedQuranReciter.displayName.uppercase()}"
+                            },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
                 Text(
                     selectedQuranReciter.attribution,
