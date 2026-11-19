@@ -94,6 +94,8 @@ internal fun isCounterSelectableDhikr(item: DhikrItem): Boolean = item.customId 
 internal fun isQuranCategorySurah(item: DhikrItem): Boolean =
     QuranicDuaCatalog.isFullSurah(item)
 
+internal const val DEFAULT_DHIKR_LIBRARY_CATEGORY = "Favorites"
+
 internal fun orderedDhikrCategories(openDuaCategories: List<String>): List<String> {
     val pinned = listOf("Favorites", "My Dhikhrs", "Quran")
     val topics = openDuaCategories.map { it.trim() }
@@ -141,7 +143,7 @@ internal fun DhikrSelectionScreen(
     onDeleteCustom: (CustomDhikr, onDeleted: () -> Unit) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf(DEFAULT_DHIKR_LIBRARY_CATEGORY) }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
     var readingSurah by remember { mutableStateOf<DhikrItem?>(null) }
     val categories = remember(openDuaCategories) {
