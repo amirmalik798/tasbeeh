@@ -345,15 +345,6 @@ internal fun DhikrSelectionScreen(
             }
         }
 
-        if (category == "All" || category in openDuaCategories) {
-            Text(
-                "OPENDUA v0.0.4  ·  HISN AL-MUSLIM  ·  RECITATION: MUHAMMAD JUMAH",
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 7.dp),
-                color = Color(0xFF7F8C78),
-                fontSize = 9.sp,
-                letterSpacing = .55.sp
-            )
-        }
         if ((category == "All" || category in openDuaCategories) &&
             (openDuaIsRefreshing || openDuaRefreshError != null || openDuaCacheWriteFailed || !hasInternetConnection)
         ) {
@@ -646,6 +637,12 @@ private fun DhikrOptionCard(
 ) {
     val gold = Color(0xFFFFD56A)
     val isFullSurah = QuranicDuaCatalog.isFullSurah(item)
+    val isOpenDuaItem = item.id.startsWith("opendua-")
+    val displayReference = if (isOpenDuaItem) {
+        item.reference.removePrefix("OpenDua v${OpenDuaCatalogParser.DATA_VERSION} · ")
+    } else {
+        item.reference
+    }
     val arabicPreview = if (isFullSurah && item.arabic.length > 190) {
         item.arabic.take(190).trimEnd() + " …"
     } else item.arabic
@@ -861,11 +858,11 @@ private fun DhikrOptionCard(
                     overflow = if (isFullSurah) TextOverflow.Ellipsis else TextOverflow.Clip
                 )
             }
-            if (item.reference.isNotBlank()) {
+            if (displayReference.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
-                Text(item.reference, color = Color(0xFF7F8C78), fontSize = 10.sp, letterSpacing = .25.sp)
+                Text(displayReference, color = Color(0xFF7F8C78), fontSize = 10.sp, letterSpacing = .25.sp)
             }
-            if (!selectable) {
+            if (!selectable && !isOpenDuaItem) {
                 Spacer(Modifier.height(7.dp))
                 Text(
                     "REFERENCE ONLY · NOT A COUNTABLE DU'A",
@@ -906,19 +903,23 @@ private fun DhikrOptionCard(
                 }
             }
             else if (item.recitationAudioUrls.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "RECORDED RECITATION · OPENDUA",
-                    color = Color(0xFF83B994),
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = .55.sp
-                )
-                Text(
-                    item.recitationCredit.ifBlank { "Audio streamed from the recording linked to this entry" },
-                    color = Color(0xFF7F8C78),
-                    fontSize = 9.sp
-                )
+                // The speaker control already communicates audio availability.
+                // Do not repeat provider and reciter details on every OpenDua card.
+                if (!isOpenDuaItem) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "RECORDED RECITATION",
+                        color = Color(0xFF83B994),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = .45.sp
+                    )
+                    Text(
+                        item.recitationCredit.ifBlank { "Audio streamed from the recording linked to this entry" },
+                        color = Color(0xFF7F8C78),
+                        fontSize = 9.sp
+                    )
+                }
             } else if (item.customId != null) {
                 Spacer(Modifier.height(6.dp))
                 Text(
