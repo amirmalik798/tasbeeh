@@ -498,6 +498,15 @@ class TasbeehStore(private val context: Context) {
         )
     }
 
+    private fun removeHistorySession(
+        prefs: androidx.datastore.preferences.core.MutablePreferences,
+        sessionId: String
+    ) {
+        val remaining = decodeSessionList(prefs[Keys.sessionHistory].orEmpty())
+            .filterNot { it.id == sessionId }
+        prefs[Keys.sessionHistory] = encodeSessionList(remaining)
+    }
+
     private fun upsertHistory(
         prefs: androidx.datastore.preferences.core.MutablePreferences,
         session: SavedSession,
