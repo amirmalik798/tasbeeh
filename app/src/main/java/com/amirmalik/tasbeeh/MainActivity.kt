@@ -441,40 +441,20 @@ private fun TasbeehApp(
                 ProgressTrack(state.count, effectiveTarget)
                 Spacer(Modifier.height(if (compactLayout) 8.dp else 15.dp))
 
-                // Keep session control in the primary action rail: this avoids
-                // a separate full-width row and preserves vertical space on phones.
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SmallAction(
-                        Icons.Default.Undo,
-                        "UNDO",
-                        canUndo,
-                        Modifier.weight(if (sessionIsOpen) .82f else 1f)
-                    ) {
+                    SmallAction(Icons.Default.Undo, "UNDO", canUndo, Modifier.weight(1f)) {
                         scope.launch { store.undoCount(System.currentTimeMillis()) }
-                    }
-                    Button(
-                        onClick = { increment() },
-                        enabled = !sessionPaused,
-                        modifier = Modifier.weight(if (sessionIsOpen) 1.75f else 1.7f)
-                            .height(if (compactLayout) 56.dp else 62.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Ink),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp, pressedElevation = 1.dp)
-                    ) {
-                        Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(21.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("COUNT", fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp, fontSize = 14.sp)
                     }
                     if (sessionIsOpen) {
                         SmallAction(
                             if (sessionPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
                             if (sessionPaused) "RESUME" else "PAUSE",
                             true,
-                            Modifier.weight(.82f)
+                            Modifier.weight(1f)
                         ) {
                             scope.launch {
                                 if (sessionPaused) store.resumeCurrentSession()
@@ -482,12 +462,7 @@ private fun TasbeehApp(
                             }
                         }
                     }
-                    SmallAction(
-                        Icons.Default.Refresh,
-                        "RESET",
-                        true,
-                        Modifier.weight(if (sessionIsOpen) .82f else 1f)
-                    ) { showReset = true }
+                    SmallAction(Icons.Default.Refresh, "RESET", true, Modifier.weight(1f)) { showReset = true }
                 }
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 11.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
