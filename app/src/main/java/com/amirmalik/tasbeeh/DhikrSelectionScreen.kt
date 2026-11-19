@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.amirmalik.tasbeeh.data.CustomDhikr
+import com.amirmalik.tasbeeh.voice.hasUsableVoiceProfile
 import java.text.Normalizer
 import java.util.Locale
 
@@ -140,7 +141,9 @@ internal fun DhikrSelectionScreen(
     onSelect: (DhikrItem) -> Unit,
     onCreateCustom: () -> Unit,
     onEditCustom: (CustomDhikr) -> Unit,
-    onDeleteCustom: (CustomDhikr, onDeleted: () -> Unit) -> Unit
+    onDeleteCustom: (CustomDhikr, onDeleted: () -> Unit) -> Unit,
+    onVoiceCount: (CustomDhikr) -> Unit,
+    onVoiceSetup: (CustomDhikr) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf(DEFAULT_DHIKR_LIBRARY_CATEGORY) }
@@ -637,7 +640,9 @@ private fun DhikrOptionCard(
     onListen: (() -> Unit)? = null,
     onRead: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    onVoiceCount: (() -> Unit)? = null,
+    onVoiceSetup: (() -> Unit)? = null
 ) {
     val gold = Color(0xFFFFD56A)
     val isFullSurah = QuranicDuaCatalog.isFullSurah(item)
@@ -807,6 +812,29 @@ private fun DhikrOptionCard(
                     IconButton(onClick = onDelete, enabled = enabled, modifier = Modifier.size(30.dp)) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete custom dhikr", tint = Color(0xFFC98C78), modifier = Modifier.size(15.dp))
                     }
+                }
+            }
+            if (onVoiceCount != null || onVoiceSetup != null) {
+                TextButton(
+                    onClick = { (onVoiceCount ?: onVoiceSetup)?.invoke() },
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 5.dp)
+                ) {
+                    Icon(
+                        androidx.compose.material.icons.filled.Mic,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = gold
+                    )
+                    Spacer(Modifier.width(7.dp))
+                    Text(
+                        if (onVoiceCount != null) "VOICE COUNT" else "SET UP VOICE COUNT",
+                        color = gold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = .7.sp
+                    )
                 }
             }
             if (item.arabic.isNotBlank()) {
