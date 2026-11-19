@@ -540,8 +540,13 @@ private fun TasbeehApp(
                 }
                 Spacer(Modifier.height(8.dp))
 
-                BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
-                    val preferredDiameter = if (compactLayout) 286.dp else 352.dp
+                BoxWithConstraints(
+                    Modifier.fillMaxWidth().weight(1f, fill = true),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Let the counter use the available width and the remaining
+                    // vertical space, while naturally shrinking on short screens.
+                    val preferredDiameter = if (compactLayout) maxWidth * .86f else maxWidth
                     val diameter = min(maxWidth, min(maxHeight, preferredDiameter))
                     Box(Modifier.size(diameter), contentAlignment = Alignment.Center) {
                         TasbeehStrand(count = state.count, onCount = { increment() }, enabled = !sessionPaused, modifier = Modifier.fillMaxSize())
@@ -715,7 +720,6 @@ private fun Header(
                     letterSpacing = 1.2.sp,
                     maxLines = 1
                 )
-                Text("THE ART OF REMEMBRANCE", color = Muted, fontSize = 10.sp, letterSpacing = 1.15.sp, maxLines = 1)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
