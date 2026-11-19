@@ -280,7 +280,7 @@ internal fun CustomDhikrEditorScreen(
                             )
                         }
                     },
-                    enabled = canSave,
+                    enabled = true,
                     modifier = Modifier.fillMaxWidth().height(54.dp),
                     shape = RoundedCornerShape(17.dp),
                     colors = ButtonDefaults.buttonColors(
