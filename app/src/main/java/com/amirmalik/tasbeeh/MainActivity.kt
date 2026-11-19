@@ -243,6 +243,7 @@ class MainActivity : ComponentActivity() {
             ?.toString().orEmpty()
     }
 
+    @androidx.media3.common.util.UnstableApi
     private fun connectToRecitationService() {
         if (mediaController != null || mediaControllerFuture != null || isFinishing || isDestroyed) return
         val token = SessionToken(
