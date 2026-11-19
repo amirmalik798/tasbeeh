@@ -131,6 +131,12 @@ internal fun shouldAcceptRecitationRequest(
 ): Boolean =
     queueMode != RECITATION_QUEUE_APPEND || (!hasActivePlayer && !hasPendingRecitations)
 
+internal fun shouldRepairMissingDhikrSelection(
+    storedDhikr: String,
+    hasValidSelection: Boolean,
+    hasOpenSession: Boolean
+): Boolean = storedDhikr.isBlank() && !hasValidSelection && !hasOpenSession
+
 internal fun arabicPlaybackControlEnabled(hasArabicText: Boolean, isSpeaking: Boolean): Boolean =
     hasArabicText || isSpeaking
 
@@ -722,7 +728,12 @@ private fun TasbeehApp(
             catalogItems.any { it.value == state.dhikr }
         val sessionIsOpenForSelection = state.currentSession?.status == SessionStatus.ACTIVE ||
             state.currentSession?.status == SessionStatus.PAUSED
-        if (!customSelectionExists && !builtInSelectionExists && !sessionIsOpenForSelection) {
+        if (shouldRepairMissingDhikrSelection(
+                storedDhikr = state.dhikr,
+                hasValidSelection = customSelectionExists || builtInSelectionExists,
+                hasOpenSession = sessionIsOpenForSelection
+            )
+        ) {
             val fallback = catalogItems.firstOrNull { it.category == "Quran" } ?: catalogItems.firstOrNull()
             if (fallback != null) {
                 launchStoreOperation(label = "Preparing your selected Dhikr…") {
