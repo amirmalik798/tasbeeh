@@ -294,7 +294,9 @@ internal fun DhikrSelectionScreen(
                 letterSpacing = .55.sp
             )
         }
-        if (category == "All" || category in openDuaCategories) {
+        if ((category == "All" || category in openDuaCategories) &&
+            (openDuaIsRefreshing || openDuaRefreshError != null || openDuaCacheWriteFailed)
+        ) {
             OpenDuaCatalogStatusPanel(
                 isRefreshing = openDuaIsRefreshing,
                 hasCachedData = catalogItems.any { it.id.startsWith("opendua-") },
