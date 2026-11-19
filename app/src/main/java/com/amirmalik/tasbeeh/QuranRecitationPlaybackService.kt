@@ -266,6 +266,16 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
     }
 }
 
+internal fun recitationPositionLabel(url: String, index: Int, total: Int): String {
+    val safeTotal = total.coerceAtLeast(1)
+    val safePosition = (index + 1).coerceIn(1, safeTotal)
+    val isQuranAyah = runCatching {
+        java.net.URI(url).host.equals("verses.quran.foundation", ignoreCase = true)
+    }.getOrDefault(false)
+    val unit = if (isQuranAyah) "Ayah" else "Track"
+    return "$unit $safePosition of $safeTotal"
+}
+
 internal fun createRecitationMediaItems(
     title: String,
     artist: String,
@@ -278,7 +288,7 @@ internal fun createRecitationMediaItems(
         val metadata = MediaMetadata.Builder()
             .setTitle(title)
             .setArtist(artist.ifBlank { "Recorded recitation" })
-            .setSubtitle("Track ${index + 1} of ${urls.size}")
+            .setSubtitle(recitationPositionLabel(url, index, urls.size))
             .build()
         MediaItem.Builder()
             .setMediaId("recitation-${index + 1}")
