@@ -67,7 +67,7 @@ class DhikrCatalogIntegrityTest {
     }
 
     @Test
-    fun QuranRefreshRequiresEveryArabicAyahAndEveryTranslation() {
+    fun QuranRefreshRequiresArabicTransliterationAndTranslationForEveryAyah() {
         val allVerses = QuranicDuaCatalog.additions
             .flatMap { it.ayahKeys }
             .associateWith { Triple("نَصٌّ", "Nass", "Translation") }
@@ -78,6 +78,12 @@ class DhikrCatalogIntegrityTest {
             put(key, Triple("", "Nass", "Translation"))
         }
         assertFalse(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, missingArabic))
+
+        val missingTransliteration = allVerses.toMutableMap().apply {
+            val key = QuranicDuaCatalog.additions.first().ayahKeys.first()
+            put(key, Triple("نَصٌّ", "", "Translation"))
+        }
+        assertFalse(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, missingTransliteration))
 
         val missingTranslation = allVerses.toMutableMap().apply {
             val key = QuranicDuaCatalog.additions.first().ayahKeys.first()
