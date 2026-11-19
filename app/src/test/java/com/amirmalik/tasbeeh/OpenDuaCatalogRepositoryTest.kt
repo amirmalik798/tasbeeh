@@ -53,32 +53,32 @@ class OpenDuaCatalogRepositoryTest {
     fun offlineCacheChecksumIsStableAndDetectsContentOrMetadataChanges() {
         val checksum = openDuaCacheChecksum(
             version = "0.0.4",
-            rawItems = "[{\\"id\\":\\"entry-1\\"}]",
-            rawCategories = "[\\"Morning and evening\\"]",
+            rawItems = "items-a",
+            rawCategories = "categories-a",
             sourceEntryCount = 267,
             canonicalDuaCount = 262,
             recordingCount = 249
         )
         val sameChecksum = openDuaCacheChecksum(
             version = "0.0.4",
-            rawItems = "[{\\"id\\":\\"entry-1\\"}]",
-            rawCategories = "[\\"Morning and evening\\"]",
+            rawItems = "items-a",
+            rawCategories = "categories-a",
             sourceEntryCount = 267,
             canonicalDuaCount = 262,
             recordingCount = 249
         )
         val changedContent = openDuaCacheChecksum(
             version = "0.0.4",
-            rawItems = "[{\\"id\\":\\"entry-2\\"}]",
-            rawCategories = "[\\"Morning and evening\\"]",
+            rawItems = "items-b",
+            rawCategories = "categories-a",
             sourceEntryCount = 267,
             canonicalDuaCount = 262,
             recordingCount = 249
         )
         val changedMetadata = openDuaCacheChecksum(
             version = "0.0.4",
-            rawItems = "[{\\"id\\":\\"entry-1\\"}]",
-            rawCategories = "[\\"Morning and evening\\"]",
+            rawItems = "items-a",
+            rawCategories = "categories-a",
             sourceEntryCount = 267,
             canonicalDuaCount = 261,
             recordingCount = 249
