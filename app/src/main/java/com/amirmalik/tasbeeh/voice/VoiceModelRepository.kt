@@ -231,7 +231,7 @@ internal object VoiceModelRepository {
             lines.forEach { line ->
                 if (line.isBlank()) return@forEach
                 val separator = line.lastIndexOf(' ')
-                if (separator <= 0) return@runCatching
+                if (separator <= 0) return@runCatching false
                 val id = line.substring(separator + 1).trim().toIntOrNull()
                     ?: return@runCatching false
                 if (id <= previousId || id > 60_000) return@runCatching false
@@ -257,5 +257,5 @@ internal object VoiceModelRepository {
     }
 
     private fun ByteArray.toHex(): String =
-        joinToString("") { "%02x".format(Locale.ROOT, it) }
+        joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
 }
