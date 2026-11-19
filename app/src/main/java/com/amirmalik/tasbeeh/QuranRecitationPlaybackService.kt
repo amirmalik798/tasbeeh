@@ -121,12 +121,13 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(persistenceRunnable)
-        if (::player.isInitialized) {
-            if (player.mediaItemCount > 0) persistPlaybackCheckpoint()
-            player.release()
+        if (::player.isInitialized && player.mediaItemCount > 0) {
+            persistPlaybackCheckpoint()
         }
+        // Detach MediaSession controllers before releasing their backing player.
         mediaSession?.release()
         mediaSession = null
+        if (::player.isInitialized) player.release()
         super.onDestroy()
     }
 
@@ -137,14 +138,24 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
 
     private fun persistPlaybackCheckpoint() {
         if (!::player.isInitialized || player.mediaItemCount <= 0) return
+        val itemCount = player.mediaItemCount
+        if (itemCount > MAX_STORED_TRACKS) {
+            clearPlaybackCheckpoint()
+            return
+        }
         val urls = buildList {
-            repeat(player.mediaItemCount) { index ->
+            repeat(itemCount) { index ->
                 val uri: Uri? = player.getMediaItemAt(index).localConfiguration?.uri
                 val value = uri?.toString()?.takeIf(::isTrustedRecitationUrl)
                 if (value != null) add(value)
             }
         }
-        if (urls.isEmpty()) return
+        // Never checkpoint a filtered playlist with the original ExoPlayer index:
+        // that could restore the wrong track or seek position after process death.
+        if (urls.size != itemCount || urls.isEmpty()) {
+            clearPlaybackCheckpoint()
+            return
+        }
 
         val currentItem = player.currentMediaItem
         val title = currentItem?.mediaMetadata?.title?.toString().orEmpty()
