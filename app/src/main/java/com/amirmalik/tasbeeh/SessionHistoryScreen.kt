@@ -52,8 +52,9 @@ internal fun SessionHistoryScreen(
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val totalSessions = sessions.size + (if (openSession != null) 1 else 0)
     val completed = remember(sessions) { sessions.filter { it.status == SessionStatus.COMPLETED } }
+    val trackedCompleted = remember(completed) { completed.filter { it.activeDurationMs != null } }
     val totalCount = remember(completed) { completed.sumOf { it.count.toLong() } }
-    val totalActiveMs = remember(completed) { completed.sumOf { it.activeDurationMs ?: 0L } }
+    val totalActiveMs = remember(trackedCompleted) { trackedCompleted.sumOf { it.activeDurationMs ?: 0L } }
     val filtered = remember(sessions, selectedFilter) {
         sessions.filter {
             when (selectedFilter) {
@@ -74,7 +75,7 @@ internal fun SessionHistoryScreen(
     }
 
     Column(
-        Modifier.fillMaxSize().background(HistoryInk).statusBarsPadding()
+        Modifier.fillMaxSize().background(HistoryInk).statusBarsPadding().navigationBarsPadding()
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
@@ -127,7 +128,7 @@ internal fun SessionHistoryScreen(
                 )
                 HistoryStatCard(
                     modifier = Modifier.weight(1f),
-                    value = formatSessionDuration(totalActiveMs),
+                    value = if (trackedCompleted.isEmpty()) "—" else formatSessionDuration(totalActiveMs),
                     label = "ACTIVE TIME",
                     icon = { Icon(Icons.Default.Timer, null, tint = HistoryGold, modifier = Modifier.size(15.dp)) }
                 )
