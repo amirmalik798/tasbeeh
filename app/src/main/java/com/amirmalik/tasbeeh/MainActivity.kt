@@ -112,7 +112,6 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-@Composable
 private fun TasbeehStartupScreen() {
     Box(
         Modifier.fillMaxSize()
