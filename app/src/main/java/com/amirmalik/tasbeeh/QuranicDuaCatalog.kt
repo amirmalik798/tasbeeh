@@ -322,7 +322,8 @@ internal class QuranicDuaRepository(context: Context) {
                 arabic = arabic,
                 transliteration = "",
                 meaning = translation.ifBlank { definition.context },
-                reference = definition.reference,
+                reference = definition.reference +
+                    " · Arabic: AlQuran Cloud (Uthmani) · Translation: Sahih International",
                 quranAyahKeys = definition.ayahKeys
             )
         }
