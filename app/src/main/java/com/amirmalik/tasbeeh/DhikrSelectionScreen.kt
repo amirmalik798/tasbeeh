@@ -2,6 +2,7 @@ package com.amirmalik.tasbeeh
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -24,7 +25,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -115,7 +119,11 @@ internal fun DhikrSelectionScreen(
         }
     }
     Column(
-        Modifier.fillMaxSize().background(Color(0xFF090B0A)).statusBarsPadding(),
+        Modifier.fillMaxSize()
+            .background(Color(0xFF090B0A))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding(),
         horizontalAlignment = Alignment.Start
     ) {
         Row(
@@ -142,54 +150,86 @@ internal fun DhikrSelectionScreen(
             }
         }
 
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            color = Color(0xFF131914),
+            shape = RoundedCornerShape(21.dp),
+            border = BorderStroke(1.dp, Color(0xFF3C463B))
         ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.weight(1f).height(56.dp),
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-                placeholder = { Text("Search dhikr", color = Color(0xFF888A80), fontSize = 12.sp) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFFFFD56A)) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear search", tint = Color(0xFFB8AD97))
-                        }
-                    }
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color(0xFFFFF8EA),
-                    unfocusedTextColor = Color(0xFFFFF8EA),
-                    focusedBorderColor = Color(0xFFFFD56A),
-                    unfocusedBorderColor = Color(0xFF353A32),
-                    cursorColor = Color(0xFFFFD56A),
-                    focusedContainerColor = Color(0xFF121714),
-                    unfocusedContainerColor = Color(0xFF121714)
-                )
-            )
-            IconButton(
-                onClick = onCreateCustom,
-                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFFF0BF4E))
+            Row(
+                Modifier.fillMaxWidth().height(66.dp).padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.Add,
-                    contentDescription = "Add your own dhikr",
-                    tint = Color(0xFF17130A),
-                    modifier = Modifier.size(27.dp)
+                    Icons.Default.Search,
+                    contentDescription = null,
+                    tint = Color(0xFFFFD56A),
+                    modifier = Modifier.padding(start = 11.dp).size(22.dp)
                 )
+                BasicTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 12.dp),
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = Color(0xFFFFF8EA),
+                        fontSize = 15.sp
+                    ),
+                    cursorBrush = SolidColor(Color(0xFFFFD56A)),
+                    decorationBox = { innerTextField ->
+                        Box(
+                            Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (query.isEmpty()) {
+                                Text(
+                                    "Search dhikr",
+                                    color = Color(0xFF8F958A),
+                                    fontSize = 14.sp
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+                if (query.isNotEmpty()) {
+                    IconButton(
+                        onClick = { query = "" },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Clear search",
+                            tint = Color(0xFFB8AD97),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(5.dp))
+                IconButton(
+                    onClick = onCreateCustom,
+                    modifier = Modifier.size(50.dp).clip(RoundedCornerShape(16.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFFFFE39A), Color(0xFFF0BF4E), Color(0xFFD99D32))
+                            )
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = "Add your own dhikr",
+                        tint = Color(0xFF17130A),
+                        modifier = Modifier.size(25.dp)
+                    )
+                }
             }
         }
 
-        Spacer(Modifier.height(11.dp))
-        Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
+        Spacer(Modifier.height(13.dp))
+        Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 categories.forEach { item ->
                     FilterChip(
@@ -212,6 +252,7 @@ internal fun DhikrSelectionScreen(
                     )
                 }
             }
+        }
 
         Spacer(Modifier.height(9.dp))
         if (filteredItems.isEmpty()) {
@@ -221,7 +262,7 @@ internal fun DhikrSelectionScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 3.dp, bottom = 14.dp),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 3.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
