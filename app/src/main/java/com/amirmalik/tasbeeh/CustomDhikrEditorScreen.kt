@@ -91,22 +91,8 @@ internal fun CustomDhikrEditorScreen(
                 Text(
                     if (existing == null) "Create a dhikr" else "Refine your dhikr",
                     color = EditorIvory,
-                    fontSize = 18.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold
-                )
-            }
-            Surface(
-                color = Color(0xFF1B211A),
-                shape = RoundedCornerShape(50),
-                border = BorderStroke(1.dp, Color(0xFF66502A).copy(alpha = .72f))
-            ) {
-                Text(
-                    "ON THIS DEVICE",
-                    color = Color(0xFFB7B09D),
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = .8.sp,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
                 )
             }
         }
@@ -172,17 +158,7 @@ internal fun CustomDhikrEditorScreen(
             )
 
             Spacer(Modifier.height(18.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    EditorSectionLabel("PRONUNCIATION / TRANSLITERATION", "03")
-                }
-                Text(
-                    "800 MAX",
-                    color = EditorMuted,
-                    fontSize = 9.sp,
-                    letterSpacing = .7.sp
-                )
-            }
+            EditorSectionLabel("TRANSLITERATION", "03")
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = transliteration,
