@@ -261,7 +261,8 @@ internal class VoiceCountingService : Service() {
                         transliteration = args.transliteration,
                         meaning = args.meaning,
                         fallbackTarget = args.fallbackTarget,
-                        now = System.currentTimeMillis()
+                        now = System.currentTimeMillis(),
+                        expectedCustomDhikrId = args.id
                     )
                 }
                 when (outcome) {
@@ -275,6 +276,12 @@ internal class VoiceCountingService : Service() {
                         TargetReachedFeedback.onTargetReached(applicationContext)
                         finalMessage = "TARGET REACHED"
                         finalState = VoiceServiceState.TARGET_REACHED
+                        stopRequested.set(true)
+                        break
+                    }
+                    CountOutcome.STALE_SELECTION -> {
+                        finalMessage = "The selected Dhikr changed. Voice counting was stopped without adding a count."
+                        finalState = VoiceServiceState.STOPPED
                         stopRequested.set(true)
                         break
                     }
