@@ -540,7 +540,7 @@ private fun TasbeehApp(
             state = state,
             activeArabic = activeDhikrArabic,
             isSpeaking = isSpeaking,
-            onSpeakArabic = { onSpeakArabic(activeDhikrArabic.orEmpty(), state.ttsVoicePreference) },
+            onSpeakArabic = { voice -> onSpeakArabic(activeDhikrArabic.orEmpty(), voice) },
             onStopSpeech = onStopSpeech,
             onDismiss = { showSettings = false },
             onSave = { sound, haptics, fontScale, voice ->
@@ -1285,7 +1285,7 @@ private fun SettingsDialog(
     state: TasbeehState,
     activeArabic: String?,
     isSpeaking: Boolean,
-    onSpeakArabic: () -> Unit,
+    onSpeakArabic: (String) -> Unit,
     onStopSpeech: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (Boolean, Boolean, Float, String) -> Unit
@@ -1327,7 +1327,7 @@ private fun SettingsDialog(
                         )
                     }
                     FilledTonalButton(
-                        onClick = { if (isSpeaking) onStopSpeech() else onSpeakArabic() },
+                        onClick = { if (isSpeaking) onStopSpeech() else onSpeakArabic(ttsVoice) },
                         enabled = !activeArabic.isNullOrBlank(),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = Panel2,
