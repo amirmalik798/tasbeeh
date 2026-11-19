@@ -42,6 +42,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -64,6 +65,7 @@ import com.amirmalik.tasbeeh.data.TasbeehStore
 import com.amirmalik.tasbeeh.data.sessionSnapshotForDisplay
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.IOException
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -266,18 +268,30 @@ class MainActivity : ComponentActivity() {
 
         val store = TasbeehStore(applicationContext)
         setContent {
+            var storageRetryCount by remember { mutableIntStateOf(0) }
+            var storageReadError by remember { mutableStateOf(false) }
             val savedState by produceState<TasbeehState?>(
                 initialValue = null,
-                key1 = store
+                key1 = store,
+                key2 = storageRetryCount
             ) {
-                store.migrateToSingleSession()
-                store.state.collect { value = it }
+                storageReadError = false
+                try {
+                    store.migrateToSingleSession()
+                    store.state.collect { value = it }
+                } catch (_: IOException) {
+                    // Do not replace a failed read with default preferences:
+                    // that could make existing user data appear to be erased.
+                    storageReadError = true
+                }
             }
             val saved = savedState
-            if (saved == null) {
-                TasbeehStartupScreen()
-            } else {
-                TasbeehApp(
+            when {
+                storageReadError -> TasbeehStorageRecoveryScreen(
+                    onRetry = { storageRetryCount++ }
+                )
+                saved == null -> TasbeehStartupScreen()
+                else -> TasbeehApp(
                     state = saved,
                     store = store,
                     isSpeaking = speechPlaying,
@@ -344,6 +358,50 @@ private fun TasbeehStartupScreen() {
 }
 
 @Composable
+private fun TasbeehStorageRecoveryScreen(onRetry: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize()
+            .background(Ink)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(28.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Default.CloudOff,
+                contentDescription = null,
+                tint = Gold,
+                modifier = Modifier.size(42.dp)
+            )
+            Spacer(Modifier.height(18.dp))
+            Text(
+                "Saved data is unavailable",
+                color = Ivory,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "The app could not read its saved data. Nothing has been reset. Check available device storage, then try again.",
+                color = Muted,
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(20.dp))
+            Button(
+                onClick = onRetry,
+                colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Ink)
+            ) {
+                Text("RETRY", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
 private fun TasbeehApp(
     state: TasbeehState,
     store: TasbeehStore,
@@ -353,6 +411,26 @@ private fun TasbeehApp(
     onTap: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    fun launchStoreOperation(
+        operation: suspend () -> Unit,
+        onSuccess: () -> Unit = {}
+    ) {
+        scope.launch {
+            try {
+                operation()
+                onSuccess()
+            } catch (_: IOException) {
+                Toast.makeText(
+                    context,
+                    "Unable to access saved data. Your changes may not have been saved. Please try again.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
     var showHistoryScreen by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showReset by remember { mutableStateOf(false) }
@@ -423,7 +501,7 @@ private fun TasbeehApp(
 
     fun increment() {
         val now = System.currentTimeMillis()
-        scope.launch {
+        launchStoreOperation {
             val outcome = store.countDhikr(
                 dhikr = countDhikrTitle,
                 arabic = countDhikrArabic.orEmpty(),
@@ -465,9 +543,13 @@ private fun TasbeehApp(
                         editingCustomDhikr = null
                     },
                     onSave = { custom ->
-                        scope.launch { store.saveCustomDhikr(custom) }
-                        showCustomDhikrEditor = false
-                        editingCustomDhikr = null
+                        launchStoreOperation(
+                            operation = { store.saveCustomDhikr(custom) },
+                            onSuccess = {
+                                showCustomDhikrEditor = false
+                                editingCustomDhikr = null
+                            }
+                        )
                     }
                 )
             }
@@ -488,14 +570,14 @@ private fun TasbeehApp(
                         when {
                             item.customId != null && item.customId != state.selectedCustomDhikrId -> {
                                 val custom = state.customDhikrs.firstOrNull { it.id == item.customId }
-                                if (custom != null) scope.launch {
+                                if (custom != null) launchStoreOperation {
                                     store.selectCustomDhikr(custom, System.currentTimeMillis())
                                 }
                             }
                             item.customId == null &&
                                 (state.selectedCustomDhikrId != null || item.value != state.dhikr) -> {
                                 val builtIn = DhikrCatalog.byValue(item.value)
-                                scope.launch {
+                                launchStoreOperation {
                                     store.selectBuiltInDhikr(
                                         item.value,
                                         builtIn?.arabic.orEmpty(),
@@ -514,7 +596,7 @@ private fun TasbeehApp(
                         showCustomDhikrEditor = true
                     },
                     onDeleteCustom = { custom ->
-                        scope.launch { store.deleteCustomDhikr(custom.id, System.currentTimeMillis()) }
+                        launchStoreOperation { store.deleteCustomDhikr(custom.id, System.currentTimeMillis()) }
                     }
                 )
             }
@@ -630,7 +712,7 @@ private fun TasbeehApp(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SmallAction(Icons.Default.Undo, "UNDO", canUndo, Modifier.weight(1f)) {
-                        scope.launch { store.undoCount(System.currentTimeMillis()) }
+                        launchStoreOperation { store.undoCount(System.currentTimeMillis()) }
                     }
                     if (sessionIsOpen) {
                         SmallAction(
@@ -639,7 +721,7 @@ private fun TasbeehApp(
                             true,
                             Modifier.weight(1f)
                         ) {
-                            scope.launch {
+                            launchStoreOperation {
                                 if (sessionPaused) store.resumeCurrentSession()
                                 else store.pauseCurrentSession()
                             }
@@ -695,8 +777,10 @@ private fun TasbeehApp(
                     if (sessionIsOpen) {
                         TextButton(
                             onClick = {
-                                scope.launch { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) }
-                                showReset = false
+                                launchStoreOperation(
+                                    operation = { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) },
+                                    onSuccess = { showReset = false }
+                                )
                             },
                             contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
                         ) {
@@ -707,8 +791,10 @@ private fun TasbeehApp(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch { store.resetCounter(saveSession = true, now = System.currentTimeMillis()) }
-                    showReset = false
+                    launchStoreOperation(
+                        operation = { store.resetCounter(saveSession = true, now = System.currentTimeMillis()) },
+                        onSuccess = { showReset = false }
+                    )
                 }) {
                     Text(if (sessionIsOpen) "SAVE & RESET" else "RESET COUNTER", color = Gold)
                 }
@@ -721,8 +807,10 @@ private fun TasbeehApp(
             hasOpenSession = sessionIsOpen,
             isNextTarget = sessionIsOpen || completedRoundStillDisplayed
         ) { target ->
-            scope.launch { store.update(target = target) }
-            showTarget = false
+            launchStoreOperation(
+                operation = { store.update(target = target) },
+                onSuccess = { showTarget = false }
+            )
         }
         if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
             state = state,
@@ -738,7 +826,7 @@ private fun TasbeehApp(
             onStopSpeech = onStopSpeech,
             onDismiss = { showSettings = false },
             onSave = { sound, haptics, fontScale, voice ->
-                scope.launch {
+                launchStoreOperation {
                     store.update(soundEnabled = sound, hapticsEnabled = haptics,
                         fontScale = fontScale, ttsVoicePreference = voice)
                 }
