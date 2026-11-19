@@ -38,6 +38,29 @@ class OpenDuaCatalogRepositoryTest {
     }
 
     @Test
+    fun parserIgnoresRecordingsFromLookalikeHostsWithoutDroppingTheirEntries() {
+        val root = sampleRelease()
+        val firstRecording = root.getJSONArray("entries")
+            .getJSONObject(0)
+            .getJSONArray("variations")
+            .getJSONObject(0)
+            .getJSONArray("steps")
+            .getJSONObject(0)
+            .getJSONArray("recordings")
+            .getJSONObject(0)
+        firstRecording.put("url", "https://audio.opendua.org.attacker.example/forged.mp3")
+
+        val snapshot = OpenDuaCatalogParser.parse(root)
+
+        assertNotNull(snapshot)
+        snapshot!!
+        assertFalse(snapshot.items.flatMap { it.recitationAudioUrls }
+            .any { it.contains("attacker.example") })
+        assertEquals(248, snapshot.recordingCount)
+        assertEquals(267, snapshot.items.map { it.sourceEntryId }.distinct().size)
+    }
+
+    @Test
     fun completeCatalogueIsNotRejectedWhenOptionalDuaOrRecordingMetadataDiffers() {
         val root = sampleRelease()
         root.getJSONObject("counts").put("duas", 261).put("recordings", 248)
