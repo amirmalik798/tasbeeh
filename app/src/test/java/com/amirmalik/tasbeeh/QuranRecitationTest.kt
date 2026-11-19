@@ -61,4 +61,28 @@ class QuranRecitationTest {
         val ordinaryDhikr = DhikrCatalog.byValue("SubhanAllah")
         assertTrue(ordinaryDhikr?.quranAyahKeys.isNullOrEmpty())
     }
+    @Test
+    fun onlyEntriesWithExplicitValidAyahKeysUseQuranFoundation() {
+        assertTrue(QuranRecitationAudio.shouldUseQuranFoundation(listOf("2:255")))
+        assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(emptyList()))
+        assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(listOf("2:999")))
+        assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(listOf("not-an-ayah")))
+    }
+
+    @Test
+    fun customDhikrWithoutAyahMappingRemainsDeviceTtsEligible() {
+        val customItem = DhikrItem(
+            id = "custom-user-entry",
+            value = "My own dua",
+            title = "My own dua",
+            category = "My Dhikr",
+            arabic = "اللَّهُمَّ",
+            transliteration = "",
+            meaning = "",
+            customId = "custom-id"
+        )
+        assertTrue(customItem.quranAyahKeys.isEmpty())
+        assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(customItem.quranAyahKeys))
+    }
+
 }
