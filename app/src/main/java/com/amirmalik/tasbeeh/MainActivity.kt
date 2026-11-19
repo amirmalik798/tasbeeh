@@ -257,8 +257,7 @@ class MainActivity : ComponentActivity() {
 
     private fun isTrustedRecitationUrl(url: String): Boolean =
         url.startsWith("https://verses.quran.foundation/") ||
-            url.startsWith("https://audio.staging.opendua.org/") ||
-            url.startsWith("https://audio.opendua.org/")
+                url.startsWith("https://audio.opendua.org/")
 
     private fun playRecitations(urls: List<String>, queueMode: Int) {
         if (isFinishing || isDestroyed) return
@@ -293,11 +292,17 @@ class MainActivity : ComponentActivity() {
             val openDuaRepository = remember { OpenDuaCatalogRepository(applicationContext) }
             val quranicDuaRepository = remember { QuranicDuaRepository(applicationContext) }
             var openDuaItems by remember { mutableStateOf(openDuaRepository.loadCachedItems()) }
+            var openDuaCategories by remember { mutableStateOf(openDuaRepository.loadCachedCategories()) }
             var extendedQuranicItems by remember { mutableStateOf(quranicDuaRepository.loadCachedItems()) }
             LaunchedEffect(openDuaRepository, quranicDuaRepository) {
                 launch {
-                    runCatching { openDuaItems = openDuaRepository.refresh() }
-                        .onFailure { Log.w("Noor-e-Dhikr", "OpenDua catalogue refresh failed; using cached entries", it) }
+                    runCatching {
+                        val snapshot = openDuaRepository.refresh()
+                        openDuaItems = snapshot.items
+                        openDuaCategories = snapshot.categories
+                    }.onFailure {
+                        Log.w("Noor-e-Dhikr", "OpenDua catalogue refresh failed; using the last complete cached release", it)
+                    }
                 }
                 launch {
                     runCatching { extendedQuranicItems = quranicDuaRepository.refresh() }
@@ -305,7 +310,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val catalogItems = remember(openDuaItems, extendedQuranicItems) {
-                (DhikrCatalog.items + extendedQuranicItems + openDuaItems).distinctBy { it.id }
+                (extendedQuranicItems + openDuaItems).distinctBy { it.id }
             }
             var storageRetryCount by remember { mutableIntStateOf(0) }
             var storageReadError by remember { mutableStateOf(false) }
@@ -335,6 +340,7 @@ class MainActivity : ComponentActivity() {
                     store = store,
                     isSpeaking = speechPlaying,
                     catalogItems = catalogItems,
+                    catalogCategories = openDuaCategories,
                     onPlayRecitation = { urls, queueMode -> playRecitations(urls, queueMode) },
                     onStopSpeech = { stopRecitationPlayback() }
                 ) {
@@ -437,6 +443,7 @@ private fun TasbeehApp(
     store: TasbeehStore,
     isSpeaking: Boolean,
     catalogItems: List<DhikrItem>,
+    catalogCategories: List<String>,
     onPlayRecitation: (List<String>, Int) -> Unit,
     onStopSpeech: () -> Unit,
     onTap: () -> Unit
@@ -474,6 +481,21 @@ private fun TasbeehApp(
     var showCustomDhikrEditor by remember { mutableStateOf(false) }
     var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
     val selectedCustomDhikr = state.customDhikrs.firstOrNull { it.id == state.selectedCustomDhikrId }
+    LaunchedEffect(catalogItems, state.dhikr, state.selectedCustomDhikrId, state.customDhikrs, state.currentSession?.status) {
+        val customSelectionExists = state.selectedCustomDhikrId?.let { selectedId ->
+            state.customDhikrs.any { it.id == selectedId }
+        } ?: false
+        val builtInSelectionExists = state.selectedCustomDhikrId == null &&
+            catalogItems.any { it.value == state.dhikr }
+        val sessionIsOpenForSelection = state.currentSession?.status == SessionStatus.ACTIVE ||
+            state.currentSession?.status == SessionStatus.PAUSED
+        if (!customSelectionExists && !builtInSelectionExists && !sessionIsOpenForSelection) {
+            val fallback = catalogItems.firstOrNull { it.category == "Quran" } ?: catalogItems.firstOrNull()
+            if (fallback != null) {
+                store.selectBuiltInDhikr(fallback.value, fallback.arabic, System.currentTimeMillis())
+            }
+        }
+    }
     val selectedDhikr = catalogItems.firstOrNull { it.value == state.dhikr }
     // Keep the completed session's captured content visible until the user
     // starts the next round. The next count still uses the currently selected
@@ -617,6 +639,7 @@ private fun TasbeehApp(
             showDhikrScreen -> {
                 DhikrSelectionScreen(
                     catalogItems = catalogItems,
+                    openDuaCategories = catalogCategories,
                     currentDhikr = state.dhikr,
                     currentCustomDhikrId = state.selectedCustomDhikrId,
                     customDhikrs = state.customDhikrs,
