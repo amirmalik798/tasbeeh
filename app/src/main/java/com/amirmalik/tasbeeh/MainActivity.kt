@@ -1113,6 +1113,7 @@ private fun TasbeehApp(
                     isResolvingQuranRecitation = isResolvingQuranRecitation,
                     activeRecitationTitle = activeRecitationTitle,
                     activeRecitationArtist = activeRecitationArtist,
+                    activeRecitationSubtitle = activeRecitationSubtitle,
                     selectedQuranReciter = selectedQuranReciter,
                     onPlayQuranRecitation = { title, ayahKeys -> playQuranRecitation(title, ayahKeys) },
                     onPlayRecitation = { title, artist, urls ->
