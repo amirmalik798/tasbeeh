@@ -1,5 +1,7 @@
 package com.amirmalik.tasbeeh
 
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
@@ -22,7 +24,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -36,6 +40,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
@@ -62,17 +70,33 @@ private val Ivory = Color(0xFFFFF8EA)
 private val Muted = Color(0xFF9A9B8D)
 
 class MainActivity : ComponentActivity() {
+    private var countToneGenerator: ToneGenerator? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(9, 11, 10)
         window.navigationBarColor = android.graphics.Color.rgb(9, 11, 10)
+        countToneGenerator = runCatching {
+            ToneGenerator(AudioManager.STREAM_SYSTEM, 28)
+        }.getOrNull()
         val store = TasbeehStore(applicationContext)
         setContent {
             val saved by store.state.collectAsState(initial = TasbeehState())
             TasbeehApp(saved, store) {
-                if (saved.hapticsEnabled) window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                if (saved.soundEnabled) {
+                    countToneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 38)
+                }
+                if (saved.hapticsEnabled) {
+                    window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                }
             }
         }
+    }
+
+    override fun onDestroy() {
+        countToneGenerator?.release()
+        countToneGenerator = null
+        super.onDestroy()
     }
 }
 
@@ -92,6 +116,14 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     val activeDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
     val activeDhikrTransliteration = selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
     val effectiveTarget = state.openSession?.target ?: state.target
+    val latestSessionIsCurrentCompletion = state.sessions.firstOrNull()?.let { latest ->
+        latest.status == SessionStatus.COMPLETED &&
+            latest.count == state.count &&
+            latest.dhikr == activeDhikrTitle
+    } == true
+    val canUndo = state.count > 0 &&
+        state.openSession?.status != SessionStatus.PAUSED &&
+        (state.openSession != null || !latestSessionIsCurrentCompletion)
     var sessionClock by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     // The editor owns its own BackHandler so it can ask before discarding edits.
@@ -229,7 +261,8 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 )
             }
             else -> {
-            Box(Modifier.fillMaxSize().background(Ink)) {
+            BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
+            val compactLayout = maxHeight < 760.dp || state.fontScale >= 1.2f
             Canvas(Modifier.fillMaxSize()) {
                 drawCircle(
                     Brush.radialGradient(listOf(Color(0xFF3A2A0F).copy(alpha = .38f), Color.Transparent), Offset(size.width * .5f, size.height * .30f), size.width * .8f),
@@ -245,12 +278,12 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Header(onHistory = { showHistoryScreen = true }, onSettings = { showSettings = true })
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(6.dp).background(Gold, CircleShape))
                     Text("A MOMENT OF REMEMBRANCE", color = Muted, fontSize = 11.sp, letterSpacing = 2.2.sp, fontWeight = FontWeight.Medium)
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(if (compactLayout) 5.dp else 10.dp))
                 Text(
                     activeDhikrTitle,
                     color = Ivory,
@@ -272,11 +305,11 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 Spacer(Modifier.height(8.dp))
 
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
-                    val diameter = min(maxWidth, 352.dp)
+                    val diameter = min(maxWidth, if (compactLayout) 286.dp else 352.dp)
                     TasbeehStrand(count = state.count, onCount = { increment() }, modifier = Modifier.size(diameter))
                 }
 
-                Spacer(Modifier.height(5.dp))
+                Spacer(Modifier.height(if (compactLayout) 2.dp else 5.dp))
                 Text("YOUR REMEMBRANCE", color = Muted, fontSize = 11.sp, letterSpacing = 2.4.sp)
                 Spacer(Modifier.height(2.dp))
                 AnimatedContent(
@@ -287,30 +320,36 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                     },
                     label = "counter"
                 ) { count ->
-                    Text(count.toString(), color = Ivory, fontSize = 64.sp, lineHeight = 68.sp, fontWeight = FontWeight.Light, letterSpacing = (-2).sp)
+                    Text(
+                        count.toString(),
+                        color = Ivory,
+                        fontSize = if (compactLayout) 54.sp else 64.sp,
+                        lineHeight = if (compactLayout) 59.sp else 68.sp,
+                        fontWeight = FontWeight.Light,
+                        letterSpacing = (-2).sp
+                    )
                 }
                 Text("${(effectiveTarget - state.count.coerceAtMost(effectiveTarget)).coerceAtLeast(0)} remaining", color = Muted, fontSize = 12.sp)
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(if (compactLayout) 7.dp else 12.dp))
                 ProgressTrack(state.count, effectiveTarget)
                 state.openSession?.let { open ->
                     Spacer(Modifier.height(9.dp))
                     SessionTimeStrip(open, sessionClock)
                 }
-                Spacer(Modifier.height(15.dp))
+                Spacer(Modifier.height(if (compactLayout) 8.dp else 15.dp))
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     SmallAction(
                         Icons.Default.Undo,
                         "UNDO",
-                        state.count > 0 && state.openSession != null &&
-                            state.openSession.status == SessionStatus.ACTIVE,
+                        canUndo,
                         Modifier.weight(1f)
                     ) {
                         scope.launch { store.undoCount(System.currentTimeMillis()) }
                     }
                     Button(
                         onClick = { increment() },
-                        modifier = Modifier.weight(1.7f).height(62.dp),
+                        modifier = Modifier.weight(1.7f).height(if (compactLayout) 56.dp else 62.dp),
                         shape = RoundedCornerShape(22.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Ink),
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 5.dp, pressedElevation = 1.dp)
@@ -321,15 +360,15 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                     }
                     SmallAction(Icons.Default.Refresh, "RESET", true, Modifier.weight(1f)) { showReset = true }
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(if (compactLayout) 6.dp else 10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     QuickChip("Target · ${effectiveTarget}", Modifier.weight(1f)) { showTarget = true }
                     QuickChip("Change dhikr", Modifier.weight(1f)) { showDhikrScreen = true }
                 }
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
             }
             AnimatedVisibility(
-                visible = state.count >= state.target,
+                visible = state.count >= effectiveTarget,
                 enter = fadeIn(), exit = fadeOut(),
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 82.dp)
             ) {
@@ -425,10 +464,10 @@ private fun Header(onHistory: () -> Unit, onSettings: () -> Unit) {
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconButton(onClick = onHistory, modifier = Modifier.size(42.dp).background(Panel, CircleShape)) {
+            IconButton(onClick = onHistory, modifier = Modifier.size(48.dp).background(Panel, CircleShape)) {
                 Icon(Icons.Default.History, "Session history", tint = Gold, modifier = Modifier.size(19.dp))
             }
-            IconButton(onClick = onSettings, modifier = Modifier.size(42.dp).background(Panel, CircleShape)) {
+            IconButton(onClick = onSettings, modifier = Modifier.size(48.dp).background(Panel, CircleShape)) {
                 Icon(Icons.Default.Tune, "Settings", tint = Gold, modifier = Modifier.size(19.dp))
             }
         }
@@ -483,7 +522,14 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
         }
     }
 
-    Canvas(modifier.clickable(onClickLabel = "Count one dhikr", onClick = onCount)) {
+    Canvas(
+        modifier
+            .semantics {
+                contentDescription = "Tasbeeh counter: $count repetitions. Tap to count one."
+                role = Role.Button
+            }
+            .clickable(onClickLabel = "Count one dhikr", onClick = onCount)
+    ) {
         val minDimension = size.minDimension
         val cx = size.width * .5f
         val cy = size.height * .425f
@@ -906,7 +952,12 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
 private fun ProgressTrack(count: Int, target: Int) {
     val fraction = (count.toFloat() / target.coerceAtLeast(1)).coerceIn(0f, 1f)
     val animated by animateFloatAsState(fraction, tween(420), label = "progress")
-    Column(Modifier.fillMaxWidth()) {
+    Column(
+        Modifier.fillMaxWidth().semantics {
+            contentDescription = "Session progress"
+            stateDescription = "${(fraction * 100).toInt()} percent complete"
+        }
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("SESSION PROGRESS", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
             Text("${(animated * 100).toInt()}%", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
@@ -933,7 +984,7 @@ private fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 
 @Composable
 private fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(modifier = modifier.height(42.dp).clickable(onClick = onClick), color = Panel,
+    Surface(modifier = modifier.height(48.dp).clickable(onClick = onClick), color = Panel,
         shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2B3028))) {
         Box(contentAlignment = Alignment.Center) { Text(text, color = Ivory, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
     }
@@ -948,13 +999,18 @@ private fun TargetDialog(
 ) {
     var custom by remember { mutableStateOf(current.toString()) }
     val presets = listOf(7, 11, 33, 70, 99, 100, 500, 1000, 5000)
+    val parsedCustom = custom.toIntOrNull()
+    val customIsValid = parsedCustom != null && parsedCustom in 1..9999
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Panel,
         title = { Text("Choose your target", color = Ivory) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 if (hasOpenSession) {
                     Surface(
                         color = Color(0xFF252014),
@@ -1030,18 +1086,27 @@ private fun TargetDialog(
                     onValueChange = { custom = it.filter(Char::isDigit).take(4) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Custom target") },
-                    supportingText = { Text("Enter a number from 1 to 9,999") },
+                    isError = custom.isNotBlank() && !customIsValid,
+                    supportingText = {
+                        Text(
+                            if (custom.isNotBlank() && !customIsValid) "Enter a number from 1 to 9,999."
+                            else "Enter a number from 1 to 9,999"
+                        )
+                    },
                     singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                    ),
                     colors = darkFieldColors()
                 )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = {
-                    custom.toIntOrNull()?.takeIf { it in 1..9999 }?.let(onSave)
-                }
-            ) { Text("SAVE CUSTOM", color = Gold) }
+                enabled = customIsValid,
+                onClick = { parsedCustom?.let(onSave) }
+            ) { Text("SAVE CUSTOM", color = if (customIsValid) Gold else Muted) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("CANCEL", color = Muted) }
@@ -1174,7 +1239,10 @@ private fun SettingsDialog(
         containerColor = Panel,
         title = { Text("Preferences", color = Ivory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 SettingToggle("Counting sound", "A soft sound on each bead", sound) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
 
