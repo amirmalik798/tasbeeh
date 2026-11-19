@@ -460,7 +460,7 @@ private fun CatalogStatusPanel(
             message = if (catalogName == "OpenDua") {
                 "The dua catalogue has not been downloaded on this device yet. Connect to the internet to download it."
             } else {
-                "The Qur'anic Arabic text is not saved on this device yet. Connect to the internet to download it. The four selections remain listed."
+                "The 114 surahs remain listed, but their verified text has not been downloaded on this device yet. Connect to the internet to download the Qur'an."
             }
             // Network callbacks automatically start the refresh when connectivity
             // returns; offering Retry while offline would only repeat the same no-op.
