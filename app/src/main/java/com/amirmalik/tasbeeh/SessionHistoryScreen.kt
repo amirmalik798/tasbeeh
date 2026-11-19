@@ -3,12 +3,13 @@ package com.amirmalik.tasbeeh
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clock
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.PauseCircle
 import androidx.compose.material.icons.filled.PlayCircle
@@ -107,7 +108,7 @@ internal fun SessionHistoryScreen(
                 Modifier.weight(1f)
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .verticalScroll(androidx.compose.foundation.rememberScrollState())
+                    .verticalScroll(rememberScrollState())
             ) {
                 Spacer(Modifier.height(12.dp))
                 Surface(
@@ -252,7 +253,7 @@ internal fun SessionHistoryScreen(
                                 .width(1.dp).height(23.dp).background(Color(0xFF3A3D30))
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            TimingIcon(if (session.endedAt != null) Icons.Default.CheckCircle else Icons.Default.Clock)
+                            TimingIcon(if (session.endedAt != null) Icons.Default.CheckCircle else Icons.Default.Schedule)
                             Spacer(Modifier.width(11.dp))
                             Column(Modifier.weight(1f)) {
                                 Text("ENDED", color = HistoryMuted, fontSize = 9.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold)
@@ -286,7 +287,7 @@ internal fun SessionHistoryScreen(
                                 )
                             }
                             Icon(
-                                Icons.Default.Timer,
+                                Icons.Default.Schedule,
                                 contentDescription = null,
                                 tint = HistoryGold.copy(alpha = .86f),
                                 modifier = Modifier.size(27.dp)
