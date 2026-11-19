@@ -400,15 +400,16 @@ class MainActivity : ComponentActivity() {
             var quranReciters by remember(quranRecitationRepository) {
                 mutableStateOf(quranRecitationRepository.cachedReciters())
             }
-            LaunchedEffect(quranRecitationRepository) {
-                val refreshed = quranRecitationRepository.refreshReciters()
-                if (refreshed.isNotEmpty()) quranReciters = refreshed
-            }
             val connectivityManager = remember {
                 applicationContext.getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager
             }
             var hasInternetConnection by remember {
                 mutableStateOf(hasValidatedInternetConnection(applicationContext))
+            }
+            LaunchedEffect(quranRecitationRepository, hasInternetConnection) {
+                if (!hasInternetConnection) return@LaunchedEffect
+                val refreshed = quranRecitationRepository.refreshReciters()
+                if (refreshed.isNotEmpty()) quranReciters = refreshed
             }
             DisposableEffect(connectivityManager) {
                 val manager = connectivityManager
