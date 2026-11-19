@@ -8,23 +8,25 @@ import org.junit.Test
 class DhikrCatalogIntegrityTest {
 
     @Test
-    fun dedicatedQuranLibraryContainsOnlyTheFourRequestedSelections() {
-        assertEquals(4, QuranicDuaCatalog.additions.size)
+    fun fullQuranLibraryContainsAllSurahsAndRetainsTheOriginalQuickSelections() {
+        assertEquals(114, QuranicDuaCatalog.surahs.size)
+        assertEquals(3, QuranicDuaCatalog.additions.size)
         assertEquals(
             listOf(
-                "Surah al-Fatihah",
                 "4 Qul",
                 "Ayat al-Kursi",
                 "Last two ayahs of Surah al-Baqarah"
             ),
             QuranicDuaCatalog.additions.map { it.title }
         )
+        assertEquals("Surah al-Fatihah", QuranicDuaCatalog.surahs.first().title)
+        assertEquals("quran-surah-al-fatiha", QuranicDuaCatalog.surahs.first().id)
     }
 
     @Test
     fun allQuranSelectionsAreInTheDedicatedQuranCategory() {
         val items = QuranicDuaCatalog.fallbackItems()
-        assertEquals(4, items.size)
+        assertEquals(117, items.size)
         items.forEach { item ->
             assertEquals("Quran", item.category)
             assertEquals(listOf("Quran"), item.categories)
@@ -48,11 +50,13 @@ class DhikrCatalogIntegrityTest {
     }
 
     @Test
-    fun QuranTextIsOnlyReportedCompleteWhenEveryRequestedAyahIsPresent() {
+    fun quranTextIsOnlyReportedCompleteWhenEverySurahAndShortcutIsPresent() {
         val fallback = QuranicDuaCatalog.fallbackItems()
         assertFalse(hasCompleteQuranicText(fallback))
 
-        val complete = fallback.map { item -> item.copy(arabic = "نَصٌّ", transliteration = "Nass") }
+        val complete = fallback.map { item ->
+            item.copy(arabic = "نَصٌّ", transliteration = "Nass", meaning = "Translation")
+        }
         assertTrue(hasCompleteQuranicText(complete))
 
         val missingAyah = complete.mapIndexed { index, item ->
@@ -61,13 +65,13 @@ class DhikrCatalogIntegrityTest {
         assertFalse(hasCompleteQuranicText(missingAyah))
 
         val missingArabic = complete.mapIndexed { index, item ->
-            if (index == 2) item.copy(arabic = "") else item
+            if (index == 114) item.copy(arabic = "") else item
         }
         assertFalse(hasCompleteQuranicText(missingArabic))
     }
 
     @Test
-    fun QuranRefreshRequiresArabicTransliterationAndTranslationForEveryAyah() {
+    fun quickSelectionRefreshRequiresArabicTransliterationAndTranslationForEveryAyah() {
         val allVerses = QuranicDuaCatalog.additions
             .flatMap { it.ayahKeys }
             .associateWith { Triple("نَصٌّ", "Nass", "Translation") }
@@ -98,27 +102,21 @@ class DhikrCatalogIntegrityTest {
     }
 
     @Test
-    fun savedQuranTextMustProveEveryRequestedAyahWasCached() {
-        val completeItems = QuranicDuaCatalog.fallbackItems().map { it.copy(arabic = "نَصٌّ", transliteration = "Nass") }
-        val completeKeys = QuranicDuaCatalog.additions.associate { it.id to it.ayahKeys }
-        assertTrue(hasCompleteQuranicCache(completeItems, completeKeys))
-
-        val missingAyah = completeKeys.toMutableMap().apply {
-            val definition = QuranicDuaCatalog.additions.first()
-            put(definition.id, definition.ayahKeys.dropLast(1))
-        }
-        assertFalse(hasCompleteQuranicCache(completeItems, missingAyah))
-        // A valid v2 cache written before per-ayah metadata must remain usable offline.
-        assertTrue(hasCompleteQuranicCache(completeItems, emptyMap()))
-    }
-
-    @Test
-    fun theFourQuranEntriesHaveTheExactRequestedSurahVerseRanges() {
-        val items = QuranicDuaCatalog.additions.associateBy { it.id }
+    fun the114SurahsAndQuickSelectionsHaveTheExpectedAyahMappings() {
         assertEquals(
             (1..7).map { "1:$it" },
-            items.getValue("quran-surah-al-fatiha").ayahKeys
+            QuranicDuaCatalog.surahs.first().ayahKeys
         )
+        assertEquals(
+            (1..286).map { "2:$it" },
+            QuranicDuaCatalog.surahs[1].ayahKeys
+        )
+        assertEquals(
+            (1..6).map { "114:$it" },
+            QuranicDuaCatalog.surahs.last().ayahKeys
+        )
+
+        val items = QuranicDuaCatalog.additions.associateBy { it.id }
         assertEquals(
             listOf(
                 "109:1", "109:2", "109:3", "109:4", "109:5", "109:6",

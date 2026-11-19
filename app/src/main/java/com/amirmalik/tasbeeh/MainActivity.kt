@@ -1,6 +1,6 @@
 package com.amirmalik.tasbeeh
 
-import android.media.AudioAttributes
+import android.content.ComponentName
 import android.media.MediaPlayer
 import android.net.ConnectivityManager
 import android.net.Network
@@ -12,6 +12,12 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -76,7 +82,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onStart
-import java.util.ArrayDeque
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -93,11 +98,6 @@ private val Muted = Color(0xFF9A9B8D)
 
 internal const val RECITATION_QUEUE_REPLACE = 0
 internal const val RECITATION_QUEUE_APPEND = 1
-
-private data class PendingRecitation(
-    val url: String,
-    val shouldReportFailure: Boolean
-)
 
 private data class FailedStoreOperation(
     val label: String,
@@ -138,6 +138,18 @@ internal fun shouldRepairMissingDhikrSelection(
     hasValidSelection: Boolean,
     hasOpenSession: Boolean
 ): Boolean = storedDhikr.isBlank() && !hasValidSelection && !hasOpenSession
+
+internal fun shouldSelectFirstMyDhikr(
+    hasSelectedCustomDhikr: Boolean,
+    customDhikrCount: Int
+): Boolean = !hasSelectedCustomDhikr && customDhikrCount > 0
+
+internal fun shouldClearCounterDhikrSelection(
+    hasSelectedCustomDhikr: Boolean,
+    hasCustomDhikrs: Boolean,
+    hasLegacySelection: Boolean,
+    hasOpenSession: Boolean
+): Boolean = !hasSelectedCustomDhikr && !hasCustomDhikrs && (hasLegacySelection || hasOpenSession)
 
 internal fun arabicPlaybackControlEnabled(hasArabicText: Boolean, isSpeaking: Boolean): Boolean =
     hasArabicText || isSpeaking
@@ -185,35 +197,167 @@ internal fun recitationPlaybackFailureMessage(
     }
 }
 
+@androidx.media3.common.util.UnstableApi
 class MainActivity : ComponentActivity() {
     private var speechPlaying by mutableStateOf(false)
     private var recitationPreparing by mutableStateOf(false)
-    private val pendingRecitationUrls = ArrayDeque<PendingRecitation>()
-    private var recitationMediaPlayer: MediaPlayer? = null
-    private var currentRecitationShouldReportFailure = true
+    private var activeRecitationTitle by mutableStateOf("")
+    private var mediaController: MediaController? = null
+    private var mediaControllerFuture: ListenableFuture<MediaController>? = null
+    private var pendingRecitationRequest: PendingRecitationRequest? = null
 
-    private fun refreshSpeechPlayingState() {
-        if (isFinishing || isDestroyed) return
-        runOnUiThread {
-            if (isFinishing || isDestroyed) return@runOnUiThread
-            speechPlaying = recitationMediaPlayer != null || pendingRecitationUrls.isNotEmpty()
+    private data class PendingRecitationRequest(
+        val title: String,
+        val artist: String,
+        val urls: List<String>
+    )
+
+    private val playbackListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            updatePlaybackUiState()
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            updatePlaybackUiState()
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            updatePlaybackUiState()
+        }
+
+        override fun onMediaMetadataChanged(mediaMetadata: androidx.media3.common.MediaMetadata) {
+            updatePlaybackUiState()
+        }
+
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            updatePlaybackUiState()
+            Log.w("Noor-e-Dhikr", "Background recitation playback failed", error)
+            showRecitationPlaybackError(recitationPlaybackFailureMessage(error))
         }
     }
 
-    private fun stopRecitationAudio() {
-        pendingRecitationUrls.clear()
-        val player = recitationMediaPlayer
-        recitationMediaPlayer = null
-        if (player != null) {
-            runCatching { player.setOnPreparedListener(null) }
-            runCatching { player.setOnCompletionListener(null) }
-            runCatching { player.setOnErrorListener(null) }
-            runCatching { player.stop() }
-            runCatching { player.release() }
+    private fun updatePlaybackUiState() {
+        val controller = mediaController
+        speechPlaying = controller?.isPlaying == true
+        recitationPreparing = controller?.playbackState == Player.STATE_BUFFERING
+        activeRecitationTitle = controller?.currentMediaItem?.mediaMetadata?.title
+            ?.toString().orEmpty()
+    }
+
+    private fun connectToRecitationService() {
+        if (mediaController != null || mediaControllerFuture != null || isFinishing || isDestroyed) return
+        val token = SessionToken(
+            applicationContext,
+            ComponentName(applicationContext, QuranRecitationPlaybackService::class.java)
+        )
+        val future = MediaController.Builder(applicationContext, token).buildAsync()
+        mediaControllerFuture = future
+        future.addListener(
+            {
+                if (mediaControllerFuture !== future || isFinishing || isDestroyed) {
+                    MediaController.releaseFuture(future)
+                    return@addListener
+                }
+                runCatching { future.get() }
+                    .onSuccess { controller ->
+                        mediaController = controller
+                        controller.addListener(playbackListener)
+                        updatePlaybackUiState()
+                        pendingRecitationRequest?.let { request ->
+                            pendingRecitationRequest = null
+                            startRecitationRequest(controller, request)
+                        }
+                    }
+                    .onFailure { error ->
+                        mediaControllerFuture = null
+                        Log.w("Noor-e-Dhikr", "Could not connect to background recitation service", error)
+                        speechPlaying = false
+                        recitationPreparing = false
+                    }
+            },
+            ContextCompat.getMainExecutor(this)
+        )
+    }
+
+    private fun disconnectFromRecitationService() {
+        val controller = mediaController
+        controller?.removeListener(playbackListener)
+        mediaController = null
+        mediaControllerFuture?.let(MediaController::releaseFuture)
+        mediaControllerFuture = null
+        speechPlaying = false
+        recitationPreparing = false
+        activeRecitationTitle = ""
+    }
+
+    private fun startRecitationRequest(
+        controller: MediaController,
+        request: PendingRecitationRequest
+    ) {
+        val mediaItems = createRecitationMediaItems(request.title, request.artist, request.urls)
+        if (mediaItems.isEmpty()) {
+            showRecitationPlaybackError("The selected recitation does not contain a supported recording URL.")
+            return
+        }
+        runCatching {
+            controller.setMediaItems(mediaItems)
+            controller.prepare()
+            controller.play()
+        }.onFailure { error ->
+            Log.w("Noor-e-Dhikr", "Could not start the requested recitation", error)
+            showRecitationPlaybackError(recitationPlaybackFailureMessage(error))
+        }
+    }
+
+    private fun playRecitations(title: String, artist: String, urls: List<String>) {
+        if (isFinishing || isDestroyed) return
+        val safeUrls = urls.map { it.trim() }
+            .filter(::isTrustedRecitationUrl)
+            .distinct()
+        if (safeUrls.isEmpty()) {
+            showRecitationPlaybackError(
+                if (urls.isEmpty()) {
+                    "A recording was not provided for this dua."
+                } else {
+                    "The selected recording URL was not from a supported HTTPS audio host."
+                }
+            )
+            return
+        }
+        if (!hasValidatedInternetConnection(applicationContext)) {
+            showRecitationPlaybackError(
+                "No internet connection is available. Recitations are streamed and need an internet connection."
+            )
+            return
+        }
+
+        val request = PendingRecitationRequest(
+            title = title.trim().take(120).ifBlank { "Recorded recitation" },
+            artist = artist.trim().take(180).ifBlank { "Recorded recitation" },
+            urls = safeUrls
+        )
+        val controller = mediaController
+        if (controller != null) {
+            startRecitationRequest(controller, request)
+        } else {
+            pendingRecitationRequest = request
+            connectToRecitationService()
+        }
+    }
+
+    private fun stopRecitationPlayback() {
+        pendingRecitationRequest = null
+        mediaController?.let { controller ->
+            runCatching {
+                controller.pause()
+                controller.clearMediaItems()
+            }.onFailure { error ->
+                Log.w("Noor-e-Dhikr", "Could not stop the background recitation", error)
+            }
         }
         speechPlaying = false
         recitationPreparing = false
-        currentRecitationShouldReportFailure = true
+        activeRecitationTitle = ""
     }
 
     private fun showRecitationPlaybackError(message: String) {
@@ -235,149 +379,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun failCurrentRecitation(
-        error: Throwable? = null,
-        mediaPlayerWhat: Int? = null,
-        mediaPlayerExtra: Int? = null
-    ) {
-        val player = recitationMediaPlayer
-        recitationMediaPlayer = null
-        pendingRecitationUrls.clear()
-        recitationPreparing = false
-        if (player != null) {
-            runCatching { player.setOnPreparedListener(null) }
-            runCatching { player.setOnCompletionListener(null) }
-            runCatching { player.setOnErrorListener(null) }
-            runCatching { player.reset() }
-            runCatching { player.release() }
-        }
-
-        val message = recitationPlaybackFailureMessage(error, mediaPlayerWhat, mediaPlayerExtra)
-        Log.w("Noor-e-Dhikr", "recitation stream failed: $message", error)
-        if (currentRecitationShouldReportFailure) {
-            showRecitationPlaybackError(message)
-        } else {
-            Log.i("Noor-e-Dhikr", "Automatic recitation stopped without interrupting the counting session")
-        }
-        currentRecitationShouldReportFailure = true
-        refreshSpeechPlayingState()
+    override fun onStart() {
+        super.onStart()
+        connectToRecitationService()
     }
 
-    private fun startNextRecitationAudio() {
-        if (isFinishing || isDestroyed || recitationMediaPlayer != null) return
-        if (pendingRecitationUrls.isEmpty()) {
-            recitationPreparing = false
-            refreshSpeechPlayingState()
-            return
-        }
-
-        val request = pendingRecitationUrls.removeFirst()
-        currentRecitationShouldReportFailure = request.shouldReportFailure
-        val player = try {
-            MediaPlayer()
-        } catch (error: Exception) {
-            failCurrentRecitation(error)
-            return
-        }
-        recitationMediaPlayer = player
-
-        try {
-            player.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            player.setOnPreparedListener { prepared ->
-                if (recitationMediaPlayer !== player || isFinishing || isDestroyed) {
-                    runCatching { prepared.release() }
-                    return@setOnPreparedListener
-                }
-                recitationPreparing = false
-                runCatching { prepared.start() }
-                    .onFailure { failCurrentRecitation(it) }
-            }
-            player.setOnCompletionListener { completed ->
-                if (recitationMediaPlayer === player) {
-                    recitationMediaPlayer = null
-                    runCatching { completed.release() }
-                    startNextRecitationAudio()
-                } else {
-                    runCatching { completed.release() }
-                }
-            }
-            player.setOnErrorListener { _, what, extra ->
-                if (recitationMediaPlayer === player) {
-                    failCurrentRecitation(mediaPlayerWhat = what, mediaPlayerExtra = extra)
-                } else {
-                    runCatching { player.release() }
-                }
-                true
-            }
-            player.setDataSource(request.url)
-            recitationPreparing = true
-            player.prepareAsync()
-            refreshSpeechPlayingState()
-        } catch (error: Exception) {
-            failCurrentRecitation(error)
-        }
-    }
-
-    private fun playRecitations(urls: List<String>, queueMode: Int) {
-        if (isFinishing || isDestroyed) return
-        val safeUrls = urls.map { it.trim() }.filter { isTrustedRecitationUrl(it) }
-        if (safeUrls.isEmpty()) {
-            if (queueMode == RECITATION_QUEUE_REPLACE && urls.isNotEmpty()) {
-                showRecitationPlaybackError("The selected recitation URL was not from a supported HTTPS audio host.")
-            } else if (queueMode == RECITATION_QUEUE_REPLACE) {
-                runCatching {
-                    Toast.makeText(this, "A recorded recitation is not available for this entry.", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Log.w("Noor-e-Dhikr", "Skipping an automatic recitation with no supported recording URL")
-            }
-            return
-        }
-
-        if (!shouldAcceptRecitationRequest(
-                queueMode = queueMode,
-                hasActivePlayer = recitationMediaPlayer != null,
-                hasPendingRecitations = pendingRecitationUrls.isNotEmpty()
-            )
-        ) {
-            Log.d(
-                "Noor-e-Dhikr",
-                "Skipping automatic recitation while another selection is queued or playing"
-            )
-            return
-        }
-
-        if (!hasValidatedInternetConnection(applicationContext)) {
-            if (queueMode == RECITATION_QUEUE_REPLACE) {
-                showRecitationPlaybackError(
-                    "No internet connection is available. Recorded recitations are streamed and need an internet connection. Reconnect and try again."
-                )
-            } else {
-                // Automatic recitation on each count must never interrupt an
-                // offline counting session with a modal error on every tap.
-                Log.i("Noor-e-Dhikr", "Skipping automatic recitation while offline")
-            }
-            return
-        }
-
-        if (queueMode == RECITATION_QUEUE_REPLACE) stopRecitationAudio()
-        val shouldReportFailure = queueMode == RECITATION_QUEUE_REPLACE
-        safeUrls.forEach { url ->
-            pendingRecitationUrls.addLast(
-                PendingRecitation(url = url, shouldReportFailure = shouldReportFailure)
-            )
-        }
-        refreshSpeechPlayingState()
-        startNextRecitationAudio()
-    }
-
-    private fun stopRecitationPlayback() {
-        stopRecitationAudio()
+    override fun onStop() {
+        disconnectFromRecitationService()
+        super.onStop()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -385,14 +394,23 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(9, 11, 10)
         window.navigationBarColor = android.graphics.Color.rgb(9, 11, 10)
         val store = TasbeehStore(applicationContext)
+        val quranRecitationRepository = QuranRecitationRepository(applicationContext)
         setContent {
             val openDuaRepository = remember { OpenDuaCatalogRepository(applicationContext) }
             val quranicDuaRepository = remember { QuranicDuaRepository(applicationContext) }
+            var quranReciters by remember(quranRecitationRepository) {
+                mutableStateOf(quranRecitationRepository.cachedReciters())
+            }
             val connectivityManager = remember {
                 applicationContext.getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager
             }
             var hasInternetConnection by remember {
                 mutableStateOf(hasValidatedInternetConnection(applicationContext))
+            }
+            LaunchedEffect(quranRecitationRepository, hasInternetConnection) {
+                if (!hasInternetConnection) return@LaunchedEffect
+                val refreshed = quranRecitationRepository.refreshReciters()
+                if (refreshed.isNotEmpty()) quranReciters = refreshed
             }
             DisposableEffect(connectivityManager) {
                 val manager = connectivityManager
@@ -540,15 +558,16 @@ class MainActivity : ComponentActivity() {
                 quranIsRefreshing = !hasCompleteQuranicText(extendedQuranicItems)
                 try {
                     val result = quranicDuaRepository.refresh()
-                    // Publish only the complete, validated result (or the previous
-                    // complete cache returned by the repository).
-                    if (result.isComplete) {
+                    // Each chapter is independently validated and atomically cached.
+                    // Publish completed chapters immediately, even if another chapter
+                    // failed, while never exposing a partially fetched chapter.
+                    if (result.items.isNotEmpty()) {
                         extendedQuranicItems = result.items
                     }
                     quranCacheWriteFailed = result.refreshedFromNetwork && !result.cachePersisted
-                    if (!result.refreshedFromNetwork && !result.isComplete) {
+                    if (!result.isComplete) {
                         quranRefreshError =
-                            "Verified Qur'anic text could not be downloaded. The selections remain listed; retry when your connection is stable."
+                            "Verified text is available for ${result.completedSurahCount} of 114 surahs. Some chapters could not be downloaded. Retry when your connection is stable."
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -590,7 +609,10 @@ class MainActivity : ComponentActivity() {
                     store = store,
                     isSpeaking = speechPlaying,
                     isPreparingSpeech = recitationPreparing,
+                    activeRecitationTitle = activeRecitationTitle,
                     hasInternetConnection = hasInternetConnection,
+                    quranReciters = quranReciters,
+                    quranRecitationRepository = quranRecitationRepository,
                     catalogItems = catalogItems,
                     catalogCategories = openDuaCategories,
                     openDuaIsRefreshing = openDuaIsRefreshing,
@@ -601,7 +623,7 @@ class MainActivity : ComponentActivity() {
                     quranCacheWriteFailed = quranCacheWriteFailed,
                     onRetryQuranText = { quranRetryCount++ },
                     onRetryOpenDuaCatalog = { openDuaRetryCount++ },
-                    onPlayRecitation = { urls, queueMode -> playRecitations(urls, queueMode) },
+                    onPlayRecitation = { title, artist, urls -> playRecitations(title, artist, urls) },
                     onStopSpeech = { stopRecitationPlayback() }
                 ) {
                     if (saved.hapticsEnabled) {
@@ -615,8 +637,64 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        stopRecitationAudio()
+        disconnectFromRecitationService()
         super.onDestroy()
+    }
+}
+
+@Composable
+private fun MyDhikrsEmptyState(onOpenLibrary: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            color = Color(0xFF171D18),
+            shape = RoundedCornerShape(24.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF514329))
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = GoldLight,
+                    modifier = Modifier.size(34.dp)
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Your personal Dhikrs",
+                    color = Ivory,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "The tasbeeh counter works only with entries in My Dhikhrs. Add your own remembrance to begin counting. Quran and other dua collections remain available to read and listen to.",
+                    color = Muted,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = onOpenLibrary,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Ink
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("OPEN MY DHIKRS", fontWeight = FontWeight.Bold, letterSpacing = .5.sp)
+                }
+            }
+        }
     }
 }
 
@@ -703,7 +781,10 @@ private fun TasbeehApp(
     store: TasbeehStore,
     isSpeaking: Boolean,
     isPreparingSpeech: Boolean,
+    activeRecitationTitle: String,
     hasInternetConnection: Boolean,
+    quranReciters: List<QuranReciter>,
+    quranRecitationRepository: QuranRecitationRepository,
     catalogItems: List<DhikrItem>,
     catalogCategories: List<String>,
     openDuaIsRefreshing: Boolean,
@@ -714,13 +795,24 @@ private fun TasbeehApp(
     quranCacheWriteFailed: Boolean,
     onRetryQuranText: () -> Unit,
     onRetryOpenDuaCatalog: () -> Unit,
-    onPlayRecitation: (List<String>, Int) -> Unit,
+    onPlayRecitation: (String, String, List<String>) -> Unit,
     onStopSpeech: () -> Unit,
     onTap: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val pendingStoreOperations = remember { mutableStateMapOf<Long, String>() }
+    var isResolvingQuranRecitation by remember { mutableStateOf(false) }
+    val selectedQuranReciter = remember(quranReciters, state.quranReciterId) {
+        quranReciters.firstOrNull { it.id == state.quranReciterId }
+            ?: quranReciters.firstOrNull()
+            ?: QuranReciterCatalog.fallback.first()
+    }
+    LaunchedEffect(state.quranReciterId, selectedQuranReciter.id) {
+        if (state.quranReciterId != selectedQuranReciter.id) {
+            store.update(quranReciterId = selectedQuranReciter.id)
+        }
+    }
     var nextStoreOperationId by remember { mutableLongStateOf(0L) }
     var showStoreBusyIndicator by remember { mutableStateOf(false) }
     var failedStoreOperation by remember { mutableStateOf<FailedStoreOperation?>(null) }
@@ -732,6 +824,35 @@ private fun TasbeehApp(
             showStoreBusyIndicator = false
             delay(350)
             showStoreBusyIndicator = pendingStoreOperations.isNotEmpty()
+        }
+    }
+
+    fun playQuranRecitation(title: String, ayahKeys: List<String>) {
+        if (isResolvingQuranRecitation || ayahKeys.isEmpty()) return
+        isResolvingQuranRecitation = true
+        val reciter = selectedQuranReciter
+        scope.launch {
+            try {
+                val urls = quranRecitationRepository.audioUrlsForAyahs(reciter.id, ayahKeys)
+                if (urls.size != ayahKeys.size) {
+                    throw java.io.IOException(
+                        "Quran Foundation did not return a complete recording for every ayah. Check your connection and retry."
+                    )
+                }
+                onPlayRecitation(title, reciter.attribution, urls)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e("Noor-e-Dhikr", "Could not resolve Quran recitation for ${reciter.displayName}", error)
+                Toast.makeText(
+                    context,
+                    error.localizedMessage?.takeIf { it.isNotBlank() }
+                        ?: "The selected Quran recitation could not be loaded. Please retry.",
+                    Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                isResolvingQuranRecitation = false
+            }
         }
     }
 
@@ -771,100 +892,74 @@ private fun TasbeehApp(
     var showCustomDhikrEditor by remember { mutableStateOf(false) }
     var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
     val selectedCustomDhikr = state.customDhikrs.firstOrNull { it.id == state.selectedCustomDhikrId }
-    LaunchedEffect(catalogItems, state.dhikr, state.selectedCustomDhikrId, state.customDhikrs, state.currentSession?.status) {
-        val customSelectionExists = state.selectedCustomDhikrId?.let { selectedId ->
-            state.customDhikrs.any { it.id == selectedId }
-        } ?: false
-        val builtInSelectionExists = state.selectedCustomDhikrId == null &&
-            catalogItems.any { it.value == state.dhikr }
-        val sessionIsOpenForSelection = state.currentSession?.status == SessionStatus.ACTIVE ||
+    LaunchedEffect(state.selectedCustomDhikrId, state.customDhikrs, state.dhikr, state.currentSession?.status) {
+        val hasOpenSession = state.currentSession?.status == SessionStatus.ACTIVE ||
             state.currentSession?.status == SessionStatus.PAUSED
-        if (shouldRepairMissingDhikrSelection(
-                storedDhikr = state.dhikr,
-                hasValidSelection = customSelectionExists || builtInSelectionExists,
-                hasOpenSession = sessionIsOpenForSelection
-            )
-        ) {
-            val fallback = catalogItems.firstOrNull { it.category == "Quran" } ?: catalogItems.firstOrNull()
-            if (fallback != null) {
-                launchStoreOperation(label = "Preparing your selected Dhikr…") {
-                    store.selectBuiltInDhikr(fallback.value, fallback.arabic, System.currentTimeMillis())
+        when {
+            shouldSelectFirstMyDhikr(
+                hasSelectedCustomDhikr = selectedCustomDhikr != null,
+                customDhikrCount = state.customDhikrs.size
+            ) -> {
+                val firstPersonalDhikr = state.customDhikrs.firstOrNull()
+                if (firstPersonalDhikr != null) {
+                    launchStoreOperation(label = "Preparing your personal Dhikr…") {
+                        store.selectCustomDhikr(firstPersonalDhikr, System.currentTimeMillis())
+                    }
+                }
+            }
+            shouldClearCounterDhikrSelection(
+                hasSelectedCustomDhikr = selectedCustomDhikr != null,
+                hasCustomDhikrs = state.customDhikrs.isNotEmpty(),
+                hasLegacySelection = state.selectedCustomDhikrId != null || state.dhikr.isNotBlank(),
+                hasOpenSession = hasOpenSession
+            ) -> {
+                launchStoreOperation(label = "Preparing your personal counter…") {
+                    store.clearDhikrSelection(System.currentTimeMillis())
                 }
             }
         }
     }
-    val selectedDhikr = catalogItems.firstOrNull { it.value == state.dhikr }
-    // Keep the completed session's captured content visible until the user
-    // starts the next round. The next count still uses the currently selected
-    // Dhikr, so editing a custom entry affects future sessions only.
-    val sessionIsOpen = state.currentSession?.status == SessionStatus.ACTIVE ||
-        state.currentSession?.status == SessionStatus.PAUSED
+
+    // The counter is deliberately backed only by the user's My Dhikhrs.
+    // Old Quran/OpenDua selections remain in session history but cannot become
+    // the active counter selection.
+    val legacySessionForDisplay = sessionSnapshotForDisplay(state.currentSession, state.count)
+    val sessionForDisplay = legacySessionForDisplay.takeIf { selectedCustomDhikr != null }
+    val sessionIsOpen = selectedCustomDhikr != null &&
+        (state.currentSession?.status == SessionStatus.ACTIVE ||
+            state.currentSession?.status == SessionStatus.PAUSED)
     val activeSession = state.currentSession?.takeIf { sessionIsOpen }
     val completedRoundStillDisplayed =
-        state.currentSession?.status == SessionStatus.COMPLETED &&
-            state.count == state.currentSession.count
-    val sessionForDisplay = sessionSnapshotForDisplay(state.currentSession, state.count)
+        sessionForDisplay?.status == SessionStatus.COMPLETED &&
+            state.count == sessionForDisplay.count
 
-    val selectedDhikrTitle = selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
-    val selectedDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
+    val selectedDhikrTitle = selectedCustomDhikr?.title.orEmpty()
+    val selectedDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() }
     val selectedDhikrTransliteration = selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
-        ?: selectedDhikr?.transliteration
-    val selectedDhikrMeaning = selectedCustomDhikr?.meaning.orEmpty().ifBlank { selectedDhikr?.meaning.orEmpty() }
+    val selectedDhikrMeaning = selectedCustomDhikr?.meaning.orEmpty()
 
     val activeDhikrTitle = sessionForDisplay?.dhikr ?: selectedDhikrTitle
     val activeDhikrArabic = if (sessionForDisplay != null) {
         sessionForDisplay.arabic.takeIf { it.isNotBlank() }
-    } else {
-        selectedDhikrArabic
-    }
+    } else selectedDhikrArabic
     val activeDhikrTransliteration = if (sessionForDisplay != null) {
         sessionForDisplay.transliteration.takeIf { it.isNotBlank() }
-    } else {
-        selectedDhikrTransliteration
-    }
+    } else selectedDhikrTransliteration
     val activeDhikrMeaning = sessionForDisplay?.meaning ?: selectedDhikrMeaning
 
-    // Counting after completion starts a new session from the current selection,
-    // not from the historical snapshot still shown on screen.
+    // A completed round remains visible until the next count starts a new
+    // session, but its content can only originate from the selected My Dhikr.
     val countDhikrTitle = activeSession?.dhikr ?: selectedDhikrTitle
     val countDhikrArabic = if (activeSession != null) {
         activeSession.arabic.takeIf { it.isNotBlank() }
-    } else {
-        selectedDhikrArabic
-    }
+    } else selectedDhikrArabic
     val countDhikrTransliteration = if (activeSession != null) {
         activeSession.transliteration.takeIf { it.isNotBlank() }
-    } else {
-        selectedDhikrTransliteration
-    }
+    } else selectedDhikrTransliteration
     val countDhikrMeaning = activeSession?.meaning ?: selectedDhikrMeaning
-    val activeQuranAyahKeys = if (state.selectedCustomDhikrId == null) {
-        catalogItems.firstOrNull { it.value == activeDhikrTitle }?.quranAyahKeys.orEmpty()
-    } else {
-        emptyList()
-    }
-    val countQuranAyahKeys = if (activeSession == null && state.selectedCustomDhikrId == null) {
-        catalogItems.firstOrNull { it.value == countDhikrTitle }?.quranAyahKeys.orEmpty()
-    } else {
-        emptyList()
-    }
-
-    fun recitationUrlsFor(title: String, quranKeys: List<String>, isCustom: Boolean): List<String> {
-        if (isCustom) return emptyList()
-        val item = catalogItems.firstOrNull { it.value == title }
-        val resolvedAyahKeys = quranKeys.ifEmpty { item?.quranAyahKeys.orEmpty() }
-        return item?.recitationAudioUrls?.takeIf { it.isNotEmpty() }
-            ?: QuranRecitationAudio.audioUrlsForAyahs(resolvedAyahKeys)
-    }
-    val activeRecitationUrls = recitationUrlsFor(
-        activeDhikrTitle, activeQuranAyahKeys, state.selectedCustomDhikrId != null
-    )
-    val countRecitationUrls = recitationUrlsFor(
-        countDhikrTitle, countQuranAyahKeys, state.selectedCustomDhikrId != null
-    )
     val effectiveTarget = sessionForDisplay?.target ?: state.target
-    val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
-    val canUndo = canUndoCount(state.count, state.currentSession?.status)
+    val sessionPaused = activeSession?.status == SessionStatus.PAUSED
+    val canUndo = canUndoCount(state.count, activeSession?.status)
 
     // The editor owns its own BackHandler so it can ask before discarding edits.
     BackHandler(enabled = showDhikrScreen || showHistoryScreen || showSettings) {
@@ -881,22 +976,18 @@ private fun TasbeehApp(
     }
 
     fun increment() {
+        val selected = selectedCustomDhikr ?: return
         val now = System.currentTimeMillis()
         launchStoreOperation(label = "Saving your count…") {
             val outcome = store.countDhikr(
-                dhikr = countDhikrTitle,
-                arabic = countDhikrArabic.orEmpty(),
-                transliteration = countDhikrTransliteration.orEmpty(),
+                dhikr = countDhikrTitle.ifBlank { selected.title },
+                arabic = countDhikrArabic ?: selected.arabic,
+                transliteration = countDhikrTransliteration ?: selected.transliteration,
                 meaning = countDhikrMeaning,
                 fallbackTarget = effectiveTarget,
                 now = now
             )
-            if (outcome == CountOutcome.COUNTED) {
-                if (state.soundEnabled && countRecitationUrls.isNotEmpty()) {
-                    onPlayRecitation(countRecitationUrls, arabicSpeechQueueMode(manualPlayback = false))
-                }
-                onTap()
-            }
+            if (outcome == CountOutcome.COUNTED) onTap()
         }
     }
 
@@ -951,6 +1042,16 @@ private fun TasbeehApp(
                     quranIsRefreshing = quranIsRefreshing,
                     quranRefreshError = quranRefreshError,
                     quranCacheWriteFailed = quranCacheWriteFailed,
+                    isSpeaking = isSpeaking,
+                    isPreparingRecitation = isPreparingSpeech,
+                    isResolvingQuranRecitation = isResolvingQuranRecitation,
+                    activeRecitationTitle = activeRecitationTitle,
+                    selectedQuranReciter = selectedQuranReciter,
+                    onPlayQuranRecitation = { title, ayahKeys -> playQuranRecitation(title, ayahKeys) },
+                    onPlayRecitation = { title, artist, urls ->
+                        onPlayRecitation(title, artist, urls)
+                    },
+                    onStopRecitation = onStopSpeech,
                     onRetryQuranText = onRetryQuranText,
                     onRetryOpenDuaCatalog = onRetryOpenDuaCatalog,
                     currentDhikr = state.dhikr,
@@ -958,31 +1059,18 @@ private fun TasbeehApp(
                     customDhikrs = state.customDhikrs,
                     onBack = { showDhikrScreen = false },
                     onSelect = { item ->
+                        val custom = item.customId?.let { id ->
+                            state.customDhikrs.firstOrNull { it.id == id }
+                        }
                         when {
-                            item.customId != null && item.customId != state.selectedCustomDhikrId -> {
-                                val custom = state.customDhikrs.firstOrNull { it.id == item.customId }
-                                if (custom != null) launchStoreOperation(
-                                    label = "Changing your Dhikr…",
-                                    onSuccess = { showDhikrScreen = false }
-                                ) {
-                                    store.selectCustomDhikr(custom, System.currentTimeMillis())
-                                }
+                            custom == null -> Unit
+                            custom.id == state.selectedCustomDhikrId -> showDhikrScreen = false
+                            else -> launchStoreOperation(
+                                label = "Changing your Dhikr…",
+                                onSuccess = { showDhikrScreen = false }
+                            ) {
+                                store.selectCustomDhikr(custom, System.currentTimeMillis())
                             }
-                            item.customId == null &&
-                                (state.selectedCustomDhikrId != null || item.value != state.dhikr) -> {
-                                val builtIn = catalogItems.firstOrNull { it.value == item.value }
-                                launchStoreOperation(
-                                    label = "Changing your Dhikr…",
-                                    onSuccess = { showDhikrScreen = false }
-                                ) {
-                                    store.selectBuiltInDhikr(
-                                        item.value,
-                                        builtIn?.arabic.orEmpty(),
-                                        System.currentTimeMillis()
-                                    )
-                                }
-                            }
-                            else -> showDhikrScreen = false
                         }
                     },
                     onCreateCustom = {
@@ -1045,6 +1133,9 @@ private fun TasbeehApp(
                         }
                     }
                 }
+                if (selectedCustomDhikr == null) {
+                    MyDhikrsEmptyState(onOpenLibrary = { showDhikrScreen = true })
+                } else {
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(6.dp).background(Gold, CircleShape))
@@ -1177,6 +1268,7 @@ private fun TasbeehApp(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 7.dp)
                 )
+                }
             }
         }
 
@@ -1240,19 +1332,16 @@ private fun TasbeehApp(
         }
         if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
             state = state,
-            quranAyahKeys = activeQuranAyahKeys,
-            activeAudioUrls = activeRecitationUrls,
-            isSpeaking = isSpeaking,
-            isPreparingSpeech = isPreparingSpeech,
-            hasInternetConnection = hasInternetConnection,
-            onPlayRecitation = {
-                onPlayRecitation(activeRecitationUrls, arabicSpeechQueueMode(manualPlayback = true))
-            },
-            onStopSpeech = onStopSpeech,
+            quranReciters = quranReciters,
+            selectedQuranReciterId = selectedQuranReciter.id,
             onDismiss = { showSettings = false },
-            onSave = { sound, haptics, fontScale ->
+            onSave = { haptics, fontScale, quranReciterId ->
                 launchStoreOperation(label = "Saving your settings…", onSuccess = { showSettings = false }) {
-                    store.update(soundEnabled = sound, hapticsEnabled = haptics, fontScale = fontScale)
+                    store.update(
+                        hapticsEnabled = haptics,
+                        fontScale = fontScale,
+                        quranReciterId = quranReciterId
+                    )
                 }
             }
         )
@@ -2097,19 +2186,23 @@ private fun TargetDialog(
 @Composable
 private fun SettingsDialog(
     state: TasbeehState,
-    quranAyahKeys: List<String>,
-    activeAudioUrls: List<String>,
-    isSpeaking: Boolean,
-    isPreparingSpeech: Boolean,
-    hasInternetConnection: Boolean,
-    onPlayRecitation: () -> Unit,
-    onStopSpeech: () -> Unit,
+    quranReciters: List<QuranReciter>,
+    selectedQuranReciterId: Int,
     onDismiss: () -> Unit,
-    onSave: (Boolean, Boolean, Float) -> Unit
+    onSave: (Boolean, Float, Int) -> Unit
 ) {
-    var sound by remember(state.soundEnabled) { mutableStateOf(state.soundEnabled) }
     var haptics by remember(state.hapticsEnabled) { mutableStateOf(state.hapticsEnabled) }
     var fontScale by remember(state.fontScale) { mutableFloatStateOf(state.fontScale) }
+    var quranReciterId by remember(state.quranReciterId, selectedQuranReciterId) {
+        mutableIntStateOf(
+            quranReciters.firstOrNull { it.id == state.quranReciterId }?.id
+                ?: selectedQuranReciterId
+        )
+    }
+    var reciterMenuExpanded by remember { mutableStateOf(false) }
+    val selectedReciter = quranReciters.firstOrNull { it.id == quranReciterId }
+        ?: quranReciters.firstOrNull()
+        ?: QuranReciterCatalog.fallback.first()
     val fontSizes = listOf("Standard" to 1.0f, "Comfort" to 1.12f, "Large" to 1.25f)
 
     AlertDialog(
@@ -2118,108 +2211,92 @@ private fun SettingsDialog(
         title = { Text("Preferences", color = Ivory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
         text = {
             Column(
-                Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                SettingToggle(
-                    "Recorded recitation on count",
-                    "Play Quran Foundation or OpenDua recordings when available",
-                    sound
-                ) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
 
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Recorded recitation", color = Ivory, fontSize = 14.sp)
-                        Text(
-                            when {
-                                activeAudioUrls.isEmpty() -> "No recorded recitation is available for this entry"
-                                !hasInternetConnection -> "Offline · recorded audio needs internet"
-                                isPreparingSpeech -> "Connecting and loading recitation…"
-                                isSpeaking -> "Recitation is playing"
-                                quranAyahKeys.isNotEmpty() -> "Qur'anic recitation · internet required"
-                                else -> "OpenDua recitation · internet required"
-                            },
-                            color = Muted,
-                            fontSize = 12.sp
-                        )
-                    }
-                    FilledTonalButton(
-                        onClick = {
-                            if (isSpeaking || isPreparingSpeech) onStopSpeech() else onPlayRecitation()
-                        },
-                        enabled = isPreparingSpeech || arabicPlaybackControlEnabled(
-                            hasArabicText = activeAudioUrls.isNotEmpty() && hasInternetConnection,
-                            isSpeaking = isSpeaking
-                        ),
-                        colors = ButtonDefaults.filledTonalButtonColors(
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "QURAN RECITER",
+                    color = Gold,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                )
+                Text(
+                    "Choose the voice used by Quran audio throughout the app. Your choice is saved on this device.",
+                    color = Muted,
+                    fontSize = 12.sp
+                )
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { reciterMenuExpanded = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(13.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF555044)),
+                        colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = Panel2,
-                            contentColor = GoldLight,
-                            disabledContainerColor = Panel2.copy(alpha = .55f),
-                            disabledContentColor = Muted
+                            contentColor = Ivory
                         ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
                     ) {
-                        if (isPreparingSpeech) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(17.dp),
-                                color = GoldLight,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
-                            contentDescription = null,
-                                modifier = Modifier.size(17.dp)
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                Text(
+                                    selectedReciter.name,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (!selectedReciter.style.isNullOrBlank()) {
+                                    Text(
+                                        selectedReciter.style,
+                                        color = Muted,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Show Quran reciters")
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = reciterMenuExpanded,
+                        onDismissRequest = { reciterMenuExpanded = false },
+                        modifier = Modifier.heightIn(max = 320.dp).background(Panel)
+                    ) {
+                        quranReciters.forEach { reciter ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(reciter.name, color = Ivory, fontSize = 13.sp)
+                                        if (!reciter.style.isNullOrBlank()) {
+                                            Text(reciter.style, color = Muted, fontSize = 10.sp)
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    quranReciterId = reciter.id
+                                    reciterMenuExpanded = false
+                                },
+                                trailingIcon = {
+                                    if (reciter.id == quranReciterId) {
+                                        Icon(Icons.Default.Check, contentDescription = "Selected", tint = Gold)
+                                    }
+                                }
                             )
                         }
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            when {
-                                isPreparingSpeech -> "LOADING"
-                                isSpeaking -> "STOP"
-                                else -> "PLAY"
-                            },
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
                     }
                 }
-
-                if (quranAyahKeys.isNotEmpty()) {
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        "RECITER: " + QuranRecitationAudio.RECITER_NAME.uppercase() + " · " +
-                            QuranRecitationAudio.RECITATION_STYLE.uppercase(),
-                        color = Gold,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = .7.sp
-                    )
-                    Text(
-                        "Complete cited ayahs are streamed in sequence from Quran Foundation.",
-                        color = Muted,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                    )
-                    Text(
-                        "Audio: Quran.Foundation · " + QuranRecitationAudio.RECITER_NAME,
-                        color = Color(0xFF83B994),
-                        fontSize = 10.sp
-                    )
-                } else if (activeAudioUrls.isNotEmpty()) {
-                    Spacer(Modifier.height(5.dp))
-                    Text("RECORDED AUDIO · OPENDUA", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Audio is streamed from the recording linked to this OpenDua entry.",
-                        color = Muted,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                    )
-                }
+                Text(
+                    "${quranReciters.size} recitation options from Quran Foundation",
+                    color = Muted,
+                    fontSize = 10.sp
+                )
 
                 Spacer(Modifier.height(3.dp))
                 Text(
@@ -2268,7 +2345,7 @@ private fun SettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(sound, haptics, fontScale) }) {
+            TextButton(onClick = { onSave(haptics, fontScale, quranReciterId) }) {
                 Text("SAVE SETTINGS", color = Gold)
             }
         },

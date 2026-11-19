@@ -176,6 +176,7 @@ data class TasbeehState(
     val soundEnabled: Boolean = false,
     val hapticsEnabled: Boolean = true,
     val fontScale: Float = DEFAULT_APP_FONT_SCALE,
+    val quranReciterId: Int = 1,
     val currentSession: SavedSession? = null,
     val customDhikrs: List<CustomDhikr> = emptyList(),
     val selectedCustomDhikrId: String? = null
@@ -190,6 +191,7 @@ class TasbeehStore(private val context: Context) {
         val haptics = booleanPreferencesKey("haptics")
         val legacyTtsVoicePreference = stringPreferencesKey("tts_voice_preference")
         val fontScale = floatPreferencesKey("font_scale")
+        val quranReciterId = intPreferencesKey("quran_reciter_id")
         val currentSession = stringPreferencesKey("current_session")
 
         // Legacy keys are read once during migration, then removed.
@@ -207,10 +209,11 @@ class TasbeehStore(private val context: Context) {
         TasbeehState(
             count = visibleCounterValue(prefs[Keys.count] ?: 0, currentSession?.status),
             target = (prefs[Keys.target] ?: 33).coerceIn(1, 9999),
-            dhikr = prefs[Keys.dhikr] ?: "Surah al-Fatihah",
+            dhikr = prefs[Keys.dhikr].orEmpty(),
             soundEnabled = prefs[Keys.sound] ?: false,
             hapticsEnabled = prefs[Keys.haptics] ?: true,
             fontScale = safeAppFontScale(prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE),
+            quranReciterId = (prefs[Keys.quranReciterId] ?: 1).coerceAtLeast(1),
             currentSession = currentSession,
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
             selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId]
@@ -265,7 +268,8 @@ class TasbeehStore(private val context: Context) {
         dhikr: String? = null,
         soundEnabled: Boolean? = null,
         hapticsEnabled: Boolean? = null,
-        fontScale: Float? = null
+        fontScale: Float? = null,
+        quranReciterId: Int? = null
     ) {
         context.tasbeehDataStore.edit { prefs ->
             count?.let { prefs[Keys.count] = it.coerceAtLeast(0) }
@@ -283,6 +287,7 @@ class TasbeehStore(private val context: Context) {
             soundEnabled?.let { prefs[Keys.sound] = it }
             hapticsEnabled?.let { prefs[Keys.haptics] = it }
             fontScale?.let { prefs[Keys.fontScale] = safeAppFontScale(it) }
+            quranReciterId?.takeIf { it > 0 }?.let { prefs[Keys.quranReciterId] = it }
         }
     }
 
@@ -441,6 +446,20 @@ class TasbeehStore(private val context: Context) {
         }
     }
 
+    /**
+     * Leaves the counter without an active selection. The current session is
+     * preserved as incomplete before clearing, so legacy built-in Quran or
+     * OpenDua counts are not silently continued by the personal counter.
+     */
+    suspend fun clearDhikrSelection(now: Long = System.currentTimeMillis()) {
+        context.tasbeehDataStore.edit { prefs ->
+            finishOpenSessionIfNeeded(prefs, now)
+            prefs[Keys.count] = 0
+            prefs[Keys.dhikr] = ""
+            prefs.remove(Keys.selectedCustomDhikrId)
+        }
+    }
+
     suspend fun selectCustomDhikr(dhikr: CustomDhikr, now: Long = System.currentTimeMillis()) {
         if (dhikr.id.isBlank()) return
         context.tasbeehDataStore.edit { prefs ->
@@ -482,7 +501,7 @@ class TasbeehStore(private val context: Context) {
             if (prefs[Keys.selectedCustomDhikrId] == id) {
                 finishOpenSessionIfNeeded(prefs, now)
                 prefs[Keys.count] = 0
-                prefs[Keys.dhikr] = "Surah al-Fatihah"
+                prefs[Keys.dhikr] = ""
                 prefs.remove(Keys.selectedCustomDhikrId)
             }
         }

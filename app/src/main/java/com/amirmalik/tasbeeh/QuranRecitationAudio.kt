@@ -43,6 +43,16 @@ internal object QuranRecitationAudio {
         5, 4, 5, 6
     )
 
+    fun ayahCountForSurah(surah: Int): Int =
+        if (surah in 1..114) ayahCounts[surah] else 0
+
+    /** All canonical verse keys for a complete surah, in Qur'anic order. */
+    fun ayahKeysForSurah(surah: Int): List<String> {
+        val count = ayahCountForSurah(surah)
+        if (count == 0) return emptyList()
+        return (1..count).map { ayah -> "$surah:$ayah" }
+    }
+
     fun audioUrlsForAyahs(ayahKeys: List<String>): List<String> {
         if (ayahKeys.isEmpty()) return emptyList()
         val urls = ayahKeys.map { audioUrlForAyah(it) ?: return emptyList() }
