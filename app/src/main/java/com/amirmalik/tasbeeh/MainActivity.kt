@@ -821,23 +821,90 @@ private fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -
 @Composable
 private fun TargetDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> Unit) {
     var custom by remember { mutableStateOf(current.toString()) }
+    val presets = listOf(7, 11, 33, 70, 99, 100, 500, 1000, 5000)
+
     AlertDialog(
-        onDismissRequest = onDismiss, containerColor = Panel,
+        onDismissRequest = onDismiss,
+        containerColor = Panel,
         title = { Text("Choose your target", color = Ivory) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(33, 99, 100).forEach { target ->
-                        FilterChip(selected = current == target, onClick = { onSave(target) }, label = { Text(target.toString()) },
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Gold, selectedLabelColor = Ink, labelColor = Ivory))
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "QUICK TARGETS",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.3.sp
+                )
+                presets.chunked(3).forEach { rowTargets ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        rowTargets.forEach { target ->
+                            FilterChip(
+                                selected = current == target,
+                                onClick = { onSave(target) },
+                                modifier = Modifier.weight(1f),
+                                label = {
+                                    Text(
+                                        if (target >= 1000) String.format(Locale.US, "%,d", target) else target.toString(),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                },
+                                shape = RoundedCornerShape(13.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Gold,
+                                    selectedLabelColor = Ink,
+                                    containerColor = Panel2,
+                                    labelColor = Ivory
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = current == target,
+                                    borderColor = Color(0xFF41463D),
+                                    selectedBorderColor = Gold
+                                )
+                            )
+                        }
+                        repeat(3 - rowTargets.size) {
+                            Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
-                OutlinedTextField(value = custom, onValueChange = { custom = it.filter(Char::isDigit).take(4) },
-                    label = { Text("Custom target (1–9999)") }, singleLine = true, colors = darkFieldColors())
+
+                HorizontalDivider(color = Color(0xFF34392F))
+                Text(
+                    "OR SET A CUSTOM TARGET",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.1.sp
+                )
+                OutlinedTextField(
+                    value = custom,
+                    onValueChange = { custom = it.filter(Char::isDigit).take(4) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Custom target") },
+                    supportingText = { Text("Enter a number from 1 to 9,999") },
+                    singleLine = true,
+                    colors = darkFieldColors()
+                )
             }
         },
-        confirmButton = { TextButton(onClick = { custom.toIntOrNull()?.takeIf { it in 1..9999 }?.let(onSave) }) { Text("SAVE", color = Gold) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL", color = Muted) } }
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    custom.toIntOrNull()?.takeIf { it in 1..9999 }?.let(onSave)
+                }
+            ) { Text("SAVE CUSTOM", color = Gold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("CANCEL", color = Muted) }
+        }
     )
 }
 
