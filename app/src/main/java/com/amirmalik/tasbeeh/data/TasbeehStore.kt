@@ -48,6 +48,12 @@ internal fun incrementCounterValueSafely(storedCount: Int): Int {
     return if (nonNegativeCount == Int.MAX_VALUE) Int.MAX_VALUE else nonNegativeCount + 1
 }
 
+internal fun safeAppFontScale(value: Float): Float =
+    if (value.isFinite()) value.coerceIn(1.0f, 1.25f) else DEFAULT_APP_FONT_SCALE
+
+internal fun uniqueCustomDhikrEntries(entries: List<CustomDhikr>): List<CustomDhikr> =
+    entries.distinctBy { it.id }
+
 enum class SessionEventType { STARTED, PAUSED, RESUMED, ENDED }
 
 data class SessionEvent(val type: SessionEventType, val at: Long)
@@ -168,7 +174,7 @@ class TasbeehStore(private val context: Context) {
             soundEnabled = prefs[Keys.sound] ?: false,
             hapticsEnabled = prefs[Keys.haptics] ?: true,
             ttsVoicePreference = prefs[Keys.ttsVoicePreference]?.takeIf { it == "male" || it == "female" } ?: "female",
-            fontScale = (prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE).coerceIn(1.0f, 1.25f),
+            fontScale = safeAppFontScale(prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE),
             currentSession = currentSession,
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
             selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId]
@@ -240,7 +246,7 @@ class TasbeehStore(private val context: Context) {
             soundEnabled?.let { prefs[Keys.sound] = it }
             hapticsEnabled?.let { prefs[Keys.haptics] = it }
             ttsVoicePreference?.let { if (it == "male" || it == "female") prefs[Keys.ttsVoicePreference] = it }
-            fontScale?.let { prefs[Keys.fontScale] = it.coerceIn(1.0f, 1.25f) }
+            fontScale?.let { prefs[Keys.fontScale] = safeAppFontScale(it) }
         }
     }
 
@@ -400,7 +406,7 @@ class TasbeehStore(private val context: Context) {
     suspend fun selectCustomDhikr(dhikr: CustomDhikr, now: Long = System.currentTimeMillis()) {
         if (dhikr.id.isBlank()) return
         context.tasbeehDataStore.edit { prefs ->
-            val selected = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty())
+            val selected = decodeCustomDhikrsForMutation(prefs[Keys.customDhikrs].orEmpty())
                 .firstOrNull { it.id == dhikr.id } ?: return@edit
             finishOpenSessionIfNeeded(prefs, now)
             prefs[Keys.count] = 0
@@ -419,7 +425,7 @@ class TasbeehStore(private val context: Context) {
         if (cleaned.id.isBlank() || cleaned.title.isBlank()) return
 
         context.tasbeehDataStore.edit { prefs ->
-            val current = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()).toMutableList()
+            val current = decodeCustomDhikrsForMutation(prefs[Keys.customDhikrs].orEmpty()).toMutableList()
             val existingIndex = current.indexOfFirst { it.id == cleaned.id }
             if (existingIndex >= 0) current[existingIndex] = cleaned else current.add(0, cleaned)
             prefs[Keys.customDhikrs] = encodeCustomDhikrs(current)
@@ -432,7 +438,7 @@ class TasbeehStore(private val context: Context) {
     suspend fun deleteCustomDhikr(id: String, now: Long = System.currentTimeMillis()) {
         if (id.isBlank()) return
         context.tasbeehDataStore.edit { prefs ->
-            val remaining = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty())
+            val remaining = decodeCustomDhikrsForMutation(prefs[Keys.customDhikrs].orEmpty())
                 .filterNot { it.id == id }
             prefs[Keys.customDhikrs] = encodeCustomDhikrs(remaining)
             if (prefs[Keys.selectedCustomDhikrId] == id) {
@@ -569,28 +575,64 @@ class TasbeehStore(private val context: Context) {
         }
     }
 
-    private fun decodeCustomDhikrs(raw: String): List<CustomDhikr> = runCatching {
+    private fun decodeCustomDhikrs(raw: String): List<CustomDhikr> =
+        runCatching { parseCustomDhikrs(raw, rejectInvalidEntries = false) }
+            .getOrDefault(emptyList())
+
+    /**
+     * A failed display read must never be mistaken for an empty collection by
+     * a later save/delete. Mutations use this strict decoder and fail before
+     * writing if the original collection cannot be fully understood.
+     */
+    private fun decodeCustomDhikrsForMutation(raw: String): List<CustomDhikr> =
+        parseCustomDhikrs(raw, rejectInvalidEntries = true)
+
+    private fun parseCustomDhikrs(
+        raw: String,
+        rejectInvalidEntries: Boolean
+    ): List<CustomDhikr> {
+        if (raw.isBlank()) return emptyList()
         val array = JSONArray(raw)
-        buildList {
+        val seenIds = HashSet<String>(array.length())
+        val entries = buildList {
             for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
+                val item = array.optJSONObject(i)
+                if (item == null) {
+                    if (rejectInvalidEntries) {
+                        throw IllegalStateException("Saved custom Dhikr collection contains an invalid entry.")
+                    }
+                    continue
+                }
+
                 val id = item.optString("id").trim()
                 val title = item.optString("title").trim()
-                if (id.isNotEmpty() && title.isNotEmpty()) {
-                    add(
-                        CustomDhikr(
-                            id = id,
-                            title = title.take(60),
-                            arabic = item.optString("arabic").take(800),
-                            transliteration = item.optString("transliteration").take(800),
-                            meaning = item.optString("meaning").take(500),
-                            createdAt = item.optLong("createdAt")
-                        )
-                    )
+                if (id.isEmpty() || title.isEmpty()) {
+                    if (rejectInvalidEntries) {
+                        throw IllegalStateException("Saved custom Dhikr entry is missing its identity or name.")
+                    }
+                    continue
                 }
+                if (!seenIds.add(id)) {
+                    if (rejectInvalidEntries) {
+                        throw IllegalStateException("Saved custom Dhikr collection contains duplicate identities.")
+                    }
+                    continue
+                }
+
+                add(
+                    CustomDhikr(
+                        id = id,
+                        title = title.take(60),
+                        arabic = item.optString("arabic").take(800),
+                        transliteration = item.optString("transliteration").take(800),
+                        meaning = item.optString("meaning").take(500),
+                        createdAt = item.optLong("createdAt")
+                    )
+                )
             }
         }
-    }.getOrDefault(emptyList())
+        return if (rejectInvalidEntries) entries else uniqueCustomDhikrEntries(entries)
+    }
 
     private fun encodeCustomDhikrs(dhikrs: List<CustomDhikr>): String {
         val array = JSONArray()

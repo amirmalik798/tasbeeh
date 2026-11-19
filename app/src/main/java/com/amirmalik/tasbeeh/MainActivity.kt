@@ -109,7 +109,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshSpeechPlayingState() {
+        if (isFinishing || isDestroyed) return
         runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
             speechPlaying = pendingArabicUtterances.isNotEmpty() || pendingUntilTtsReady.isNotEmpty()
         }
     }
@@ -203,7 +205,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(9, 11, 10)
         window.navigationBarColor = android.graphics.Color.rgb(9, 11, 10)
-        arabicTextToSpeech = TextToSpeech(this) { status ->
+        try {
+            arabicTextToSpeech = TextToSpeech(this) { status ->
             val engine = arabicTextToSpeech ?: return@TextToSpeech
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
@@ -219,6 +222,7 @@ class MainActivity : ComponentActivity() {
                         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                             override fun onStart(utteranceId: String?) {
                                 runOnUiThread {
+                                    if (isFinishing || isDestroyed) return@runOnUiThread
                                     if (utteranceId != null && pendingArabicUtterances.contains(utteranceId)) {
                                         speechPlaying = true
                                     }
@@ -287,6 +291,14 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+        } catch (error: Exception) {
+            // Speech is optional. A broken/unavailable system TTS service must
+            // never prevent the counter and saved sessions from opening.
+            ttsInitializationFinished = true
+            arabicSpeechReady = false
+            speechPlaying = false
+            Log.w("Noor-e-Dhikr", "Arabic text-to-speech service could not be created", error)
         }
 
         val store = TasbeehStore(applicationContext)
