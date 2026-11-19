@@ -317,7 +317,9 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
         val radiusX = size.width * .355f
         val radiusY = size.height * .325f
         val beadCount = 33
-        val beadRadius = minDimension * .0345f
+        // Slightly smaller than the cord's bead-to-bead pitch, leaving a fine
+        // dark seam so the individual polished beads read as separate objects.
+        val beadRadius = minDimension * .0325f
         val pitch = 2.0 * PI / beadCount
         val activeIndex = ((count % beadCount) + beadCount) % beadCount
         val press = pressure.value
@@ -409,12 +411,47 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
             val pinchDistance = (angularDistance / (pitch * 2.35)).toFloat()
             val pinch = (1f - pinchDistance).coerceIn(0f, 1f)
             val localPressure = press * pinch * pinch
-            val radius = beadRadius * (.96f + .10f * depth)
+            // Far-side beads sit a little smaller, with tiny deterministic
+            // size differences to avoid a machine-perfect plastic appearance.
+            val handFinishedVariation = 0.985f + 0.018f * (0.5f + 0.5f * cos(index * 2.399f)).toFloat()
+            val radius = beadRadius * (.92f + .12f * depth) * handFinishedVariation
             val radialInset = beadRadius * .15f * localPressure
             val x = cx + cosine * (radiusX - radialInset)
             val y = cy + sine * (radiusY - radialInset) + localPressure * beadRadius * .07f
             Triple(index, Offset(x, y), radius)
         }.sortedBy { it.second.y }
+
+        // Tiny emerald silk knots peek through the gaps and show that the
+        // gold beads are threaded on a real cord rather than floating apart.
+        for (index in 0 until beadCount) {
+            val knotAngle = -PI / 2.0 + (index + .5 - rotation.value) * pitch
+            val knotCenter = Offset(
+                cx + cos(knotAngle).toFloat() * radiusX,
+                cy + sin(knotAngle).toFloat() * radiusY
+            )
+            val knotRadius = beadRadius * .14f
+            drawCircle(
+                color = Color.Black.copy(alpha = .78f),
+                radius = knotRadius * 1.65f,
+                center = Offset(knotCenter.x + knotRadius * .22f, knotCenter.y + knotRadius * .34f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xFF8BC49B), Color(0xFF26784E), Color(0xFF082C1B)),
+                    center = Offset(knotCenter.x - knotRadius * .28f, knotCenter.y - knotRadius * .35f),
+                    radius = knotRadius * 1.55f
+                ),
+                radius = knotRadius,
+                center = knotCenter
+            )
+            drawLine(
+                color = Color(0xFFB7D8B9).copy(alpha = .72f),
+                start = Offset(knotCenter.x - knotRadius * .35f, knotCenter.y - knotRadius * .22f),
+                end = Offset(knotCenter.x + knotRadius * .28f, knotCenter.y + knotRadius * .30f),
+                strokeWidth = knotRadius * .18f,
+                cap = StrokeCap.Round
+            )
+        }
 
         beadPositions.forEach { (index, center, radius) ->
             val x = center.x
@@ -428,11 +465,20 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
                 else -> Color(0xFFFFD982)
             }
 
-            // Contact shadow keeps every bead visually seated on the cord.
+            // Soft contact shadow and warm reflected light give the bead
+            // weight against the dark braided cord.
             drawCircle(
-                color = Color.Black.copy(alpha = .76f),
-                radius = radius * 1.16f,
-                center = Offset(x + radius * .15f, y + radius * .25f)
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = .78f),
+                        Color(0xFF120B03).copy(alpha = .48f),
+                        Color.Transparent
+                    ),
+                    center = Offset(x + radius * .20f, y + radius * .30f),
+                    radius = radius * 1.34f
+                ),
+                radius = radius * 1.34f,
+                center = Offset(x + radius * .12f, y + radius * .20f)
             )
 
             // Kiswah-inspired gold: pale champagne at the light source, rich
@@ -441,16 +487,17 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
             drawCircle(
                 brush = Brush.radialGradient(
                     colorStops = arrayOf(
-                        0f to Color(0xFFFFF5D5),
-                        .075f to Color(0xFFFFE8A1),
-                        .19f to goldTone,
-                        .39f to Color(0xFFE3AC3E),
-                        .66f to Color(0xFFAD721F),
-                        .87f to Color(0xFF714312),
-                        1f to Color(0xFF3B2209)
+                        0f to Color(0xFFFFF9E7),
+                        .055f to Color(0xFFFFEFC1),
+                        .16f to goldTone,
+                        .34f to Color(0xFFE8B64D),
+                        .56f to Color(0xFFC48725),
+                        .78f to Color(0xFF855016),
+                        .94f to Color(0xFF4A2B0B),
+                        1f to Color(0xFF281605)
                     ),
-                    center = Offset(x - radius * .38f, y - radius * .46f),
-                    radius = radius * 1.72f
+                    center = Offset(x - radius * .38f, y - radius * .48f),
+                    radius = radius * 1.48f
                 ),
                 radius = radius * (1f + if (isActive) press * .035f else 0f),
                 center = center
@@ -499,6 +546,42 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
                 color = Color.White.copy(alpha = if (isActive) .96f else .82f),
                 radius = radius * .052f,
                 center = Offset(x - radius * .38f, y - radius * .48f)
+            )
+            // A second, narrower studio reflection makes the polished surface
+            // feel curved while keeping the lighting consistent across beads.
+            drawOval(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFFFFF8E4).copy(alpha = .46f),
+                        Color(0xFFFFE7A8).copy(alpha = .16f),
+                        Color.Transparent
+                    ),
+                    center = Offset(x - radius * .18f, y - radius * .03f),
+                    radius = radius * .40f
+                ),
+                topLeft = Offset(x - radius * .30f, y - radius * .18f),
+                size = Size(radius * .25f, radius * .70f)
+            )
+
+            // Fine lathe-turned lines on the lower hemisphere catch the light
+            // like a hand-polished decorative bead, not a flat icon.
+            drawArc(
+                color = Color(0xFF5B350A).copy(alpha = .42f),
+                startAngle = 18f,
+                sweepAngle = 145f,
+                useCenter = false,
+                topLeft = Offset(x - radius * .76f, y - radius * .76f),
+                size = Size(radius * 1.52f, radius * 1.52f),
+                style = Stroke(width = radius * .035f)
+            )
+            drawArc(
+                color = Color(0xFFFFE7A0).copy(alpha = .38f),
+                startAngle = 22f,
+                sweepAngle = 138f,
+                useCenter = false,
+                topLeft = Offset(x - radius * .70f, y - radius * .70f),
+                size = Size(radius * 1.40f, radius * 1.40f),
+                style = Stroke(width = radius * .020f)
             )
 
             // A fine warm reflection on the lower edge reinforces the depth of
@@ -582,19 +665,28 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
             topLeft = Offset(cx - imamWidth * .37f, imamTop + imamHeight * .10f),
             size = Size(imamWidth * .48f, imamHeight * .58f)
         )
-        listOf(imamTop + imamHeight * .10f, imamBottom - imamHeight * .10f).forEach { bandY ->
+        listOf(.10f, .34f, .66f, .90f).forEachIndexed { index, fraction ->
+            val bandY = imamTop + imamHeight * fraction
+            val bandWidth = if (index == 0 || index == 3) .49f else .43f
             drawLine(
-                color = Color(0xFFFFD15C),
-                start = Offset(cx - imamWidth * .49f, bandY),
-                end = Offset(cx + imamWidth * .49f, bandY),
-                strokeWidth = beadRadius * .075f,
+                color = Color(0xFF71400F).copy(alpha = .62f),
+                start = Offset(cx - imamWidth * bandWidth, bandY + beadRadius * .025f),
+                end = Offset(cx + imamWidth * bandWidth, bandY + beadRadius * .025f),
+                strokeWidth = beadRadius * .105f,
                 cap = StrokeCap.Round
             )
             drawLine(
-                color = Color(0xFFFFF0C1).copy(alpha = .82f),
-                start = Offset(cx - imamWidth * .37f, bandY - beadRadius * .045f),
-                end = Offset(cx + imamWidth * .37f, bandY - beadRadius * .045f),
-                strokeWidth = beadRadius * .025f,
+                color = Color(0xFFFFD15C),
+                start = Offset(cx - imamWidth * bandWidth, bandY),
+                end = Offset(cx + imamWidth * bandWidth, bandY),
+                strokeWidth = beadRadius * .065f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFFFFF0C1).copy(alpha = .78f),
+                start = Offset(cx - imamWidth * bandWidth * .76f, bandY - beadRadius * .045f),
+                end = Offset(cx + imamWidth * bandWidth * .76f, bandY - beadRadius * .045f),
+                strokeWidth = beadRadius * .022f,
                 cap = StrokeCap.Round
             )
         }
