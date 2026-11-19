@@ -8,6 +8,11 @@ import org.junit.Test
 class DhikrSelectionPolicyTest {
 
     @Test
+    fun favoritesIsTheDefaultSelectedLibraryCategory() {
+        assertEquals("Favorites", DEFAULT_DHIKR_LIBRARY_CATEGORY)
+    }
+
+    @Test
     fun libraryCategoriesOmitAllAndKeepPinnedCategoriesBeforeOpenDuaTopics() {
         assertEquals(
             listOf("Favorites", "My Dhikhrs", "Quran", "Morning and Evening", "Travel"),
