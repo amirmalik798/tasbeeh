@@ -32,8 +32,10 @@ internal fun QuranSurahReaderDialog(
     item: DhikrItem,
     isSpeaking: Boolean,
     isPreparingRecitation: Boolean,
+    activeRecitationTitle: String,
+    selectedQuranReciter: QuranReciter,
     hasInternetConnection: Boolean,
-    onPlayRecitation: (String, String, List<String>) -> Unit,
+    onPlayQuranRecitation: (String, List<String>) -> Unit,
     onStopRecitation: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -53,7 +55,9 @@ internal fun QuranSurahReaderDialog(
         transliterationAyahs.all { it.isNotBlank() } &&
         translationAyahs.all { it.isNotBlank() }
     val canPlay = item.quranAyahKeys.isNotEmpty() &&
-        QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys).size == item.quranAyahKeys.size
+        item.quranAyahKeys.all { QuranRecitationAudio.audioUrlForAyah(it) != null }
+    val isThisSurahActive = (isSpeaking || isPreparingRecitation) &&
+        activeRecitationTitle.equals(item.title, ignoreCase = true)
     val accent = Color(0xFFFFD56A)
 
     Dialog(
@@ -93,11 +97,10 @@ internal fun QuranSurahReaderDialog(
                 Spacer(Modifier.height(9.dp))
                 FilledTonalButton(
                     onClick = {
-                        if (isSpeaking || isPreparingRecitation) onStopRecitation()
-                        else onPlayRecitation(item.title, QuranRecitationAudio.ATTRIBUTION, QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys))
+                        if (isThisSurahActive) onStopRecitation()
+                        else onPlayQuranRecitation(item.title, item.quranAyahKeys)
                     },
-                    enabled = isSpeaking || isPreparingRecitation ||
-                        (hasInternetConnection && canPlay),
+                    enabled = isThisSurahActive || (hasInternetConnection && canPlay),
                     modifier = Modifier.fillMaxWidth(),
                     colors = androidx.compose.material3.ButtonDefaults.filledTonalButtonColors(
                         containerColor = Color(0xFF263629),
@@ -108,16 +111,16 @@ internal fun QuranSurahReaderDialog(
                 ) {
                     Text(
                         when {
-                            isPreparingRecitation -> "STOP PREPARING RECITATION"
-                            isSpeaking -> "STOP RECITATION"
-                            else -> "PLAY FULL SURAH · ABDULBASET ABDULSAMAD"
+                            isThisSurahActive && isPreparingRecitation -> "STOP PREPARING RECITATION"
+                            isThisSurahActive -> "STOP RECITATION"
+                            else -> "PLAY FULL SURAH · ${selectedQuranReciter.displayName.uppercase()}"
                         },
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
                 Text(
-                    QuranRecitationAudio.ATTRIBUTION,
+                    selectedQuranReciter.attribution,
                     color = Color(0xFF879184),
                     fontSize = 9.sp,
                     modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
