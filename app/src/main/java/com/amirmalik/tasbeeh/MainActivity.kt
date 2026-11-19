@@ -919,8 +919,8 @@ private fun TasbeehApp(
                     quranCacheWriteFailed = quranCacheWriteFailed,
                     isSpeaking = isSpeaking,
                     isPreparingRecitation = isPreparingSpeech,
-                    onPlayRecitation = { urls ->
-                        onPlayRecitation(urls, arabicSpeechQueueMode(manualPlayback = true))
+                    onPlayRecitation = { title, artist, urls ->
+                        onPlayRecitation(title, artist, urls)
                     },
                     onStopRecitation = onStopSpeech,
                     onRetryQuranText = onRetryQuranText,
@@ -930,31 +930,18 @@ private fun TasbeehApp(
                     customDhikrs = state.customDhikrs,
                     onBack = { showDhikrScreen = false },
                     onSelect = { item ->
+                        val custom = item.customId?.let { id ->
+                            state.customDhikrs.firstOrNull { it.id == id }
+                        }
                         when {
-                            item.customId != null && item.customId != state.selectedCustomDhikrId -> {
-                                val custom = state.customDhikrs.firstOrNull { it.id == item.customId }
-                                if (custom != null) launchStoreOperation(
-                                    label = "Changing your Dhikr…",
-                                    onSuccess = { showDhikrScreen = false }
-                                ) {
-                                    store.selectCustomDhikr(custom, System.currentTimeMillis())
-                                }
+                            custom == null -> Unit
+                            custom.id == state.selectedCustomDhikrId -> showDhikrScreen = false
+                            else -> launchStoreOperation(
+                                label = "Changing your Dhikr…",
+                                onSuccess = { showDhikrScreen = false }
+                            ) {
+                                store.selectCustomDhikr(custom, System.currentTimeMillis())
                             }
-                            item.customId == null &&
-                                (state.selectedCustomDhikrId != null || item.value != state.dhikr) -> {
-                                val builtIn = catalogItems.firstOrNull { it.value == item.value }
-                                launchStoreOperation(
-                                    label = "Changing your Dhikr…",
-                                    onSuccess = { showDhikrScreen = false }
-                                ) {
-                                    store.selectBuiltInDhikr(
-                                        item.value,
-                                        builtIn?.arabic.orEmpty(),
-                                        System.currentTimeMillis()
-                                    )
-                                }
-                            }
-                            else -> showDhikrScreen = false
                         }
                     },
                     onCreateCustom = {
@@ -1212,19 +1199,10 @@ private fun TasbeehApp(
         }
         if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
             state = state,
-            quranAyahKeys = activeQuranAyahKeys,
-            activeAudioUrls = activeRecitationUrls,
-            isSpeaking = isSpeaking,
-            isPreparingSpeech = isPreparingSpeech,
-            hasInternetConnection = hasInternetConnection,
-            onPlayRecitation = {
-                onPlayRecitation(activeRecitationUrls, arabicSpeechQueueMode(manualPlayback = true))
-            },
-            onStopSpeech = onStopSpeech,
             onDismiss = { showSettings = false },
-            onSave = { sound, haptics, fontScale ->
+            onSave = { haptics, fontScale ->
                 launchStoreOperation(label = "Saving your settings…", onSuccess = { showSettings = false }) {
-                    store.update(soundEnabled = sound, hapticsEnabled = haptics, fontScale = fontScale)
+                    store.update(hapticsEnabled = haptics, fontScale = fontScale)
                 }
             }
         )
@@ -2069,17 +2047,9 @@ private fun TargetDialog(
 @Composable
 private fun SettingsDialog(
     state: TasbeehState,
-    quranAyahKeys: List<String>,
-    activeAudioUrls: List<String>,
-    isSpeaking: Boolean,
-    isPreparingSpeech: Boolean,
-    hasInternetConnection: Boolean,
-    onPlayRecitation: () -> Unit,
-    onStopSpeech: () -> Unit,
     onDismiss: () -> Unit,
-    onSave: (Boolean, Boolean, Float) -> Unit
+    onSave: (Boolean, Float) -> Unit
 ) {
-    var sound by remember(state.soundEnabled) { mutableStateOf(state.soundEnabled) }
     var haptics by remember(state.hapticsEnabled) { mutableStateOf(state.hapticsEnabled) }
     var fontScale by remember(state.fontScale) { mutableFloatStateOf(state.fontScale) }
     val fontSizes = listOf("Standard" to 1.0f, "Comfort" to 1.12f, "Large" to 1.25f)
@@ -2093,105 +2063,7 @@ private fun SettingsDialog(
                 Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                SettingToggle(
-                    "Recorded recitation on count",
-                    "Play Quran Foundation or OpenDua recordings when available",
-                    sound
-                ) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
-
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Recorded recitation", color = Ivory, fontSize = 14.sp)
-                        Text(
-                            when {
-                                activeAudioUrls.isEmpty() -> "No recorded recitation is available for this entry"
-                                !hasInternetConnection -> "Offline · recorded audio needs internet"
-                                isPreparingSpeech -> "Connecting and loading recitation…"
-                                isSpeaking -> "Recitation is playing"
-                                quranAyahKeys.isNotEmpty() -> "Qur'anic recitation · internet required"
-                                else -> "OpenDua recitation · internet required"
-                            },
-                            color = Muted,
-                            fontSize = 12.sp
-                        )
-                    }
-                    FilledTonalButton(
-                        onClick = {
-                            if (isSpeaking || isPreparingSpeech) onStopSpeech() else onPlayRecitation()
-                        },
-                        enabled = isPreparingSpeech || arabicPlaybackControlEnabled(
-                            hasArabicText = activeAudioUrls.isNotEmpty() && hasInternetConnection,
-                            isSpeaking = isSpeaking
-                        ),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = Panel2,
-                            contentColor = GoldLight,
-                            disabledContainerColor = Panel2.copy(alpha = .55f),
-                            disabledContentColor = Muted
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        if (isPreparingSpeech) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(17.dp),
-                                color = GoldLight,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(
-                                if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
-                            contentDescription = null,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            when {
-                                isPreparingSpeech -> "LOADING"
-                                isSpeaking -> "STOP"
-                                else -> "PLAY"
-                            },
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                if (quranAyahKeys.isNotEmpty()) {
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        "RECITER: " + QuranRecitationAudio.RECITER_NAME.uppercase() + " · " +
-                            QuranRecitationAudio.RECITATION_STYLE.uppercase(),
-                        color = Gold,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = .7.sp
-                    )
-                    Text(
-                        "Complete cited ayahs are streamed in sequence from Quran Foundation.",
-                        color = Muted,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                    )
-                    Text(
-                        "Audio: Quran.Foundation · " + QuranRecitationAudio.RECITER_NAME,
-                        color = Color(0xFF83B994),
-                        fontSize = 10.sp
-                    )
-                } else if (activeAudioUrls.isNotEmpty()) {
-                    Spacer(Modifier.height(5.dp))
-                    Text("RECORDED AUDIO · OPENDUA", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Audio is streamed from the recording linked to this OpenDua entry.",
-                        color = Muted,
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
-                    )
-                }
 
                 Spacer(Modifier.height(3.dp))
                 Text(
@@ -2240,7 +2112,7 @@ private fun SettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(sound, haptics, fontScale) }) {
+            TextButton(onClick = { onSave(haptics, fontScale) }) {
                 Text("SAVE SETTINGS", color = Gold)
             }
         },
