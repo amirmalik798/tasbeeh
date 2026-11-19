@@ -42,22 +42,18 @@ private val HistoryGreen = Color(0xFF74B48A)
 
 @Composable
 internal fun SessionHistoryScreen(
-    session: SavedSession?,
     sessions: List<SavedSession>,
+    currentSessionId: String?,
     onBack: () -> Unit
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(sessions, session) {
+    LaunchedEffect(sessions) {
         while (true) {
             now = System.currentTimeMillis()
             delay(1000)
         }
     }
-    val allSessions = remember(sessions, session) {
-        (if (session != null && sessions.none { it.id == session.id }) listOf(session) + sessions else sessions)
-            .distinctBy { it.id }
-            .sortedByDescending { it.startedAt }
-    }
+    val allSessions = remember(sessions) { sessions.sortedByDescending { it.startedAt } }
 
     Column(Modifier.fillMaxSize().background(HistoryInk).statusBarsPadding().navigationBarsPadding()) {
         Row(
@@ -94,7 +90,7 @@ internal fun SessionHistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 allSessions.forEach { item ->
-                    SessionHistoryCard(item, now)
+                    SessionHistoryCard(item, now, item.id == currentSessionId)
                 }
                 Spacer(Modifier.height(12.dp))
             }
@@ -103,7 +99,7 @@ internal fun SessionHistoryScreen(
 }
 
 @Composable
-private fun SessionHistoryCard(session: SavedSession, now: Long) {
+private fun SessionHistoryCard(session: SavedSession, now: Long, isCurrent: Boolean) {
     val active = session.status == SessionStatus.ACTIVE
     val duration = session.durationAt(now)
     val tint = if (session.status == SessionStatus.COMPLETED) HistoryGreen else HistoryGold
@@ -115,7 +111,13 @@ private fun SessionHistoryCard(session: SavedSession, now: Long) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(session.dhikr, color = HistoryIvory, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(session.dhikr, color = HistoryIvory, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        if (isCurrent) {
+                            Spacer(Modifier.width(7.dp))
+                            Text("CURRENT", color = HistoryGreen, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                     Spacer(Modifier.height(3.dp))
                     Text(formatSessionDate(session.startedAt), color = HistoryMuted, fontSize = 11.sp)
                 }
