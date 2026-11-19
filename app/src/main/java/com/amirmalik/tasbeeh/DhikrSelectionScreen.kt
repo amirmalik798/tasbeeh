@@ -89,6 +89,9 @@ internal data class DhikrItem(
 
 internal fun isCounterSelectableDhikr(item: DhikrItem): Boolean = item.customId != null
 
+internal fun isQuranCategorySurah(item: DhikrItem): Boolean =
+    QuranicDuaCatalog.isFullSurah(item)
+
 internal fun orderedDhikrCategories(openDuaCategories: List<String>): List<String> =
     (listOf("All", "Quran", "My Dhikhrs") + openDuaCategories
         .map { it.trim() }
@@ -169,7 +172,7 @@ internal fun DhikrSelectionScreen(
         searchableItems.asSequence().filter { (item, searchableFields) ->
             val matchesCategory = when (category) {
                 "All" -> true
-                "Quran" -> QuranicDuaCatalog.isFullSurah(item)
+                "Quran" -> isQuranCategorySurah(item)
                 else -> category in item.categories || item.category == category
             }
             val matchesSearch = normalizedQuery.isBlank() ||
@@ -342,7 +345,7 @@ internal fun DhikrSelectionScreen(
                 onRetry = onRetryOpenDuaCatalog
             )
         }
-        val quranItems = catalogItems.filter(QuranicDuaCatalog::isFullSurah)
+        val quranItems = catalogItems.filter(::isQuranCategorySurah)
         val quranTextIsCached = quranItems.any {
             it.arabic.isNotBlank() && it.transliteration.isNotBlank()
         }
@@ -629,7 +632,7 @@ private fun DhikrOptionCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            surahNumber.toString().padStart(3, '0'),
+                            surahNumber.toString(),
                             color = gold,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
