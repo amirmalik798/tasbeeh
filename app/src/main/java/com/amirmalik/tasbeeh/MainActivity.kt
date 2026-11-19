@@ -434,34 +434,60 @@ class MainActivity : ComponentActivity() {
                         return@runOnUiThread
                     }
 
+                    val waiting = pendingUntilTtsReady.toList()
+                    pendingUntilTtsReady.clear()
                     if (arabicSpeechReady) {
-                        while (pendingUntilTtsReady.isNotEmpty()) {
-                            val pending = pendingUntilTtsReady.removeFirst()
-                            speakArabic(
+                        waiting.forEach { pending ->
+                            if (pending.quranAyahKeys.isNotEmpty()) {
+                                enqueueQuranRecitation(
+                                    pending.text,
+                                    pending.preferredVoice,
+                                    pending.quranAyahKeys,
+                                    TextToSpeech.QUEUE_ADD
+                                )
+                            } else {
+                                speakArabic(
+                                    pending.text,
+                                    pending.preferredVoice,
+                                    TextToSpeech.QUEUE_ADD,
+                                    showUnavailableNotice = false
+                                )
+                            }
+                        }
+                    } else {
+                        waiting.filter { it.quranAyahKeys.isNotEmpty() }.forEach { pending ->
+                            enqueueQuranRecitation(
                                 pending.text,
                                 pending.preferredVoice,
-                                TextToSpeech.QUEUE_ADD,
-                                showUnavailableNotice = false
+                                pending.quranAyahKeys,
+                                TextToSpeech.QUEUE_ADD
                             )
                         }
-                    } else if (pendingUntilTtsReady.isNotEmpty()) {
-                        pendingUntilTtsReady.clear()
                         refreshSpeechPlayingState()
-                        showArabicVoiceNotice(
-                            "Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings."
-                        )
-                    } else {
-                        refreshSpeechPlayingState()
+                        if (waiting.any { it.quranAyahKeys.isEmpty() }) {
+                            showArabicVoiceNotice(
+                                "Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings."
+                            )
+                        }
                     }
                 } else {
-                    val hadWaitingSpeech = pendingUntilTtsReady.isNotEmpty()
+                    val waiting = pendingUntilTtsReady.toList()
                     pendingUntilTtsReady.clear()
+                    waiting.filter { it.quranAyahKeys.isNotEmpty() }.forEach { pending ->
+                        enqueueQuranRecitation(
+                            pending.text,
+                            pending.preferredVoice,
+                            pending.quranAyahKeys,
+                            TextToSpeech.QUEUE_ADD
+                        )
+                    }
                     refreshSpeechPlayingState()
-                    if (hadWaitingSpeech) {
+                    if (waiting.any { it.quranAyahKeys.isEmpty() }) {
                         showArabicVoiceNotice(
                             "Arabic text-to-speech could not initialize. Check your device's TTS settings."
                         )
                     }
+                }
                 }
             }
         }
