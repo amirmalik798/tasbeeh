@@ -300,9 +300,9 @@ class TasbeehStore(private val context: Context) {
                 if (nextCount == 0) {
                     prefs.remove(Keys.currentSession)
                 } else {
-                    prefs[Keys.currentSession] = encodeSession(
-                        session.copy(count = nextCount, status = SessionStatus.ACTIVE, endedAt = null, durationMs = null)
-                    )
+                    val updated = session.copy(count = nextCount, status = SessionStatus.ACTIVE, endedAt = null, durationMs = null)
+                    prefs[Keys.currentSession] = encodeSession(updated)
+                    upsertHistory(prefs, updated)
                 }
             }
         }
@@ -347,9 +347,9 @@ class TasbeehStore(private val context: Context) {
             if (session != null &&
                 (session.status == SessionStatus.ACTIVE || session.status == SessionStatus.PAUSED)
             ) {
-                prefs[Keys.currentSession] = encodeSession(
-                    finishSession(session, now, SessionStatus.INCOMPLETE)
-                )
+                val finished = finishSession(session, now, SessionStatus.INCOMPLETE)
+                prefs[Keys.currentSession] = encodeSession(finished)
+                upsertHistory(prefs, finished)
             }
             if (resetCounter) prefs[Keys.count] = 0
         }
@@ -361,9 +361,9 @@ class TasbeehStore(private val context: Context) {
             val isOpen = session?.status == SessionStatus.ACTIVE || session?.status == SessionStatus.PAUSED
             when {
                 saveSession && isOpen -> {
-                    prefs[Keys.currentSession] = encodeSession(
-                        finishSession(session!!, now, SessionStatus.INCOMPLETE)
-                    )
+                    val finished = finishSession(session!!, now, SessionStatus.INCOMPLETE)
+                    prefs[Keys.currentSession] = encodeSession(finished)
+                    upsertHistory(prefs, finished)
                 }
                 !saveSession && isOpen -> prefs.remove(Keys.currentSession)
             }
