@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.DialogProperties
 import com.amirmalik.tasbeeh.data.CountOutcome
@@ -526,7 +527,9 @@ private fun TasbeehApp(
                     color = Ivory,
                     fontSize = if (activeDhikrTitle.length > 22) 19.sp else 25.sp,
                     fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 val dhikrSubtitle = activeDhikrArabic ?: activeDhikrTransliteration
                 if (!dhikrSubtitle.isNullOrBlank()) {
@@ -536,6 +539,8 @@ private fun TasbeehApp(
                         fontSize = if (dhikrSubtitle.length > 55) 14.sp else 19.sp,
                         lineHeight = 22.sp,
                         textAlign = TextAlign.Center,
+                        maxLines = 4,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(top = 2.dp).fillMaxWidth()
                     )
                 }
@@ -689,7 +694,8 @@ private fun TasbeehApp(
         if (!showDhikrScreen && !showHistoryScreen && showTarget) TargetDialog(
             current = state.target,
             onDismiss = { showTarget = false },
-            hasOpenSession = sessionIsOpen
+            hasOpenSession = sessionIsOpen,
+            isNextTarget = sessionIsOpen || completedRoundStillDisplayed
         ) { target ->
             scope.launch { store.update(target = target) }
             showTarget = false
@@ -1354,7 +1360,16 @@ private fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -
         modifier = modifier.height(48.dp).clickable(role = Role.Button, onClick = onClick),
         color = Panel,
         shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2B3028))) {
-        Box(contentAlignment = Alignment.Center) { Text(text, color = Ivory, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text,
+                color = Ivory,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -1363,6 +1378,7 @@ private fun TargetDialog(
     current: Int,
     onDismiss: () -> Unit,
     hasOpenSession: Boolean,
+    isNextTarget: Boolean,
     onSave: (Int) -> Unit
 ) {
     var custom by remember { mutableStateOf(current.toString()) }
@@ -1375,7 +1391,7 @@ private fun TargetDialog(
         containerColor = Panel,
         title = {
             Text(
-                if (hasOpenSession) "Choose next target" else "Choose your target",
+                if (isNextTarget) "Choose next target" else "Choose your target",
                 color = Ivory
             )
         },
