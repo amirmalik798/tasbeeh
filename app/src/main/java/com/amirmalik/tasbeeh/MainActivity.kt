@@ -294,7 +294,7 @@ class MainActivity : ComponentActivity() {
             val cachedOpenDua = remember(openDuaRepository) { openDuaRepository.loadCachedSnapshot() }
             var openDuaItems by remember { mutableStateOf(cachedOpenDua.items) }
             var openDuaCategories by remember { mutableStateOf(cachedOpenDua.categories) }
-            var openDuaIsRefreshing by remember { mutableStateOf(cachedOpenDua.items.isEmpty()) }
+            var openDuaIsRefreshing by remember { mutableStateOf(true) }
             var openDuaRefreshError by remember { mutableStateOf<String?>(null) }
             var openDuaCacheWriteFailed by remember { mutableStateOf(false) }
             var openDuaRetryCount by remember { mutableIntStateOf(0) }
