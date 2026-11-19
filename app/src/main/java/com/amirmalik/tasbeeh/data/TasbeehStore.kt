@@ -33,6 +33,7 @@ enum class SessionStatus {
 
 enum class CountOutcome {
     COUNTED,
+    TARGET_REACHED,
     PAUSED
 }
 
@@ -205,7 +206,11 @@ data class CustomDhikr(
     val arabic: String = "",
     val transliteration: String = "",
     val meaning: String = "",
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    // The enrolled phrase transcript is text only; raw audio and voice biometrics are not stored.
+    val voiceReferenceText: String = "",
+    val voiceProfileSourceHash: String = "",
+    val voiceProfileCreatedAt: Long = 0L
 )
 
 internal fun sessionSnapshotForDisplay(session: SavedSession?, counterValue: Int): SavedSession? =
@@ -419,7 +424,9 @@ class TasbeehStore(private val context: Context) {
             }
 
             prefs[Keys.count] = nextCount
-            val saved = if (nextCount >= target) {
+            val reachedTarget = nextCount >= target
+            val saved = if (reachedTarget) {
+                outcome = CountOutcome.TARGET_REACHED
                 finishSession(session, now, SessionStatus.COMPLETED)
             } else {
                 session.copy(status = SessionStatus.ACTIVE, endedAt = null)
@@ -556,7 +563,10 @@ class TasbeehStore(private val context: Context) {
             title = dhikr.title.trim().take(60),
             arabic = dhikr.arabic.trim().take(800),
             transliteration = dhikr.transliteration.trim().take(800),
-            meaning = dhikr.meaning.trim().take(500)
+            meaning = dhikr.meaning.trim().take(500),
+            voiceReferenceText = dhikr.voiceReferenceText.trim().take(1000),
+            voiceProfileSourceHash = dhikr.voiceProfileSourceHash.trim().take(64),
+            voiceProfileCreatedAt = dhikr.voiceProfileCreatedAt.coerceAtLeast(0L)
         )
         if (cleaned.id.isBlank() || cleaned.title.isBlank()) return
 
@@ -766,7 +776,10 @@ class TasbeehStore(private val context: Context) {
                         arabic = item.optString("arabic").take(800),
                         transliteration = item.optString("transliteration").take(800),
                         meaning = item.optString("meaning").take(500),
-                        createdAt = item.optLong("createdAt")
+                        createdAt = item.optLong("createdAt"),
+                        voiceReferenceText = item.optString("voiceReferenceText").take(1000),
+                        voiceProfileSourceHash = item.optString("voiceProfileSourceHash").take(64),
+                        voiceProfileCreatedAt = item.optLong("voiceProfileCreatedAt").coerceAtLeast(0L)
                     )
                 )
             }
@@ -785,6 +798,9 @@ class TasbeehStore(private val context: Context) {
                     put("transliteration", dhikr.transliteration)
                     put("meaning", dhikr.meaning)
                     put("createdAt", dhikr.createdAt)
+                    put("voiceReferenceText", dhikr.voiceReferenceText)
+                    put("voiceProfileSourceHash", dhikr.voiceProfileSourceHash)
+                    put("voiceProfileCreatedAt", dhikr.voiceProfileCreatedAt)
                 }
             )
         }
