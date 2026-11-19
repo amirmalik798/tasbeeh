@@ -94,6 +94,22 @@ internal fun arabicSpeechQueueMode(manualPlayback: Boolean): Int =
 internal fun arabicPlaybackControlEnabled(hasArabicText: Boolean, isSpeaking: Boolean): Boolean =
     hasArabicText || isSpeaking
 
+internal fun arabicVoiceNameMatchesPreference(voiceName: String, preferredVoice: String): Boolean? {
+    val name = voiceName.lowercase(Locale.ROOT)
+    val explicitFemale = name.contains("female") || name.contains("woman") ||
+        name.contains("feminine") || name.contains("girl")
+    val explicitMale = name.contains("male") || name.contains("man") ||
+        name.contains("masculine") || name.contains("boy")
+    val wantedMale = preferredVoice.equals("male", ignoreCase = true)
+    return when {
+        wantedMale && explicitFemale && !explicitMale -> false
+        !wantedMale && explicitMale && !explicitFemale -> false
+        wantedMale && explicitMale -> true
+        !wantedMale && explicitFemale -> true
+        else -> null
+    }
+}
+
 class MainActivity : ComponentActivity() {
     private data class PendingArabicSpeech(
         val text: String,
@@ -277,25 +293,11 @@ class MainActivity : ComponentActivity() {
                 languageResult != TextToSpeech.LANG_NOT_SUPPORTED
         }
 
-        val wantedMale = preferredVoice.equals("male", ignoreCase = true)
-        fun voiceGenderMatch(voice: android.speech.tts.Voice): Boolean? {
-            val name = voice.name.lowercase(Locale.ROOT)
-            // Engine voice names are inconsistent. Exclude the opposite gender
-            // first, then use common naming conventions as a best-effort hint.
-            val explicitFemale = name.contains("female") || name.contains("woman") ||
-                name.contains("feminine") || name.contains("girl")
-            val explicitMale = name.contains("male") || name.contains("man") ||
-                name.contains("masculine") || name.contains("boy")
-            return when {
-                wantedMale && explicitFemale && !explicitMale -> false
-                !wantedMale && explicitMale && !explicitFemale -> false
-                wantedMale && explicitMale -> true
-                !wantedMale && explicitFemale -> true
-                else -> null
-            }
+        // Engine voice names are inconsistent, so use conservative name
+        // hints and a safe Arabic-language fallback when gender is unknown.
+        val requested = arabicVoices.firstOrNull {
+            arabicVoiceNameMatchesPreference(it.name, preferredVoice) == true
         }
-
-        val requested = arabicVoices.firstOrNull { voiceGenderMatch(it) == true }
         val candidates = if (requested != null) listOf(requested) else arabicVoices
         for (voice in candidates) {
             val supported = runCatching {
