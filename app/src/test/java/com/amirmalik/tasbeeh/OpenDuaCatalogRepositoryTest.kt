@@ -50,6 +50,46 @@ class OpenDuaCatalogRepositoryTest {
     }
 
     @Test
+    fun offlineCacheChecksumIsStableAndDetectsContentOrMetadataChanges() {
+        val checksum = openDuaCacheChecksum(
+            version = "0.0.4",
+            rawItems = "[{\\"id\\":\\"entry-1\\"}]",
+            rawCategories = "[\\"Morning and evening\\"]",
+            sourceEntryCount = 267,
+            canonicalDuaCount = 262,
+            recordingCount = 249
+        )
+        val sameChecksum = openDuaCacheChecksum(
+            version = "0.0.4",
+            rawItems = "[{\\"id\\":\\"entry-1\\"}]",
+            rawCategories = "[\\"Morning and evening\\"]",
+            sourceEntryCount = 267,
+            canonicalDuaCount = 262,
+            recordingCount = 249
+        )
+        val changedContent = openDuaCacheChecksum(
+            version = "0.0.4",
+            rawItems = "[{\\"id\\":\\"entry-2\\"}]",
+            rawCategories = "[\\"Morning and evening\\"]",
+            sourceEntryCount = 267,
+            canonicalDuaCount = 262,
+            recordingCount = 249
+        )
+        val changedMetadata = openDuaCacheChecksum(
+            version = "0.0.4",
+            rawItems = "[{\\"id\\":\\"entry-1\\"}]",
+            rawCategories = "[\\"Morning and evening\\"]",
+            sourceEntryCount = 267,
+            canonicalDuaCount = 261,
+            recordingCount = 249
+        )
+
+        assertEquals(checksum, sameChecksum)
+        assertFalse(checksum == changedContent)
+        assertFalse(checksum == changedMetadata)
+    }
+
+    @Test
     fun contextualVariationsStaySeparateAndKeepTheirOwnTitlesAndAudio() {
         val snapshot = OpenDuaCatalogParser.parse(sampleRelease())!!
         val firstEntry = snapshot.items.filter { it.sourceEntryId == "entry-000001" }
