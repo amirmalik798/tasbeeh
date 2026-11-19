@@ -127,4 +127,31 @@ class SavedSessionTest {
         activeSegmentStartedAt = activeSegmentStartedAt,
         events = events
     )
+    @Test
+    fun completedSessionSnapshotIsDisplayedUntilCounterMovesOn() {
+        val completed = session().copy(
+            count = 33,
+            status = SessionStatus.COMPLETED,
+            endedAt = 200_000L
+        )
+
+        assertEquals(completed, sessionSnapshotForDisplay(completed, counterValue = 33))
+        assertNull(sessionSnapshotForDisplay(completed, counterValue = 0))
+    }
+
+    @Test
+    fun activeAndPausedSessionsKeepTheirSnapshotVisible() {
+        val active = session()
+        val paused = active.copy(status = SessionStatus.PAUSED, activeSegmentStartedAt = null)
+
+        assertEquals(active, sessionSnapshotForDisplay(active, counterValue = 0))
+        assertEquals(paused, sessionSnapshotForDisplay(paused, counterValue = 0))
+    }
+
+    @Test
+    fun incompleteSessionIsNotShownAsCurrentCounterSnapshot() {
+        val incomplete = session().copy(status = SessionStatus.INCOMPLETE, endedAt = 200_000L)
+        assertNull(sessionSnapshotForDisplay(incomplete, counterValue = 0))
+    }
+
 }
