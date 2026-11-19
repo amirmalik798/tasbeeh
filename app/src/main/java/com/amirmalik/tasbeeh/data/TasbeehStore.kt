@@ -554,7 +554,7 @@ class TasbeehStore(private val context: Context) {
                 val startedAt = item.optLong("startedAt").takeIf { it > 0L } ?: 0L
                 val endedAt = item.optLong("endedAt").takeIf { it > 0L }
                 val duration = if (item.has("durationMs") && !item.isNull("durationMs")) {
-                    item.optLong("durationMs").coerceAtLeast(0L)
+                    item.optLong("durationMs").takeIf { it >= 0L }
                 } else null
                 val decodedEvents = decodeEvents(item.optJSONArray("events"))
                 // Older versions allowed an unlimited event list. Compact it on
