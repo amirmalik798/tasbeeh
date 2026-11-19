@@ -322,8 +322,8 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
         val activeIndex = ((count % beadCount) + beadCount) % beadCount
         val press = pressure.value
 
-        // A soft, warm reflection keeps the black beads distinct from the dark
-        // screen while preserving the rich black-and-gold Kiswah palette.
+        // Warm light behind the strand separates the luminous gold beads
+        // from the dark background without adding an artificial glow.
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
