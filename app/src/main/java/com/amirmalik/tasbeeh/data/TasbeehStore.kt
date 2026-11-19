@@ -207,7 +207,7 @@ class TasbeehStore(private val context: Context) {
         TasbeehState(
             count = visibleCounterValue(prefs[Keys.count] ?: 0, currentSession?.status),
             target = (prefs[Keys.target] ?: 33).coerceIn(1, 9999),
-            dhikr = prefs[Keys.dhikr] ?: "Surah al-Fatihah",
+            dhikr = prefs[Keys.dhikr].orEmpty(),
             soundEnabled = prefs[Keys.sound] ?: false,
             hapticsEnabled = prefs[Keys.haptics] ?: true,
             fontScale = safeAppFontScale(prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE),
@@ -441,6 +441,20 @@ class TasbeehStore(private val context: Context) {
         }
     }
 
+    /**
+     * Leaves the counter without an active selection. The current session is
+     * preserved as incomplete before clearing, so legacy built-in Quran or
+     * OpenDua counts are not silently continued by the personal counter.
+     */
+    suspend fun clearDhikrSelection(now: Long = System.currentTimeMillis()) {
+        context.tasbeehDataStore.edit { prefs ->
+            finishOpenSessionIfNeeded(prefs, now)
+            prefs[Keys.count] = 0
+            prefs[Keys.dhikr] = ""
+            prefs.remove(Keys.selectedCustomDhikrId)
+        }
+    }
+
     suspend fun selectCustomDhikr(dhikr: CustomDhikr, now: Long = System.currentTimeMillis()) {
         if (dhikr.id.isBlank()) return
         context.tasbeehDataStore.edit { prefs ->
@@ -482,7 +496,7 @@ class TasbeehStore(private val context: Context) {
             if (prefs[Keys.selectedCustomDhikrId] == id) {
                 finishOpenSessionIfNeeded(prefs, now)
                 prefs[Keys.count] = 0
-                prefs[Keys.dhikr] = "Surah al-Fatihah"
+                prefs[Keys.dhikr] = ""
                 prefs.remove(Keys.selectedCustomDhikrId)
             }
         }
