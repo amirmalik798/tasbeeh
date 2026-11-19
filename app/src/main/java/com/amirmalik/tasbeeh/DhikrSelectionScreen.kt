@@ -117,6 +117,7 @@ internal fun DhikrSelectionScreen(
     selectedQuranReciter: QuranReciter,
     activeRecitationTitle: String,
     activeRecitationArtist: String,
+    activeRecitationSubtitle: String,
     onPlayQuranRecitation: (String, List<String>) -> Unit,
     isSpeaking: Boolean,
     isPreparingRecitation: Boolean,
@@ -307,11 +308,12 @@ internal fun DhikrSelectionScreen(
         RecitationPlaybackBar(
             title = activeRecitationTitle,
             artist = activeRecitationArtist,
+            subtitle = activeRecitationSubtitle,
             isPlaying = isSpeaking,
             isPreparing = isPreparingRecitation || isResolvingQuranRecitation,
             onTogglePlayback = onToggleRecitationPlayback,
             onStop = onStopRecitation,
-            modifier = Modifier.padding(top = 8.dp)
+            modifier = Modifier.padding(horizontal = 20.dp).padding(top = 8.dp)
         )
 
         Spacer(Modifier.height(13.dp))
@@ -439,6 +441,7 @@ internal fun DhikrSelectionScreen(
                         selectable = isCounterSelectableDhikr(item),
                         favorite = item.id in favoriteItemIds,
                         onToggleFavorite = { onToggleFavorite(item.id) },
+                        selectedQuranReciter = selectedQuranReciter,
                         showListenButton = true,
                         listenEnabled = hasRecording && hasInternetConnection &&
                             !isPreparingRecitation && !isResolvingQuranRecitation,
@@ -632,6 +635,7 @@ private fun DhikrOptionCard(
     selectable: Boolean,
     favorite: Boolean,
     onToggleFavorite: () -> Unit,
+    selectedQuranReciter: QuranReciter,
     showListenButton: Boolean,
     listenEnabled: Boolean,
     showQuranSurahSummary: Boolean = false,
@@ -874,7 +878,7 @@ private fun DhikrOptionCard(
             if (item.quranAyahKeys.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "QUR'AN RECITATION · ABDULBASET ABDULSAMAD",
+                    "QUR'AN RECITATION · ${selectedQuranReciter.displayName.uppercase()}",
                     color = Color(0xFF83B994),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,

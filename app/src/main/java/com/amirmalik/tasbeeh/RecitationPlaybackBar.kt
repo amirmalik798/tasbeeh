@@ -68,7 +68,7 @@ internal fun RecitationPlaybackBar(
                     Text(detail, color = Color(0xFFAAB2A5), fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            IconButton(onClick = onTogglePlayback, enabled = !isPreparing, modifier = Modifier.size(40.dp)) {
+            IconButton(onClick = onTogglePlayback, modifier = Modifier.size(40.dp)) {
                 Icon(
                     if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pause recitation" else "Resume recitation",

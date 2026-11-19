@@ -219,6 +219,10 @@ class MainActivity : ComponentActivity() {
             updatePlaybackUiState()
         }
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            updatePlaybackUiState()
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             updatePlaybackUiState()
         }
@@ -1114,7 +1118,6 @@ private fun TasbeehApp(
                     onPlayRecitation = { title, artist, urls ->
                         onPlayRecitation(title, artist, urls)
                     },
-                    onToggleRecitationPlayback = onToggleSpeech,
                     onToggleRecitationPlayback = onToggleSpeech,
                     onStopRecitation = onStopSpeech,
                     favoriteItemIds = state.favoriteItemIds,
