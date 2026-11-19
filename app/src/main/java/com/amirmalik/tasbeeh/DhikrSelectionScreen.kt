@@ -403,6 +403,11 @@ private fun DhikrOptionCard(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = .55.sp
                 )
+                Text(
+                    "Audio streamed from Quran.Foundation",
+                    color = Color(0xFF7F8C78),
+                    fontSize = 9.sp
+                )
             }
         }
     }

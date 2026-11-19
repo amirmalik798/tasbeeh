@@ -372,7 +372,7 @@ class MainActivity : ComponentActivity() {
                         val hadWaitingSpeech = pendingUntilTtsReady.isNotEmpty()
                         pendingUntilTtsReady.clear()
                         pendingArabicUtterances.clear()
-                        speechPlaying = false
+                        speechPlaying = quranMediaPlayer != null || pendingQuranAudioUrls.isNotEmpty()
                         if (hadWaitingSpeech) {
                             showArabicVoiceNotice(
                                 "Arabic text-to-speech could not start reliably. Check your device's TTS settings."
