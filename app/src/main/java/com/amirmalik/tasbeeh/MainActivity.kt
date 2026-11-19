@@ -1,7 +1,5 @@
 package com.amirmalik.tasbeeh
 
-import android.media.AudioManager
-import android.media.ToneGenerator
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -61,6 +59,8 @@ import com.amirmalik.tasbeeh.data.TasbeehStore
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
@@ -75,20 +75,57 @@ private val Ivory = Color(0xFFFFF8EA)
 private val Muted = Color(0xFF9A9B8D)
 
 class MainActivity : ComponentActivity() {
-    private var countToneGenerator: ToneGenerator? = null
     private var arabicTextToSpeech: TextToSpeech? = null
     private var arabicSpeechReady = false
+    private var hasShownArabicVoiceNotice = false
     private var speechPlaying by mutableStateOf(false)
+    private val utteranceSequence = AtomicLong(0L)
+    private val pendingArabicUtterances = ConcurrentHashMap.newKeySet<String>()
 
-    private fun speakArabic(text: String, preferredVoice: String) {
+    private fun showArabicVoiceNotice(message: String) {
+        if (hasShownArabicVoiceNotice) return
+        hasShownArabicVoiceNotice = true
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun refreshSpeechPlayingState() {
+        runOnUiThread {
+            speechPlaying = pendingArabicUtterances.isNotEmpty()
+        }
+    }
+
+    private fun completeArabicUtterance(utteranceId: String?) {
+        if (utteranceId != null) pendingArabicUtterances.remove(utteranceId)
+        refreshSpeechPlayingState()
+    }
+
+    private fun speakArabic(
+        text: String,
+        preferredVoice: String,
+        queueMode: Int = TextToSpeech.QUEUE_FLUSH,
+        showUnavailableNotice: Boolean = true
+    ) {
+        if (text.isBlank()) return
         val engine = arabicTextToSpeech
         if (!arabicSpeechReady || engine == null) {
-            Toast.makeText(this, "Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings.", Toast.LENGTH_LONG).show()
+            if (showUnavailableNotice) {
+                showArabicVoiceNotice(
+                    "Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings."
+                )
+            }
             return
         }
-        if (text.isBlank()) return
-        val voices = engine.voices.orEmpty().filter { it.locale.language == "ar" }
-        val requestedVoice = voices.firstOrNull { voice ->
+
+        // Manual playback replaces queued speech; count-triggered speech is
+        // appended so each successful increment receives its own recitation.
+        if (queueMode == TextToSpeech.QUEUE_FLUSH) {
+            engine.stop()
+            pendingArabicUtterances.clear()
+            speechPlaying = false
+        }
+
+        val arabicVoices = engine.voices.orEmpty().filter { it.locale.language == "ar" }
+        val requestedVoice = arabicVoices.firstOrNull { voice ->
             val name = voice.name.lowercase(Locale.ROOT)
             if (preferredVoice == "male") {
                 (name.contains("male") && !name.contains("female")) ||
@@ -97,16 +134,35 @@ class MainActivity : ComponentActivity() {
                 name.contains("female") || name.contains("woman")
             }
         }
-        if (requestedVoice != null) engine.voice = requestedVoice
-        else {
+
+        if (requestedVoice != null) {
+            engine.voice = requestedVoice
+        } else {
             engine.setLanguage(Locale("ar"))
-            Toast.makeText(this, "Requested Arabic voice unavailable; using the device default.", Toast.LENGTH_LONG).show()
+            if (showUnavailableNotice) {
+                showArabicVoiceNotice(
+                    "Requested Arabic voice unavailable; using the device default."
+                )
+            }
         }
-        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "noor-e-dhikr-arabic")
+
+        val utteranceId = "noor-e-dhikr-${utteranceSequence.incrementAndGet()}"
+        pendingArabicUtterances.add(utteranceId)
+        speechPlaying = true
+
+        val result = engine.speak(text, queueMode, null, utteranceId)
+        if (result == TextToSpeech.ERROR) {
+            pendingArabicUtterances.remove(utteranceId)
+            refreshSpeechPlayingState()
+            if (showUnavailableNotice) {
+                showArabicVoiceNotice("The Arabic voice could not play this dhikr.")
+            }
+        }
     }
 
     private fun stopArabicSpeech() {
         arabicTextToSpeech?.stop()
+        pendingArabicUtterances.clear()
         speechPlaying = false
     }
 
@@ -114,9 +170,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(9, 11, 10)
         window.navigationBarColor = android.graphics.Color.rgb(9, 11, 10)
-        countToneGenerator = runCatching {
-            ToneGenerator(AudioManager.STREAM_SYSTEM, 28)
-        }.getOrNull()
         arabicTextToSpeech = TextToSpeech(this) { status ->
             val engine = arabicTextToSpeech ?: return@TextToSpeech
             if (status == TextToSpeech.SUCCESS) {
@@ -126,21 +179,29 @@ class MainActivity : ComponentActivity() {
                 engine.setSpeechRate(0.88f)
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {
-                        runOnUiThread { speechPlaying = true }
+                        runOnUiThread {
+                            if (utteranceId != null && pendingArabicUtterances.contains(utteranceId)) {
+                                speechPlaying = true
+                            }
+                        }
                     }
+
                     override fun onDone(utteranceId: String?) {
-                        runOnUiThread { speechPlaying = false }
+                        completeArabicUtterance(utteranceId)
                     }
+
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
-                        runOnUiThread { speechPlaying = false }
+                        completeArabicUtterance(utteranceId)
                     }
+
                     override fun onError(utteranceId: String?, errorCode: Int) {
-                        runOnUiThread { speechPlaying = false }
+                        completeArabicUtterance(utteranceId)
                     }
                 })
             }
         }
+
         val store = TasbeehStore(applicationContext)
         setContent {
             val savedState by produceState<TasbeehState?>(
@@ -158,12 +219,16 @@ class MainActivity : ComponentActivity() {
                     state = saved,
                     store = store,
                     isSpeaking = speechPlaying,
-                    onSpeakArabic = { text, voice -> speakArabic(text, voice) },
+                    onSpeakArabic = { text, voice, queueMode ->
+                        speakArabic(
+                            text = text,
+                            preferredVoice = voice,
+                            queueMode = queueMode,
+                            showUnavailableNotice = queueMode == TextToSpeech.QUEUE_FLUSH
+                        )
+                    },
                     onStopSpeech = { stopArabicSpeech() }
                 ) {
-                    if (saved.soundEnabled) {
-                        countToneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 38)
-                    }
                     if (saved.hapticsEnabled) {
                         window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     }
@@ -173,9 +238,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        countToneGenerator?.release()
-        countToneGenerator = null
         arabicTextToSpeech?.stop()
+        pendingArabicUtterances.clear()
         arabicTextToSpeech?.shutdown()
         arabicTextToSpeech = null
         super.onDestroy()
@@ -220,7 +284,7 @@ private fun TasbeehApp(
     state: TasbeehState,
     store: TasbeehStore,
     isSpeaking: Boolean,
-    onSpeakArabic: (String, String) -> Unit,
+    onSpeakArabic: (String, String, Int) -> Unit,
     onStopSpeech: () -> Unit,
     onTap: () -> Unit
 ) {
@@ -287,7 +351,16 @@ private fun TasbeehApp(
                 fallbackTarget = effectiveTarget,
                 now = now
             )
-            if (outcome == CountOutcome.COUNTED) onTap()
+            if (outcome == CountOutcome.COUNTED) {
+                if (state.soundEnabled && !activeDhikrArabic.isNullOrBlank()) {
+                    onSpeakArabic(
+                        activeDhikrArabic,
+                        state.ttsVoicePreference,
+                        TextToSpeech.QUEUE_ADD
+                    )
+                }
+                onTap()
+            }
         }
     }
 
@@ -540,7 +613,13 @@ private fun TasbeehApp(
             state = state,
             activeArabic = activeDhikrArabic,
             isSpeaking = isSpeaking,
-            onSpeakArabic = { voice -> onSpeakArabic(activeDhikrArabic.orEmpty(), voice) },
+            onSpeakArabic = { voice ->
+                onSpeakArabic(
+                    activeDhikrArabic.orEmpty(),
+                    voice,
+                    TextToSpeech.QUEUE_FLUSH
+                )
+            },
             onStopSpeech = onStopSpeech,
             onDismiss = { showSettings = false },
             onSave = { sound, haptics, fontScale, voice ->
@@ -1310,7 +1389,11 @@ private fun SettingsDialog(
                 Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                SettingToggle("Counting sound", "A soft sound on every increment", sound) { sound = it }
+                SettingToggle(
+                    "Arabic TTS on count",
+                    "Speak the selected Arabic dhikr after every increment",
+                    sound
+                ) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
 
                 Row(
