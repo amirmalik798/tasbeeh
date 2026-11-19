@@ -89,7 +89,7 @@ internal fun SessionHistoryScreen(
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
-                Text("YOUR JOURNEY", color = HistoryGold, fontSize = 9.sp, letterSpacing = 2.1.sp, fontWeight = FontWeight.Bold)
+                Text("YOUR JOURNEY", color = HistoryGold, fontSize = 10.sp, letterSpacing = 2.1.sp, fontWeight = FontWeight.Bold)
                 Text("Session history", color = HistoryIvory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
             }
             Surface(
@@ -100,7 +100,7 @@ internal fun SessionHistoryScreen(
                 Text(
                     "$totalSessions SESSIONS",
                     color = Color(0xFFFFD875),
-                    fontSize = 9.sp,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)
                 )
@@ -111,7 +111,7 @@ internal fun SessionHistoryScreen(
             Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp)
         ) {
             Spacer(Modifier.height(6.dp))
-            Text("YOUR PRACTICE", color = HistoryMuted, fontSize = 9.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.SemiBold)
+            Text("YOUR PRACTICE", color = HistoryMuted, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                 HistoryStatCard(
@@ -138,7 +138,7 @@ internal fun SessionHistoryScreen(
                 Spacer(Modifier.height(19.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     Box(Modifier.size(6.dp).background(HistoryGold, CircleShape))
-                    Text("CURRENT SESSION", color = HistoryGold, fontSize = 9.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold)
+                    Text("CURRENT SESSION", color = HistoryGold, fontSize = 10.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.height(8.dp))
                 OpenSessionCard(
@@ -153,7 +153,7 @@ internal fun SessionHistoryScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("PAST SESSIONS", color = HistoryIvory, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Text("A record of each completed or unfinished round", color = HistoryMuted, fontSize = 10.sp)
+                    Text("A record of each completed or unfinished round", color = HistoryMuted, fontSize = 11.sp)
                 }
                 Text("${filtered.size}", color = HistoryGold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -164,7 +164,7 @@ internal fun SessionHistoryScreen(
                     FilterChip(
                         selected = selectedFilter == filter,
                         onClick = { selectedFilter = filter },
-                        label = { Text(filter, fontSize = 10.sp) },
+                        label = { Text(filter, fontSize = 11.sp) },
                         shape = RoundedCornerShape(50),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = HistoryGold,
@@ -206,7 +206,7 @@ internal fun SessionHistoryScreen(
                         Text(
                             "Your saved dhikr sessions will appear here.",
                             color = HistoryMuted,
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             textAlign = TextAlign.Center
                         )
                     }
@@ -244,7 +244,7 @@ private fun HistoryStatCard(
             Spacer(Modifier.height(9.dp))
             Text(value, color = HistoryIvory, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
             Spacer(Modifier.height(3.dp))
-            Text(label, color = HistoryMuted, fontSize = 8.sp, letterSpacing = .7.sp, maxLines = 1)
+            Text(label, color = HistoryMuted, fontSize = 9.sp, letterSpacing = .7.sp, maxLines = 1)
         }
     }
 }
@@ -276,7 +276,7 @@ private fun OpenSessionCard(
                     Text(
                         "Started ${formatSessionDate(session.startedAt)}",
                         color = HistoryMuted,
-                        fontSize = 10.sp
+                        fontSize = 11.sp
                     )
                 }
                 StatusPill(if (paused) "PAUSED" else "IN PROGRESS", paused)
@@ -307,7 +307,7 @@ private fun OpenSessionCard(
                 ) {
                     Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.CheckCircle, null, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (paused) "RESUME" else "RETURN TO COUNTER", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text(if (paused) "RESUME" else "RETURN TO COUNTER", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 OutlinedButton(
                     onClick = onFinish,
@@ -316,7 +316,7 @@ private fun OpenSessionCard(
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = HistoryMuted),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF46483C))
                 ) {
-                    Text("FINISH", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("FINISH", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -339,7 +339,7 @@ private fun PastSessionCard(session: SavedSession) {
                     Text(
                         formatSessionDate(session.endedAt ?: session.completedAt ?: session.startedAt),
                         color = HistoryMuted,
-                        fontSize = 10.sp
+                        fontSize = 11.sp
                     )
                 }
                 StatusPill(if (completed) "COMPLETED" else "INCOMPLETE", !completed)
@@ -351,7 +351,7 @@ private fun PastSessionCard(session: SavedSession) {
                 Spacer(Modifier.weight(1f))
                 Icon(Icons.Default.Flag, null, tint = if (completed) HistoryGreen else HistoryMuted, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(5.dp))
-                Text(if (completed) "Goal reached" else "Ended early", color = if (completed) HistoryGreen else HistoryMuted, fontSize = 10.sp)
+                Text(if (completed) "Goal reached" else "Ended early", color = if (completed) HistoryGreen else HistoryMuted, fontSize = 11.sp)
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -373,7 +373,7 @@ private fun PastSessionCard(session: SavedSession) {
 @Composable
 private fun SessionMetric(label: String, value: String) {
     Column {
-        Text(label, color = HistoryMuted, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .8.sp)
+        Text(label, color = HistoryMuted, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .8.sp)
         Spacer(Modifier.height(3.dp))
         Text(value, color = HistoryGold, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
     }
@@ -390,7 +390,7 @@ private fun StatusPill(label: String, pausedOrIncomplete: Boolean) {
         Text(
             label,
             color = color,
-            fontSize = 8.sp,
+            fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = .55.sp,
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
