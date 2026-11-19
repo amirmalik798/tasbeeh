@@ -783,6 +783,14 @@ private fun MyDhikrsEmptyState(
                 TextButton(onClick = onBrowseLibrary) {
                     Text("BROWSE QURAN & DUAS", color = GoldLight, fontWeight = FontWeight.SemiBold, letterSpacing = .45.sp)
                 }
+                Spacer(Modifier.height(15.dp))
+                Text(
+                    "Developed by: Amir Malik (2026)",
+                    color = Muted,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center,
+                    letterSpacing = .2.sp
+                )
             }
         }
     }
