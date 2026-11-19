@@ -104,6 +104,10 @@ internal fun DhikrSelectionScreen(
     quranIsRefreshing: Boolean,
     quranRefreshError: String?,
     quranCacheWriteFailed: Boolean,
+    isSpeaking: Boolean,
+    isPreparingRecitation: Boolean,
+    onPlayRecitation: (List<String>) -> Unit,
+    onStopRecitation: () -> Unit,
     onRetryQuranText: () -> Unit,
     onRetryOpenDuaCatalog: () -> Unit,
     currentDhikr: String,
@@ -118,6 +122,7 @@ internal fun DhikrSelectionScreen(
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
+    var readingSurah by remember { mutableStateOf<DhikrItem?>(null) }
     val categories = remember(openDuaCategories) {
         orderedDhikrCategories(openDuaCategories)
     }
@@ -144,8 +149,13 @@ internal fun DhikrSelectionScreen(
     // keystroke. This keeps search responsive while preserving field boundaries.
     val searchableItems = remember(allItems) {
         allItems.map { item ->
-            item to (listOf(item.title, item.transliteration, item.meaning, item.arabic, item.reference) +
-                item.categories).map(::normalizeDhikrSearchText)
+            val fields = if (QuranicDuaCatalog.isFullSurah(item)) {
+                // Do not normalize megabytes of Quran text on the Compose thread.
+                listOf(item.title, item.reference, item.transliteration.take(120))
+            } else {
+                listOf(item.title, item.transliteration, item.meaning, item.arabic, item.reference)
+            }
+            item to (fields + item.categories).map(::normalizeDhikrSearchText)
         }
     }
     val filteredItems = remember(query, category, searchableItems) {
@@ -334,7 +344,9 @@ internal fun DhikrSelectionScreen(
                 errorMessage = quranRefreshError,
                 cacheWriteFailed = quranCacheWriteFailed,
                 isOffline = !hasInternetConnection,
-                itemCount = quranItems.size,
+                itemCount = quranItems.count {
+                    QuranicDuaCatalog.isFullSurah(it) && it.arabic.isNotBlank() && it.transliteration.isNotBlank()
+                },
                 onRetry = onRetryQuranText
             )
         }
@@ -373,6 +385,7 @@ internal fun DhikrSelectionScreen(
                         selected = isSelected,
                         enabled = !isStoreBusy,
                         onClick = { onSelect(item) },
+                        onRead = item.takeIf(QuranicDuaCatalog::isFullSurah)?.let { { readingSurah = it } },
                         onEdit = custom?.let { entry -> { onEditCustom(entry) } },
                         onDelete = custom?.let { entry -> { pendingDelete = entry } }
                     )
@@ -521,6 +534,19 @@ private fun CatalogStatusPanel(
             }
         }
     }
+    readingSurah?.let { surah ->
+        QuranSurahReaderDialog(
+            item = surah,
+            isSpeaking = isSpeaking,
+            isPreparingRecitation = isPreparingRecitation,
+            hasInternetConnection = hasInternetConnection,
+            onPlayRecitation = {
+                onPlayRecitation(QuranRecitationAudio.audioUrlsForAyahs(surah.quranAyahKeys))
+            },
+            onStopRecitation = onStopRecitation,
+            onDismiss = { readingSurah = null }
+        )
+    }
 }
 
 @Composable
@@ -529,10 +555,21 @@ private fun DhikrOptionCard(
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
+    onRead: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null
 ) {
     val gold = Color(0xFFFFD56A)
+    val isFullSurah = QuranicDuaCatalog.isFullSurah(item)
+    val arabicPreview = if (isFullSurah && item.arabic.length > 190) {
+        item.arabic.take(190).trimEnd() + " …"
+    } else item.arabic
+    val transliterationPreview = if (isFullSurah && item.transliteration.length > 150) {
+        item.transliteration.take(150).trimEnd() + " …"
+    } else item.transliteration
+    val meaningPreview = if (isFullSurah && item.meaning.length > 170) {
+        item.meaning.take(170).trimEnd() + " …"
+    } else item.meaning
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(
             enabled = item.isCountable && enabled,
@@ -590,13 +627,15 @@ private fun DhikrOptionCard(
             if (item.arabic.isNotBlank()) {
                 Spacer(Modifier.height(11.dp))
                 Text(
-                    item.arabic,
+                    arabicPreview,
                     modifier = Modifier.fillMaxWidth(),
                     color = Color(0xFFFFE7AD),
-                    fontSize = if (item.arabic.length > 90) 18.sp else 23.sp,
-                    lineHeight = if (item.arabic.length > 90) 32.sp else 38.sp,
+                    fontSize = if (arabicPreview.length > 90) 18.sp else 23.sp,
+                    lineHeight = if (arabicPreview.length > 90) 32.sp else 38.sp,
                     textAlign = TextAlign.End,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    maxLines = if (isFullSurah) 3 else Int.MAX_VALUE,
+                    overflow = if (isFullSurah) TextOverflow.Ellipsis else TextOverflow.Clip
                 )
             } else if (item.quranAyahKeys.isNotEmpty()) {
                 Spacer(Modifier.height(11.dp))
@@ -609,7 +648,15 @@ private fun DhikrOptionCard(
             }
             if (item.transliteration.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
-                Text(item.transliteration, color = gold, fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    transliterationPreview,
+                    color = gold,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = if (isFullSurah) 2 else Int.MAX_VALUE,
+                    overflow = if (isFullSurah) TextOverflow.Ellipsis else TextOverflow.Clip
+                )
             } else if (item.quranAyahKeys.isNotEmpty()) {
                 Spacer(Modifier.height(5.dp))
                 Text(
@@ -621,7 +668,14 @@ private fun DhikrOptionCard(
             }
             if (item.meaning.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text(item.meaning, color = Color(0xFFBEB9AC), fontSize = 12.sp, lineHeight = 16.sp)
+                Text(
+                    meaningPreview,
+                    color = Color(0xFFBEB9AC),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    maxLines = if (isFullSurah) 2 else Int.MAX_VALUE,
+                    overflow = if (isFullSurah) TextOverflow.Ellipsis else TextOverflow.Clip
+                )
             }
             if (item.reference.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
@@ -651,6 +705,21 @@ private fun DhikrOptionCard(
                     color = Color(0xFF7F8C78),
                     fontSize = 9.sp
                 )
+                if (onRead != null) {
+                    TextButton(
+                        onClick = onRead,
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(vertical = 5.dp)
+                    ) {
+                        Text(
+                            "READ ALL ${item.quranAyahKeys.size} AYAHS",
+                            color = gold,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = .45.sp
+                        )
+                    }
+                }
             }
             else if (item.recitationAudioUrls.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
