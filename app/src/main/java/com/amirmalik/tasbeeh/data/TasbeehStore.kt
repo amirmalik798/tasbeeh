@@ -299,6 +299,9 @@ class TasbeehStore(private val context: Context) {
             if (session != null) {
                 if (nextCount == 0) {
                     prefs.remove(Keys.currentSession)
+                    val history = decodeSessionList(prefs[Keys.sessionHistory].orEmpty())
+                        .filterNot { it.id == session.id }
+                    prefs[Keys.sessionHistory] = encodeSessionList(history)
                 } else {
                     val updated = session.copy(count = nextCount, status = SessionStatus.ACTIVE, endedAt = null, durationMs = null)
                     prefs[Keys.currentSession] = encodeSession(updated)
@@ -365,7 +368,12 @@ class TasbeehStore(private val context: Context) {
                     prefs[Keys.currentSession] = encodeSession(finished)
                     upsertHistory(prefs, finished)
                 }
-                !saveSession && isOpen -> prefs.remove(Keys.currentSession)
+                !saveSession && isOpen -> {
+                    prefs.remove(Keys.currentSession)
+                    val history = decodeSessionList(prefs[Keys.sessionHistory].orEmpty())
+                        .filterNot { it.id == session?.id }
+                    prefs[Keys.sessionHistory] = encodeSessionList(history)
+                }
             }
             prefs[Keys.count] = 0
         }
@@ -438,9 +446,9 @@ class TasbeehStore(private val context: Context) {
     ) {
         val session = decodeSession(prefs[Keys.currentSession].orEmpty()) ?: return
         if (session.status == SessionStatus.ACTIVE || session.status == SessionStatus.PAUSED) {
-            prefs[Keys.currentSession] = encodeSession(
-                finishSession(session, now, SessionStatus.INCOMPLETE)
-            )
+            val finished = finishSession(session, now, SessionStatus.INCOMPLETE)
+            prefs[Keys.currentSession] = encodeSession(finished)
+            upsertHistory(prefs, finished)
         }
     }
 
