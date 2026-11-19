@@ -291,8 +291,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val openDuaRepository = remember { OpenDuaCatalogRepository(applicationContext) }
             val quranicDuaRepository = remember { QuranicDuaRepository(applicationContext) }
-            var openDuaItems by remember { mutableStateOf(openDuaRepository.loadCachedItems()) }
-            var openDuaCategories by remember { mutableStateOf(openDuaRepository.loadCachedCategories()) }
+            val cachedOpenDua = remember(openDuaRepository) { openDuaRepository.loadCachedSnapshot() }
+            var openDuaItems by remember { mutableStateOf(cachedOpenDua.items) }
+            var openDuaCategories by remember { mutableStateOf(cachedOpenDua.categories) }
             var extendedQuranicItems by remember { mutableStateOf(quranicDuaRepository.loadCachedItems()) }
             LaunchedEffect(openDuaRepository, quranicDuaRepository) {
                 launch {
