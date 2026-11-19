@@ -3,8 +3,8 @@ package com.amirmalik.tasbeeh.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -12,25 +12,10 @@ import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
-import kotlin.math.min
 
 private val Context.tasbeehDataStore by preferencesDataStore(name = "tasbeeh_state")
 
-const val SESSION_IDLE_TIMEOUT_MS = 15L * 60L * 1000L
 const val DEFAULT_APP_FONT_SCALE = 1.12f
-
-internal fun isPreviouslyCompletedRound(
-    storedCount: Int,
-    target: Int,
-    lastCompletedCount: Int?,
-    lastCompletedDhikr: String?,
-    currentDhikr: String
-): Boolean {
-    return storedCount >= target ||
-        (lastCompletedCount != null &&
-            lastCompletedCount == storedCount &&
-            lastCompletedDhikr == currentDhikr)
-}
 
 enum class SessionStatus {
     ACTIVE,
@@ -49,36 +34,42 @@ enum class CountOutcome {
     PAUSED
 }
 
+/**
+ * A single saved session. Duration is the wall-clock time from start to finish,
+ * so it naturally includes any pauses between those timestamps.
+ */
 data class SavedSession(
     val id: String,
     val dhikr: String,
     val count: Int,
     val target: Int,
     val startedAt: Long,
-    val lastActivityAt: Long,
     val arabic: String = "",
     val transliteration: String = "",
     val meaning: String = "",
-    val activeDurationMs: Long? = 0L,
-    val pausedDurationMs: Long = 0L,
-    val pausedAt: Long? = null,
     val status: SessionStatus = SessionStatus.ACTIVE,
-    val completedAt: Long? = null,
-    val endedAt: Long? = null
+    val endedAt: Long? = null,
+    val durationMs: Long? = null
 ) {
-    fun activeDurationAt(now: Long): Long {
-        val stored = (activeDurationMs ?: 0L).coerceAtLeast(0L)
-        if (status != SessionStatus.ACTIVE) return stored
-        val currentSegment = (now - lastActivityAt).coerceAtLeast(0L)
-            .coerceAtMost(SESSION_IDLE_TIMEOUT_MS)
-        return stored + currentSegment
-    }
+    fun durationAt(now: Long): Long? = sessionDurationMillis(startedAt, endedAt, now)
+}
 
-    fun totalElapsedAt(now: Long): Long {
-        if (startedAt <= 0L) return 0L
-        val end = completedAt ?: endedAt ?: now
-        return (end - startedAt).coerceAtLeast(0L)
-    }
+internal fun sessionDurationMillis(startedAt: Long, endedAt: Long?, now: Long): Long? {
+    if (startedAt <= 0L) return null
+    return ((endedAt ?: now) - startedAt).coerceAtLeast(0L)
+}
+
+internal fun finishSession(
+    session: SavedSession,
+    now: Long,
+    status: SessionStatus
+): SavedSession {
+    require(status == SessionStatus.COMPLETED || status == SessionStatus.INCOMPLETE)
+    return session.copy(
+        status = status,
+        endedAt = now,
+        durationMs = sessionDurationMillis(session.startedAt, now, now)
+    )
 }
 
 data class CustomDhikr(
@@ -97,8 +88,7 @@ data class TasbeehState(
     val soundEnabled: Boolean = false,
     val hapticsEnabled: Boolean = true,
     val fontScale: Float = DEFAULT_APP_FONT_SCALE,
-    val sessions: List<SavedSession> = emptyList(),
-    val openSession: SavedSession? = null,
+    val currentSession: SavedSession? = null,
     val customDhikrs: List<CustomDhikr> = emptyList(),
     val selectedCustomDhikrId: String? = null
 )
@@ -111,10 +101,14 @@ class TasbeehStore(private val context: Context) {
         val sound = booleanPreferencesKey("sound")
         val haptics = booleanPreferencesKey("haptics")
         val fontScale = floatPreferencesKey("font_scale")
-        val lastCompletedCount = intPreferencesKey("last_completed_count")
-        val lastCompletedDhikr = stringPreferencesKey("last_completed_dhikr")
-        val sessions = stringPreferencesKey("sessions")
-        val openSession = stringPreferencesKey("open_session")
+        val currentSession = stringPreferencesKey("current_session")
+
+        // Legacy keys are read once during migration, then removed.
+        val legacySessions = stringPreferencesKey("sessions")
+        val legacyOpenSession = stringPreferencesKey("open_session")
+        val legacyLastCompletedCount = intPreferencesKey("last_completed_count")
+        val legacyLastCompletedDhikr = stringPreferencesKey("last_completed_dhikr")
+
         val customDhikrs = stringPreferencesKey("custom_dhikrs")
         val selectedCustomDhikrId = stringPreferencesKey("selected_custom_dhikr_id")
     }
@@ -127,11 +121,46 @@ class TasbeehStore(private val context: Context) {
             soundEnabled = prefs[Keys.sound] ?: false,
             hapticsEnabled = prefs[Keys.haptics] ?: true,
             fontScale = (prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE).coerceIn(1.0f, 1.25f),
-            sessions = decodeSessions(prefs[Keys.sessions].orEmpty()),
-            openSession = decodeOpenSession(prefs[Keys.openSession].orEmpty()),
+            currentSession = decodeSession(prefs[Keys.currentSession].orEmpty()),
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
             selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId]
         )
+    }
+
+    /**
+     * Converts older session-list storage to one current-session record.
+     * The open session takes precedence; otherwise only the newest saved
+     * history entry is retained. Older entries are then removed.
+     */
+    suspend fun migrateToSingleSession() {
+        context.tasbeehDataStore.edit { prefs ->
+            if (prefs[Keys.currentSession].isNullOrBlank()) {
+                val legacyOpen = decodeLegacySession(prefs[Keys.legacyOpenSession].orEmpty())
+                val latestLegacy = decodeLegacySessions(prefs[Keys.legacySessions].orEmpty()).firstOrNull()
+                val recovered = legacyOpen ?: latestLegacy ?: run {
+                    val legacyCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
+                    if (legacyCount > 0) {
+                        // The former counter did not always create a session record.
+                        // Keep its count, but do not invent a historical start time.
+                        SavedSession(
+                            id = UUID.randomUUID().toString(),
+                            dhikr = prefs[Keys.dhikr] ?: "SubhanAllah",
+                            count = legacyCount,
+                            target = (prefs[Keys.target] ?: 33).coerceIn(1, 9999),
+                            startedAt = 0L,
+                            status = SessionStatus.ACTIVE
+                        )
+                    } else null
+                }
+
+                recovered?.let { prefs[Keys.currentSession] = encodeSession(it) }
+            }
+
+            prefs.remove(Keys.legacySessions)
+            prefs.remove(Keys.legacyOpenSession)
+            prefs.remove(Keys.legacyLastCompletedCount)
+            prefs.remove(Keys.legacyLastCompletedDhikr)
+        }
     }
 
     suspend fun update(
@@ -146,8 +175,10 @@ class TasbeehStore(private val context: Context) {
             count?.let { prefs[Keys.count] = it.coerceAtLeast(0) }
             target?.let {
                 val nextTarget = it.coerceIn(1, 9999)
-                val hasOpenSession = decodeOpenSession(prefs[Keys.openSession].orEmpty()) != null
-                if (!hasOpenSession && prefs[Keys.target] != nextTarget && (prefs[Keys.count] ?: 0) > 0) {
+                val current = decodeSession(prefs[Keys.currentSession].orEmpty())
+                val sessionIsOpen = current?.status == SessionStatus.ACTIVE ||
+                    current?.status == SessionStatus.PAUSED
+                if (!sessionIsOpen && prefs[Keys.target] != nextTarget && (prefs[Keys.count] ?: 0) > 0) {
                     prefs[Keys.count] = 0
                 }
                 prefs[Keys.target] = nextTarget
@@ -160,8 +191,8 @@ class TasbeehStore(private val context: Context) {
     }
 
     /**
-     * Atomically checkpoints the counter and its open session. DataStore's edit
-     * transaction prevents rapid taps from overwriting each other with stale UI state.
+     * The count and its single session snapshot are saved atomically. There
+     * is no per-tap history append and no scan over old sessions.
      */
     suspend fun countDhikr(
         dhikr: String,
@@ -173,94 +204,51 @@ class TasbeehStore(private val context: Context) {
     ): CountOutcome {
         var outcome = CountOutcome.COUNTED
         context.tasbeehDataStore.edit { prefs ->
-            var open = decodeOpenSession(prefs[Keys.openSession].orEmpty())
-            if (open?.status == SessionStatus.PAUSED) {
+            val existing = decodeSession(prefs[Keys.currentSession].orEmpty())
+            if (existing?.status == SessionStatus.PAUSED) {
                 outcome = CountOutcome.PAUSED
                 return@edit
             }
 
-            if (open?.status == SessionStatus.ACTIVE &&
-                now - open.lastActivityAt >= SESSION_IDLE_TIMEOUT_MS
-            ) {
-                val pauseAt = open.lastActivityAt + SESSION_IDLE_TIMEOUT_MS
-                open = open.copy(
-                    activeDurationMs = (open.activeDurationMs ?: 0L) + SESSION_IDLE_TIMEOUT_MS,
-                    status = SessionStatus.PAUSED,
-                    pausedAt = pauseAt
-                )
-                prefs[Keys.openSession] = encodeSession(open)
-                outcome = CountOutcome.PAUSED
-                return@edit
+            val target = if (existing?.status == SessionStatus.ACTIVE) {
+                existing.target
+            } else {
+                (prefs[Keys.target] ?: fallbackTarget).coerceIn(1, 9999)
             }
-
-            val target = open?.target ?: (prefs[Keys.target] ?: fallbackTarget).coerceIn(1, 9999)
             val storedCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
-            var lastCompletedCount = prefs[Keys.lastCompletedCount]
-            var lastCompletedDhikr = prefs[Keys.lastCompletedDhikr]
-
-            // Upgrade older installations once: infer the most recent completed
-            // round from history, then use compact markers on subsequent taps.
-            if (lastCompletedCount == null && lastCompletedDhikr == null) {
-                val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
-                if (latestSaved?.status == SessionStatus.COMPLETED) {
-                    lastCompletedCount = latestSaved.count
-                    lastCompletedDhikr = latestSaved.dhikr
-                    prefs[Keys.lastCompletedCount] = latestSaved.count
-                    prefs[Keys.lastCompletedDhikr] = latestSaved.dhikr
-                }
-            }
-
-            val previousRoundCompleted = isPreviouslyCompletedRound(
-                storedCount = storedCount,
-                target = target,
-                lastCompletedCount = lastCompletedCount,
-                lastCompletedDhikr = lastCompletedDhikr,
-                currentDhikr = dhikr
-            )
-            // A completed round always starts its next round at 1, even if the
-            // user changed the default target while the previous round was open.
-            val baseCount = if (open == null && previousRoundCompleted) 0 else storedCount
+            val startsNewSession = existing == null ||
+                existing.status == SessionStatus.COMPLETED ||
+                existing.status == SessionStatus.INCOMPLETE
+            val baseCount = if (startsNewSession) 0 else storedCount
             val nextCount = baseCount + 1
 
-            val updated = if (open == null) {
+            val session = if (startsNewSession) {
                 SavedSession(
                     id = UUID.randomUUID().toString(),
                     dhikr = dhikr,
                     count = nextCount,
                     target = target,
                     startedAt = now,
-                    lastActivityAt = now,
                     arabic = arabic,
                     transliteration = transliteration,
                     meaning = meaning,
-                    activeDurationMs = 0L,
                     status = SessionStatus.ACTIVE
                 )
             } else {
-                val interval = (now - open.lastActivityAt).coerceAtLeast(0L)
-                    .coerceAtMost(SESSION_IDLE_TIMEOUT_MS)
-                open.copy(
+                existing!!.copy(
                     count = nextCount,
-                    lastActivityAt = now,
-                    activeDurationMs = (open.activeDurationMs ?: 0L) + interval
+                    // A legacy recovered session may not have a known start time.
+                    startedAt = existing.startedAt.takeIf { it > 0L } ?: now
                 )
             }
 
             prefs[Keys.count] = nextCount
-            if (nextCount >= target) {
-                val completed = updated.copy(
-                    status = SessionStatus.COMPLETED,
-                    completedAt = now,
-                    endedAt = now,
-                    pausedAt = null
-                )
-                prefs[Keys.sessions] = appendSession(prefs[Keys.sessions].orEmpty(), completed)
-                prefs[Keys.lastCompletedCount] = completed.count
-                prefs[Keys.lastCompletedDhikr] = completed.dhikr
-                prefs.remove(Keys.openSession)
+            val saved = if (nextCount >= target) {
+                finishSession(session, now, SessionStatus.COMPLETED)
             } else {
-                prefs[Keys.openSession] = encodeSession(updated)
+                session.copy(status = SessionStatus.ACTIVE, endedAt = null, durationMs = null)
             }
+            prefs[Keys.currentSession] = encodeSession(saved)
         }
         return outcome
     }
@@ -270,123 +258,79 @@ class TasbeehStore(private val context: Context) {
             val currentCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
             if (currentCount == 0) return@edit
 
-            val open = decodeOpenSession(prefs[Keys.openSession].orEmpty())
-            if (open?.status == SessionStatus.PAUSED) return@edit
-            if (open == null) {
-                var completedCount = prefs[Keys.lastCompletedCount]
-                var completedDhikr = prefs[Keys.lastCompletedDhikr]
-                if (completedCount == null && completedDhikr == null) {
-                    val latestSaved = decodeSessions(prefs[Keys.sessions].orEmpty()).firstOrNull()
-                    if (latestSaved?.status == SessionStatus.COMPLETED) {
-                        completedCount = latestSaved.count
-                        completedDhikr = latestSaved.dhikr
-                        prefs[Keys.lastCompletedCount] = latestSaved.count
-                        prefs[Keys.lastCompletedDhikr] = latestSaved.dhikr
-                    }
-                }
-                if (completedCount == currentCount && completedDhikr == prefs[Keys.dhikr]) {
-                    return@edit
-                }
-            }
-            if (open?.status == SessionStatus.ACTIVE &&
-                now - open.lastActivityAt >= SESSION_IDLE_TIMEOUT_MS
-            ) {
-                val pauseAt = open.lastActivityAt + SESSION_IDLE_TIMEOUT_MS
-                prefs[Keys.openSession] = encodeSession(
-                    open.copy(
-                        activeDurationMs = (open.activeDurationMs ?: 0L) + SESSION_IDLE_TIMEOUT_MS,
-                        status = SessionStatus.PAUSED,
-                        pausedAt = pauseAt
-                    )
-                )
+            val session = decodeSession(prefs[Keys.currentSession].orEmpty())
+            if (session?.status == SessionStatus.PAUSED || session?.status == SessionStatus.COMPLETED) {
                 return@edit
             }
 
             val nextCount = (currentCount - 1).coerceAtLeast(0)
             prefs[Keys.count] = nextCount
-            if (open != null) {
+            if (session != null) {
                 if (nextCount == 0) {
-                    prefs.remove(Keys.openSession)
+                    prefs.remove(Keys.currentSession)
                 } else {
-                    val interval = (now - open.lastActivityAt).coerceAtLeast(0L)
-                        .coerceAtMost(SESSION_IDLE_TIMEOUT_MS)
-                    prefs[Keys.openSession] = encodeSession(
-                        open.copy(
-                            count = nextCount,
-                            lastActivityAt = now,
-                            activeDurationMs = (open.activeDurationMs ?: 0L) + interval
-                        )
+                    prefs[Keys.currentSession] = encodeSession(
+                        session.copy(count = nextCount, status = SessionStatus.ACTIVE, endedAt = null, durationMs = null)
                     )
                 }
             }
         }
     }
 
-    suspend fun pauseOpenSessionIfIdle(now: Long) {
+    suspend fun pauseCurrentSession() {
         context.tasbeehDataStore.edit { prefs ->
-            val open = decodeOpenSession(prefs[Keys.openSession].orEmpty()) ?: return@edit
-            if (open.status != SessionStatus.ACTIVE) return@edit
-            if (now - open.lastActivityAt < SESSION_IDLE_TIMEOUT_MS) return@edit
-
-            val pauseAt = open.lastActivityAt + SESSION_IDLE_TIMEOUT_MS
-            prefs[Keys.openSession] = encodeSession(
-                open.copy(
-                    activeDurationMs = (open.activeDurationMs ?: 0L) + SESSION_IDLE_TIMEOUT_MS,
-                    status = SessionStatus.PAUSED,
-                    pausedAt = pauseAt
-                )
-            )
+            val session = decodeSession(prefs[Keys.currentSession].orEmpty()) ?: return@edit
+            if (session.status != SessionStatus.ACTIVE || session.count <= 0) return@edit
+            prefs[Keys.currentSession] = encodeSession(session.copy(status = SessionStatus.PAUSED))
         }
     }
 
-    suspend fun resumeOpenSession(now: Long) {
+    suspend fun resumeCurrentSession() {
         context.tasbeehDataStore.edit { prefs ->
-            val open = decodeOpenSession(prefs[Keys.openSession].orEmpty()) ?: return@edit
-            if (open.status != SessionStatus.PAUSED) return@edit
-
-            val pausedStart = open.pausedAt ?: open.lastActivityAt + SESSION_IDLE_TIMEOUT_MS
-            val newlyPaused = (now - pausedStart).coerceAtLeast(0L)
-            prefs[Keys.openSession] = encodeSession(
-                open.copy(
-                    status = SessionStatus.ACTIVE,
-                    lastActivityAt = now,
-                    pausedAt = null,
-                    pausedDurationMs = open.pausedDurationMs + newlyPaused
-                )
-            )
+            val session = decodeSession(prefs[Keys.currentSession].orEmpty()) ?: return@edit
+            if (session.status != SessionStatus.PAUSED) return@edit
+            prefs[Keys.currentSession] = encodeSession(session.copy(status = SessionStatus.ACTIVE))
         }
     }
 
-    suspend fun finishOpenSession(now: Long, resetCounter: Boolean = true) {
+    suspend fun finishCurrentSession(now: Long, resetCounter: Boolean = true) {
         context.tasbeehDataStore.edit { prefs ->
-            val open = decodeOpenSession(prefs[Keys.openSession].orEmpty())
-            if (open != null && open.count > 0) {
-                val finished = finalizeOpenSession(open, SessionStatus.INCOMPLETE, now)
-                prefs[Keys.sessions] = appendSession(prefs[Keys.sessions].orEmpty(), finished)
+            val session = decodeSession(prefs[Keys.currentSession].orEmpty())
+            if (session != null &&
+                (session.status == SessionStatus.ACTIVE || session.status == SessionStatus.PAUSED)
+            ) {
+                prefs[Keys.currentSession] = encodeSession(
+                    finishSession(session, now, SessionStatus.INCOMPLETE)
+                )
             }
-            prefs.remove(Keys.openSession)
             if (resetCounter) prefs[Keys.count] = 0
         }
     }
 
     suspend fun resetCounter(saveSession: Boolean, now: Long) {
         context.tasbeehDataStore.edit { prefs ->
-            val open = decodeOpenSession(prefs[Keys.openSession].orEmpty())
-            if (saveSession && open != null && open.count > 0) {
-                prefs[Keys.sessions] = appendSession(
-                    prefs[Keys.sessions].orEmpty(),
-                    finalizeOpenSession(open, SessionStatus.INCOMPLETE, now)
-                )
+            val session = decodeSession(prefs[Keys.currentSession].orEmpty())
+            val isOpen = session?.status == SessionStatus.ACTIVE || session?.status == SessionStatus.PAUSED
+            when {
+                saveSession && isOpen -> {
+                    prefs[Keys.currentSession] = encodeSession(
+                        finishSession(session!!, now, SessionStatus.INCOMPLETE)
+                    )
+                }
+                !saveSession && isOpen -> prefs.remove(Keys.currentSession)
             }
-            prefs.remove(Keys.openSession)
             prefs[Keys.count] = 0
         }
     }
 
-    suspend fun selectBuiltInDhikr(value: String, arabic: String = "", now: Long = System.currentTimeMillis()) {
+    suspend fun selectBuiltInDhikr(
+        value: String,
+        arabic: String = "",
+        now: Long = System.currentTimeMillis()
+    ) {
         if (value.isBlank()) return
         context.tasbeehDataStore.edit { prefs ->
-            archiveOpenSession(prefs, now)
+            finishOpenSessionIfNeeded(prefs, now)
             prefs[Keys.count] = 0
             prefs[Keys.dhikr] = value
             prefs.remove(Keys.selectedCustomDhikrId)
@@ -398,7 +342,7 @@ class TasbeehStore(private val context: Context) {
         context.tasbeehDataStore.edit { prefs ->
             val selected = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty())
                 .firstOrNull { it.id == dhikr.id } ?: return@edit
-            archiveOpenSession(prefs, now)
+            finishOpenSessionIfNeeded(prefs, now)
             prefs[Keys.count] = 0
             prefs[Keys.dhikr] = selected.title
             prefs[Keys.selectedCustomDhikrId] = selected.id
@@ -432,7 +376,7 @@ class TasbeehStore(private val context: Context) {
                 .filterNot { it.id == id }
             prefs[Keys.customDhikrs] = encodeCustomDhikrs(remaining)
             if (prefs[Keys.selectedCustomDhikrId] == id) {
-                archiveOpenSession(prefs, now)
+                finishOpenSessionIfNeeded(prefs, now)
                 prefs[Keys.count] = 0
                 prefs[Keys.dhikr] = "SubhanAllah"
                 prefs.remove(Keys.selectedCustomDhikrId)
@@ -440,98 +384,90 @@ class TasbeehStore(private val context: Context) {
         }
     }
 
-    private fun archiveOpenSession(prefs: androidx.datastore.preferences.core.MutablePreferences, now: Long) {
-        val open = decodeOpenSession(prefs[Keys.openSession].orEmpty()) ?: return
-        if (open.count > 0) {
-            prefs[Keys.sessions] = appendSession(
-                prefs[Keys.sessions].orEmpty(),
-                finalizeOpenSession(open, SessionStatus.INCOMPLETE, now)
+    private fun finishOpenSessionIfNeeded(
+        prefs: androidx.datastore.preferences.core.MutablePreferences,
+        now: Long
+    ) {
+        val session = decodeSession(prefs[Keys.currentSession].orEmpty()) ?: return
+        if (session.status == SessionStatus.ACTIVE || session.status == SessionStatus.PAUSED) {
+            prefs[Keys.currentSession] = encodeSession(
+                finishSession(session, now, SessionStatus.INCOMPLETE)
             )
         }
-        prefs.remove(Keys.openSession)
     }
 
-    private fun finalizeOpenSession(
-        session: SavedSession,
-        status: SessionStatus,
-        now: Long
-    ): SavedSession {
-        var active = session.activeDurationMs ?: 0L
-        var paused = session.pausedDurationMs
-        if (session.status == SessionStatus.ACTIVE) {
-            val gap = (now - session.lastActivityAt).coerceAtLeast(0L)
-            active += min(gap, SESSION_IDLE_TIMEOUT_MS)
-            if (gap > SESSION_IDLE_TIMEOUT_MS) paused += gap - SESSION_IDLE_TIMEOUT_MS
-        } else if (session.status == SessionStatus.PAUSED) {
-            val pausedStart = session.pausedAt ?: session.lastActivityAt + SESSION_IDLE_TIMEOUT_MS
-            paused += (now - pausedStart).coerceAtLeast(0L)
-        }
-        return session.copy(
-            activeDurationMs = active,
-            pausedDurationMs = paused,
-            status = status,
-            completedAt = if (status == SessionStatus.COMPLETED) now else null,
-            endedAt = now,
-            pausedAt = null
-        )
-    }
-
-    private fun appendSession(raw: String, session: SavedSession): String {
-        val current = decodeSessions(raw).toMutableList()
-        if (current.none { it.id == session.id }) current.add(0, session)
-        return encodeSessions(current.take(500))
-    }
-
-    private fun decodeSessions(raw: String): List<SavedSession> = runCatching {
+    private fun decodeLegacySessions(raw: String): List<SavedSession> = runCatching {
         val array = JSONArray(raw)
         buildList {
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                decodeSession(item)?.let(::add)
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                decodeLegacySession(item)?.let(::add)
             }
         }
     }.getOrDefault(emptyList())
 
-    private fun decodeOpenSession(raw: String): SavedSession? = runCatching {
-        if (raw.isBlank()) null else decodeSession(JSONObject(raw))
+    private fun decodeLegacySession(raw: String): SavedSession? = runCatching {
+        if (raw.isBlank()) null else decodeLegacySession(JSONObject(raw))
     }.getOrNull()
 
-    private fun decodeSession(item: JSONObject): SavedSession? {
+    private fun decodeLegacySession(item: JSONObject): SavedSession? {
         val dhikr = item.optString("dhikr", "").trim()
         if (dhikr.isEmpty()) return null
-
-        val completedAt = item.optLong("completedAt").takeIf { it > 0L }
-        val endedAt = item.optLong("endedAt").takeIf { it > 0L }
         val startedAt = item.optLong("startedAt").takeIf { it > 0L } ?: 0L
-        val lastActivityAt = item.optLong("lastActivityAt").takeIf { it > 0L }
-            ?: startedAt.takeIf { it > 0L }
-            ?: completedAt
-            ?: 0L
-        val id = item.optString("id", "").takeIf { it.isNotBlank() }
-            ?: UUID.randomUUID().toString()
-        val duration = if (item.has("activeDurationMs") && !item.isNull("activeDurationMs")) {
-            item.optLong("activeDurationMs").coerceAtLeast(0L)
+        val endedAt = item.optLong("endedAt").takeIf { it > 0L }
+            ?: item.optLong("completedAt").takeIf { it > 0L }
+        val storedStatus = SessionStatus.fromStoredValue(item.optString("status", "COMPLETED"))
+        val status = if (storedStatus == SessionStatus.ACTIVE || storedStatus == SessionStatus.PAUSED) {
+            storedStatus
+        } else if (storedStatus == SessionStatus.INCOMPLETE) {
+            SessionStatus.INCOMPLETE
+        } else {
+            SessionStatus.COMPLETED
+        }
+        val duration = if (startedAt > 0L && endedAt != null) {
+            (endedAt - startedAt).coerceAtLeast(0L)
         } else null
-        val pausedAt = item.optLong("pausedAt").takeIf { it > 0L }
-
         return SavedSession(
-            id = id,
+            id = item.optString("id").takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
             dhikr = dhikr,
             count = item.optInt("count").coerceAtLeast(0),
             target = item.optInt("target", 33).coerceIn(1, 9999),
             startedAt = startedAt,
-            lastActivityAt = lastActivityAt,
             arabic = item.optString("arabic", ""),
             transliteration = item.optString("transliteration", ""),
             meaning = item.optString("meaning", ""),
-            activeDurationMs = duration,
-            pausedDurationMs = item.optLong("pausedDurationMs").coerceAtLeast(0L),
-            pausedAt = pausedAt,
-            status = SessionStatus.fromStoredValue(item.optString("status", "COMPLETED")),
-            completedAt = completedAt,
-            endedAt = endedAt ?: completedAt
+            status = status,
+            endedAt = endedAt,
+            durationMs = duration
         )
     }
+
+    private fun decodeSession(raw: String): SavedSession? = runCatching {
+        if (raw.isBlank()) null else {
+            val item = JSONObject(raw)
+            val dhikr = item.optString("dhikr", "").trim()
+            if (dhikr.isEmpty()) null else {
+                val startedAt = item.optLong("startedAt").takeIf { it > 0L } ?: 0L
+                val endedAt = item.optLong("endedAt").takeIf { it > 0L }
+                val duration = if (item.has("durationMs") && !item.isNull("durationMs")) {
+                    item.optLong("durationMs").coerceAtLeast(0L)
+                } else null
+                SavedSession(
+                    id = item.optString("id").takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString(),
+                    dhikr = dhikr,
+                    count = item.optInt("count").coerceAtLeast(0),
+                    target = item.optInt("target", 33).coerceIn(1, 9999),
+                    startedAt = startedAt,
+                    arabic = item.optString("arabic", ""),
+                    transliteration = item.optString("transliteration", ""),
+                    meaning = item.optString("meaning", ""),
+                    status = SessionStatus.fromStoredValue(item.optString("status", "ACTIVE")),
+                    endedAt = endedAt,
+                    durationMs = duration
+                )
+            }
+        }
+    }.getOrNull()
 
     private fun encodeSession(session: SavedSession): String = JSONObject().apply {
         put("id", session.id)
@@ -539,23 +475,13 @@ class TasbeehStore(private val context: Context) {
         put("count", session.count)
         put("target", session.target)
         put("startedAt", session.startedAt)
-        put("lastActivityAt", session.lastActivityAt)
         put("arabic", session.arabic)
         put("transliteration", session.transliteration)
         put("meaning", session.meaning)
-        put("activeDurationMs", session.activeDurationMs ?: JSONObject.NULL)
-        put("pausedDurationMs", session.pausedDurationMs)
-        put("pausedAt", session.pausedAt ?: JSONObject.NULL)
         put("status", session.status.name)
-        put("completedAt", session.completedAt ?: JSONObject.NULL)
         put("endedAt", session.endedAt ?: JSONObject.NULL)
+        put("durationMs", session.durationMs ?: JSONObject.NULL)
     }.toString()
-
-    private fun encodeSessions(sessions: List<SavedSession>): String {
-        val array = JSONArray()
-        sessions.forEach { session -> array.put(JSONObject(encodeSession(session))) }
-        return array.toString()
-    }
 
     private fun decodeCustomDhikrs(raw: String): List<CustomDhikr> = runCatching {
         val array = JSONArray(raw)
