@@ -21,7 +21,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -72,14 +71,10 @@ internal object DhikrCatalog {
 internal fun DhikrSelectionScreen(
     currentDhikr: String,
     onBack: () -> Unit,
-    onUse: (DhikrItem) -> Unit
+    onSelect: (DhikrItem) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
-    var selectedId by remember(currentDhikr) {
-        mutableStateOf(DhikrCatalog.byValue(currentDhikr)?.id ?: DhikrCatalog.items.first().id)
-    }
-
     val categories = listOf("All", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Protection", "Daily Du'a")
     val filteredItems = remember(query, category) {
         DhikrCatalog.items.filter { item ->
@@ -93,9 +88,6 @@ internal fun DhikrSelectionScreen(
             matchesCategory && matchesSearch
         }
     }
-    val selected = DhikrCatalog.items.firstOrNull { it.id == selectedId }
-    val isCurrent = selected?.value == currentDhikr
-
     Column(
         Modifier.fillMaxSize().background(Color(0xFF090B0A)).statusBarsPadding(),
         horizontalAlignment = Alignment.Start
@@ -125,18 +117,6 @@ internal fun DhikrSelectionScreen(
         }
 
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-            Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(23.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF28200F), Color(0xFF151B15), Color(0xFF0F1812))))
-                    .border(1.dp, Color(0xFFD8AD51).copy(alpha = .32f), RoundedCornerShape(23.dp))
-                    .padding(horizontal = 18.dp, vertical = 17.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("A moment of remembrance", color = Color(0xFFFFE6A0), fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Explore well-known dhikr and du'a, with Arabic, pronunciation and meaning.", color = Color(0xFFC6BDA8), fontSize = 12.sp, lineHeight = 18.sp)
-                }
-            }
-            Spacer(Modifier.height(14.dp))
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -202,44 +182,12 @@ internal fun DhikrSelectionScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
-                    DhikrOptionCard(item = item, selected = selectedId == item.id, onClick = { selectedId = item.id })
+                    DhikrOptionCard(item = item, selected = item.value == currentDhikr, onClick = { onSelect(item) })
                 }
             }
         }
 
-        Surface(
-            color = Color(0xFF121714),
-            shadowElevation = 18.dp,
-            border = BorderStroke(1.dp, Color(0xFF3A3324).copy(alpha = .75f))
-        ) {
-            Column(
-                Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 13.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    if (isCurrent) "This is your current dhikr" else "Your counter will reset to 0 when you change dhikr.",
-                    color = Color(0xFFC4BCA9),
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(
-                    onClick = { selected?.let(onUse) },
-                    enabled = selected != null,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFF0BF4E),
-                        contentColor = Color(0xFF17130A),
-                        disabledContainerColor = Color(0xFF5A513D)
-                    )
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(9.dp))
-                    Text(if (isCurrent) "KEEP THIS DHIKR" else "USE THIS DHIKR", fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                }
-            }
-        }
+    }
     }
 }
 
