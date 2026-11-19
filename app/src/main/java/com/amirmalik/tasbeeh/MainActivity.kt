@@ -3,6 +3,9 @@ package com.amirmalik.tasbeeh
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import android.widget.Toast
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -73,6 +76,24 @@ private val Muted = Color(0xFF9A9B8D)
 
 class MainActivity : ComponentActivity() {
     private var countToneGenerator: ToneGenerator? = null
+    private var arabicTextToSpeech: TextToSpeech? = null
+    private var arabicSpeechReady = false
+    private var speechPlaying by mutableStateOf(false)
+
+    private fun speakArabic(text: String) {
+        val engine = arabicTextToSpeech
+        if (!arabicSpeechReady || engine == null) {
+            Toast.makeText(this, "Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (text.isBlank()) return
+        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "serene-dhikr-arabic")
+    }
+
+    private fun stopArabicSpeech() {
+        arabicTextToSpeech?.stop()
+        speechPlaying = false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,6 +102,30 @@ class MainActivity : ComponentActivity() {
         countToneGenerator = runCatching {
             ToneGenerator(AudioManager.STREAM_SYSTEM, 28)
         }.getOrNull()
+        arabicTextToSpeech = TextToSpeech(this) { status ->
+            val engine = arabicTextToSpeech ?: return@TextToSpeech
+            if (status == TextToSpeech.SUCCESS) {
+                val languageResult = engine.setLanguage(Locale("ar"))
+                arabicSpeechReady = languageResult != TextToSpeech.LANG_MISSING_DATA &&
+                    languageResult != TextToSpeech.LANG_NOT_SUPPORTED
+                engine.setSpeechRate(0.88f)
+                engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {
+                        runOnUiThread { speechPlaying = true }
+                    }
+                    override fun onDone(utteranceId: String?) {
+                        runOnUiThread { speechPlaying = false }
+                    }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        runOnUiThread { speechPlaying = false }
+                    }
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        runOnUiThread { speechPlaying = false }
+                    }
+                })
+            }
+        }
         val store = TasbeehStore(applicationContext)
         setContent {
             val savedState by produceState<TasbeehState?>(
@@ -94,7 +139,13 @@ class MainActivity : ComponentActivity() {
             if (saved == null) {
                 TasbeehStartupScreen()
             } else {
-                TasbeehApp(saved, store) {
+                TasbeehApp(
+                    state = saved,
+                    store = store,
+                    isSpeaking = speechPlaying,
+                    onSpeakArabic = { speakArabic(it) },
+                    onStopSpeech = { stopArabicSpeech() }
+                ) {
                     if (saved.soundEnabled) {
                         countToneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 38)
                     }
@@ -109,6 +160,9 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         countToneGenerator?.release()
         countToneGenerator = null
+        arabicTextToSpeech?.stop()
+        arabicTextToSpeech?.shutdown()
+        arabicTextToSpeech = null
         super.onDestroy()
     }
 }
@@ -147,7 +201,14 @@ private fun TasbeehStartupScreen() {
 }
 
 @Composable
-private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Unit) {
+private fun TasbeehApp(
+    state: TasbeehState,
+    store: TasbeehStore,
+    isSpeaking: Boolean,
+    onSpeakArabic: (String) -> Unit,
+    onStopSpeech: () -> Unit,
+    onTap: () -> Unit
+) {
     val scope = rememberCoroutineScope()
     var showHistoryScreen by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -306,7 +367,16 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Header(onHistory = { showHistoryScreen = true }, onSettings = { showSettings = true })
+                Header(
+                    onHistory = { showHistoryScreen = true },
+                    onSpeak = {
+                        val arabic = activeDhikrArabic.orEmpty()
+                        if (isSpeaking) onStopSpeech() else onSpeakArabic(arabic)
+                    },
+                    isSpeaking = isSpeaking,
+                    canSpeak = !activeDhikrArabic.isNullOrBlank(),
+                    onSettings = { showSettings = true }
+                )
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(6.dp).background(Gold, CircleShape))
@@ -490,7 +560,13 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
 }
 
 @Composable
-private fun Header(onHistory: () -> Unit, onSettings: () -> Unit) {
+private fun Header(
+    onHistory: () -> Unit,
+    onSpeak: () -> Unit,
+    isSpeaking: Boolean,
+    canSpeak: Boolean,
+    onSettings: () -> Unit
+) {
     Row(Modifier.fillMaxWidth().padding(top = 9.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(11.dp)) {
             Box(
@@ -514,6 +590,18 @@ private fun Header(onHistory: () -> Unit, onSettings: () -> Unit) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconButton(onClick = onHistory, modifier = Modifier.size(48.dp).background(Panel, CircleShape)) {
                 Icon(Icons.Default.History, "Session history", tint = Gold, modifier = Modifier.size(19.dp))
+            }
+            IconButton(
+                onClick = onSpeak,
+                enabled = canSpeak,
+                modifier = Modifier.size(48.dp).background(Panel, CircleShape)
+            ) {
+                Icon(
+                    if (isSpeaking) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    contentDescription = if (isSpeaking) "Stop Arabic recitation" else "Play Arabic recitation",
+                    tint = if (canSpeak) Gold else Muted,
+                    modifier = Modifier.size(19.dp)
+                )
             }
             IconButton(onClick = onSettings, modifier = Modifier.size(48.dp).background(Panel, CircleShape)) {
                 Icon(Icons.Default.Tune, "Settings", tint = Gold, modifier = Modifier.size(19.dp))
