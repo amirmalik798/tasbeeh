@@ -515,8 +515,15 @@ private fun Header(onHistory: () -> Unit, onSettings: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) { KaabaMark(Modifier.size(23.dp)) }
             Column {
-                Text("TASBEEH", color = Ivory, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.1.sp)
-                Text("THE ART OF DHIKR", color = Muted, fontSize = 9.sp, letterSpacing = 1.6.sp)
+                Text(
+                    "SERENE DHIKR",
+                    color = Ivory,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.65.sp,
+                    maxLines = 1
+                )
+                Text("THE ART OF REMEMBRANCE", color = Muted, fontSize = 10.sp, letterSpacing = 1.15.sp, maxLines = 1)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
