@@ -248,7 +248,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 Spacer(Modifier.height(14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(6.dp).background(Gold, CircleShape))
-                    Text("A MOMENT OF REMEMBRANCE", color = Muted, fontSize = 10.sp, letterSpacing = 2.2.sp, fontWeight = FontWeight.Medium)
+                    Text("A MOMENT OF REMEMBRANCE", color = Muted, fontSize = 11.sp, letterSpacing = 2.2.sp, fontWeight = FontWeight.Medium)
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(
@@ -277,7 +277,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 }
 
                 Spacer(Modifier.height(5.dp))
-                Text("YOUR REMEMBRANCE", color = Muted, fontSize = 10.sp, letterSpacing = 2.4.sp)
+                Text("YOUR REMEMBRANCE", color = Muted, fontSize = 11.sp, letterSpacing = 2.4.sp)
                 Spacer(Modifier.height(2.dp))
                 AnimatedContent(
                     targetState = state.count,
@@ -421,7 +421,7 @@ private fun Header(onHistory: () -> Unit, onSettings: () -> Unit) {
             ) { KaabaMark(Modifier.size(23.dp)) }
             Column {
                 Text("TASBEEH", color = Ivory, fontSize = 15.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.1.sp)
-                Text("THE ART OF DHIKR", color = Muted, fontSize = 8.sp, letterSpacing = 1.6.sp)
+                Text("THE ART OF DHIKR", color = Muted, fontSize = 9.sp, letterSpacing = 1.6.sp)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -908,8 +908,8 @@ private fun ProgressTrack(count: Int, target: Int) {
     val animated by animateFloatAsState(fraction, tween(420), label = "progress")
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("SESSION PROGRESS", color = Muted, fontSize = 9.sp, letterSpacing = 1.5.sp)
-            Text("${(animated * 100).toInt()}%", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+            Text("SESSION PROGRESS", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
+            Text("${(animated * 100).toInt()}%", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(7.dp))
         Box(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(Color(0xFF2A2D25))) {
@@ -927,7 +927,7 @@ private fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
     ) {
         Icon(icon, contentDescription = label, tint = if (enabled) Gold else Muted.copy(alpha = .35f), modifier = Modifier.size(19.dp))
         Spacer(Modifier.height(3.dp))
-        Text(label, color = if (enabled) Muted else Muted.copy(alpha = .35f), fontSize = 8.sp, letterSpacing = 1.2.sp)
+        Text(label, color = if (enabled) Muted else Muted.copy(alpha = .35f), fontSize = 9.sp, letterSpacing = 1.2.sp)
     }
 }
 
@@ -935,7 +935,7 @@ private fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 private fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(modifier = modifier.height(42.dp).clickable(onClick = onClick), color = Panel,
         shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2B3028))) {
-        Box(contentAlignment = Alignment.Center) { Text(text, color = Ivory, fontSize = 11.sp, fontWeight = FontWeight.Medium) }
+        Box(contentAlignment = Alignment.Center) { Text(text, color = Ivory, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
     }
 }
 
@@ -964,7 +964,7 @@ private fun TargetDialog(
                         Text(
                             "Your current session keeps its original target. This selection applies to your next session.",
                             color = GoldLight,
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             lineHeight = 16.sp,
                             modifier = Modifier.padding(11.dp)
                         )
@@ -973,7 +973,7 @@ private fun TargetDialog(
                 Text(
                     "QUICK TARGETS",
                     color = Muted,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.3.sp
                 )
@@ -1021,7 +1021,7 @@ private fun TargetDialog(
                 Text(
                     "OR SET A CUSTOM TARGET",
                     color = Muted,
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.1.sp
                 )
@@ -1064,8 +1064,8 @@ private fun SessionTimeStrip(session: com.amirmalik.tasbeeh.data.SavedSession, n
             Icon(Icons.Default.Timer, contentDescription = null, tint = Gold, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("SESSION TIME", color = Muted, fontSize = 8.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.SemiBold)
-                Text("Active time · pauses excluded", color = Muted, fontSize = 9.sp)
+                Text("SESSION TIME", color = Muted, fontSize = 9.sp, letterSpacing = 1.1.sp, fontWeight = FontWeight.SemiBold)
+                Text("Active time · pauses excluded", color = Muted, fontSize = 10.sp)
             }
             Text(
                 formatSessionDurationShort(session.activeDurationAt(now)),
@@ -1110,11 +1110,11 @@ private fun PausedSessionDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("YOUR PROGRESS", color = Muted, fontSize = 8.sp, letterSpacing = 1.sp)
+                            Text("YOUR PROGRESS", color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
                             Text("${session.count} / ${session.target}", color = Ivory, fontSize = 22.sp, fontWeight = FontWeight.Light)
                         }
                         Column(horizontalAlignment = Alignment.End) {
-                            Text("ACTIVE TIME", color = Muted, fontSize = 8.sp, letterSpacing = 1.sp)
+                            Text("ACTIVE TIME", color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
                             Text(formatSessionDurationShort(session.activeDurationMs ?: 0L), color = Gold, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
@@ -1129,13 +1129,13 @@ private fun PausedSessionDialog(
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("RESUME SESSION", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Text("RESUME SESSION", fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
         },
         dismissButton = {
             Column(horizontalAlignment = Alignment.End) {
-                TextButton(onClick = onFinish) { Text("FINISH AS INCOMPLETE", color = Color(0xFFFF9B82), fontSize = 10.sp) }
-                TextButton(onClick = onHistory) { Text("VIEW HISTORY", color = Muted, fontSize = 10.sp) }
+                TextButton(onClick = onFinish) { Text("FINISH AS INCOMPLETE", color = Color(0xFFFF9B82), fontSize = 11.sp) }
+                TextButton(onClick = onHistory) { Text("VIEW HISTORY", color = Muted, fontSize = 11.sp) }
             }
         }
     )
@@ -1182,7 +1182,7 @@ private fun SettingsDialog(
                 Text(
                     "TEXT SIZE",
                     color = Gold,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp
                 )
@@ -1205,7 +1205,7 @@ private fun SettingsDialog(
                                     label,
                                     modifier = Modifier.fillMaxWidth(),
                                     textAlign = TextAlign.Center,
-                                    fontSize = 10.sp,
+                                    fontSize = 11.sp,
                                     maxLines = 1
                                 )
                             },
@@ -1232,7 +1232,7 @@ private fun SettingsDialog(
                         else -> "Standard text selected"
                     },
                     color = Muted,
-                    fontSize = 10.sp
+                    fontSize = 11.sp
                 )
             }
         },
@@ -1253,7 +1253,7 @@ private fun SettingToggle(title: String, description: String, checked: Boolean, 
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, color = Ivory, fontSize = 14.sp)
-            Text(description, color = Muted, fontSize = 11.sp)
+            Text(description, color = Muted, fontSize = 12.sp)
         }
         Switch(checked, onCheckedChange = onChecked, colors = SwitchDefaults.colors(checkedThumbColor = Ink, checkedTrackColor = Gold))
     }
