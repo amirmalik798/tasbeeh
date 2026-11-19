@@ -83,6 +83,10 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
                     if (mediaItemCount > 0) persistPlaybackCheckpoint()
                 }
 
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (mediaItemCount > 0) persistPlaybackCheckpoint()
+                }
+
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         Player.STATE_ENDED -> {
@@ -108,6 +112,8 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
         // keep playback independent of Activity lifecycle, including backgrounding.
         mediaSession = MediaSession.Builder(this, player)
             .build()
+
+        restoreSavedPlaybackIfAvailable()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
@@ -149,6 +155,7 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
             .putString(KEY_ARTIST, artist)
             .putInt(KEY_CURRENT_INDEX, player.currentMediaItemIndex.coerceIn(0, urls.lastIndex))
             .putLong(KEY_POSITION_MS, player.currentPosition.coerceAtLeast(0L))
+            .putBoolean(KEY_PLAY_WHEN_READY, player.playWhenReady)
             .apply()
     }
 
@@ -177,9 +184,32 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
         PlaybackCheckpoint(
             items = items,
             startIndex = preferences.getInt(KEY_CURRENT_INDEX, 0).coerceIn(0, items.lastIndex),
-            startPositionMs = preferences.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L)
+            startPositionMs = preferences.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L),
+            playWhenReady = preferences.getBoolean(KEY_PLAY_WHEN_READY, false)
         )
     }.getOrNull()
+
+    /**
+     * If Android has reclaimed this foreground service, restore the saved
+     * trusted playlist and seek position when it is next recreated. Only
+     * resume automatically when the last saved player intent was playing.
+     */
+    private fun restoreSavedPlaybackIfAvailable() {
+        val checkpoint = readPlaybackCheckpoint() ?: return
+        runCatching {
+            player.setMediaItems(
+                checkpoint.items,
+                checkpoint.startIndex,
+                checkpoint.startPositionMs
+            )
+            player.prepare()
+            player.playWhenReady = checkpoint.playWhenReady
+        }.onFailure { error ->
+            Log.w(TAG, "Could not restore the saved recitation queue", error)
+            clearPlaybackCheckpoint()
+            player.clearMediaItems()
+        }
+    }
 
     private fun clearPlaybackCheckpoint() {
         preferences.edit()
@@ -188,13 +218,15 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
             .remove(KEY_ARTIST)
             .remove(KEY_CURRENT_INDEX)
             .remove(KEY_POSITION_MS)
+            .remove(KEY_PLAY_WHEN_READY)
             .apply()
     }
 
     private data class PlaybackCheckpoint(
         val items: List<MediaItem>,
         val startIndex: Int,
-        val startPositionMs: Long
+        val startPositionMs: Long,
+        val playWhenReady: Boolean
     )
 
     private companion object {
@@ -205,6 +237,7 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
         const val KEY_ARTIST = "artist"
         const val KEY_CURRENT_INDEX = "current_index"
         const val KEY_POSITION_MS = "position_ms"
+        const val KEY_PLAY_WHEN_READY = "play_when_ready"
         const val CHECKPOINT_INTERVAL_MS = 5_000L
         const val MAX_STORED_TRACKS = 700
         const val MAX_STORED_PLAYLIST_CHARS = 180_000
