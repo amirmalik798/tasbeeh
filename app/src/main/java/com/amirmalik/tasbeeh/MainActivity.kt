@@ -294,7 +294,8 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                     SmallAction(
                         Icons.Default.Undo,
                         "UNDO",
-                        state.count > 0 && state.openSession?.status != SessionStatus.PAUSED,
+                        state.count > 0 && state.openSession != null &&
+                            state.openSession.status == SessionStatus.ACTIVE,
                         Modifier.weight(1f)
                     ) {
                         scope.launch { store.undoCount(System.currentTimeMillis()) }
@@ -377,12 +378,14 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             !showReset && !showTarget && !showSettings &&
             state.openSession?.status == SessionStatus.PAUSED
         ) {
-            PausedSessionDialog(
-                session = state.openSession,
-                onResume = { scope.launch { store.resumeOpenSession(System.currentTimeMillis()) } },
-                onFinish = { scope.launch { store.finishOpenSession(System.currentTimeMillis(), resetCounter = true) } },
-                onHistory = { showHistoryScreen = true }
-            )
+            state.openSession?.let { pausedSession ->
+                PausedSessionDialog(
+                    session = pausedSession,
+                    onResume = { scope.launch { store.resumeOpenSession(System.currentTimeMillis()) } },
+                    onFinish = { scope.launch { store.finishOpenSession(System.currentTimeMillis(), resetCounter = true) } },
+                    onHistory = { showHistoryScreen = true }
+                )
+            }
         }
     }
 }
