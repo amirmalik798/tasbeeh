@@ -246,7 +246,7 @@ class MainActivity : ComponentActivity() {
         queueMode: Int
     ) {
         val urls = QuranRecitationAudio.audioUrlsForAyahs(ayahKeys)
-        if (urls.isEmpty()) {
+        if (!QuranRecitationAudio.shouldUseQuranFoundation(ayahKeys) || urls.isEmpty()) {
             speakArabic(text, preferredVoice, queueMode, showUnavailableNotice = false)
             return
         }
@@ -324,7 +324,7 @@ class MainActivity : ComponentActivity() {
     ) {
         if (text.isBlank()) return
 
-        if (quranAyahKeys.isNotEmpty()) {
+        if (QuranRecitationAudio.shouldUseQuranFoundation(quranAyahKeys)) {
             enqueueQuranRecitation(text, preferredVoice, quranAyahKeys, queueMode)
             return
         }
