@@ -91,6 +91,10 @@ internal fun orderedDhikrCategories(openDuaCategories: List<String>): List<Strin
 internal fun DhikrSelectionScreen(
     catalogItems: List<DhikrItem>,
     openDuaCategories: List<String>,
+    openDuaIsRefreshing: Boolean,
+    openDuaRefreshError: String?,
+    openDuaCacheWriteFailed: Boolean,
+    onRetryOpenDuaCatalog: () -> Unit,
     currentDhikr: String,
     currentCustomDhikrId: String?,
     customDhikrs: List<CustomDhikr>,
@@ -287,6 +291,16 @@ internal fun DhikrSelectionScreen(
                 letterSpacing = .55.sp
             )
         }
+        if (category == "All" || category in openDuaCategories) {
+            OpenDuaCatalogStatusPanel(
+                isRefreshing = openDuaIsRefreshing,
+                hasCachedData = catalogItems.any { it.id.startsWith("opendua-") },
+                errorMessage = openDuaRefreshError,
+                cacheWriteFailed = openDuaCacheWriteFailed,
+                itemCount = catalogItems.count { it.id.startsWith("opendua-") },
+                onRetry = onRetryOpenDuaCatalog
+            )
+        }
         Spacer(Modifier.height(3.dp))
         if (filteredItems.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -349,6 +363,106 @@ internal fun DhikrSelectionScreen(
                 TextButton(onClick = { pendingDelete = null }) { Text("KEEP", color = Color(0xFFFFD56A)) }
             }
         )
+    }
+}
+
+@Composable
+private fun OpenDuaCatalogStatusPanel(
+    isRefreshing: Boolean,
+    hasCachedData: Boolean,
+    errorMessage: String?,
+    cacheWriteFailed: Boolean,
+    itemCount: Int,
+    onRetry: () -> Unit
+) {
+    val panelColor = Color(0xFF151A15)
+    val accent = Color(0xFFFFD56A)
+    val title: String
+    val message: String
+    val showRetry: Boolean
+    when {
+        cacheWriteFailed -> {
+            title = "Catalogue loaded, offline save incomplete"
+            message = "The duas are available now, but the app could not confirm that the offline copy was saved. Check available device storage and retry."
+            showRetry = true
+        }
+        errorMessage != null && hasCachedData -> {
+            title = "Using your saved OpenDua catalogue"
+            message = "The latest update could not be downloaded. Your saved collection of $itemCount entries is still available.\n$errorMessage"
+            showRetry = true
+        }
+        errorMessage != null -> {
+            title = "OpenDua catalogue unavailable"
+            message = "No offline catalogue is available yet. Check your internet connection, then retry the download.\n$errorMessage"
+            showRetry = true
+        }
+        isRefreshing && hasCachedData -> {
+            title = "Your saved catalogue is ready"
+            message = "Checking OpenDua for updates in the background."
+            showRetry = false
+        }
+        isRefreshing -> {
+            title = "Preparing the dua library"
+            message = "Downloading and verifying the OpenDua catalogue for first use."
+            showRetry = false
+        }
+        else -> {
+            title = "OpenDua catalogue ready"
+            message = "$itemCount entries are available on this device."
+            showRetry = false
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 5.dp),
+        color = panelColor,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFF3A4438))
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isRefreshing && errorMessage == null && !cacheWriteFailed) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = accent,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = if (errorMessage != null) Icons.Default.CloudOff else Icons.Default.CloudDone,
+                        contentDescription = null,
+                        tint = if (errorMessage != null || cacheWriteFailed) Color(0xFFE7B66A) else Color(0xFF83B994),
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+                Spacer(Modifier.width(9.dp))
+                Text(
+                    title,
+                    color = Color(0xFFFFF8EA),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                message,
+                color = Color(0xFFBEB9AC),
+                fontSize = 11.sp,
+                lineHeight = 16.sp
+            )
+            if (showRetry) {
+                Spacer(Modifier.height(7.dp))
+                TextButton(
+                    onClick = onRetry,
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("RETRY DOWNLOAD", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
     }
 }
 
