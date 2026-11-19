@@ -42,4 +42,12 @@ class ArabicSpeechQueueModeTest {
         )
     }
 
+    @Test
+    fun preferredVoiceMatchingDoesNotConfuseMaleWithFemaleNameTokens() {
+        assertEquals(true, arabicVoiceNameMatchesPreference("ar-female", "male"))
+        assertEquals(false, arabicVoiceNameMatchesPreference("ar-female", "female").not())
+        assertEquals(true, arabicVoiceNameMatchesPreference("ar-male", "male"))
+        assertEquals(false, arabicVoiceNameMatchesPreference("ar-woman", "male"))
+    }
+
 }
