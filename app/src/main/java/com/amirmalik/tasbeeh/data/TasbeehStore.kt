@@ -7,7 +7,9 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
@@ -58,6 +60,27 @@ enum class SessionEventType { STARTED, PAUSED, RESUMED, ENDED }
 
 data class SessionEvent(val type: SessionEventType, val at: Long)
 
+internal const val MAX_SESSION_TIMELINE_EVENTS = 200
+
+internal fun safeDurationSum(first: Long, second: Long): Long {
+    val left = first.coerceAtLeast(0L)
+    val right = second.coerceAtLeast(0L)
+    return if (left > Long.MAX_VALUE - right) Long.MAX_VALUE else left + right
+}
+
+/** Keep the original start and the most recent timeline events, never an unbounded history. */
+internal fun boundedSessionEvents(events: List<SessionEvent>): List<SessionEvent> {
+    if (events.size <= MAX_SESSION_TIMELINE_EVENTS) return events
+    val startIndex = events.indexOfFirst { it.type == SessionEventType.STARTED }
+    if (startIndex < 0) return events.takeLast(MAX_SESSION_TIMELINE_EVENTS)
+    return listOf(events[startIndex]) +
+        events.filterIndexed { index, _ -> index != startIndex }
+            .takeLast(MAX_SESSION_TIMELINE_EVENTS - 1)
+}
+
+internal fun appendSessionEvent(events: List<SessionEvent>, event: SessionEvent): List<SessionEvent> =
+    boundedSessionEvents(events + event)
+
 internal fun legacySessionEvents(startedAt: Long, endedAt: Long?): List<SessionEvent> =
     buildList {
         if (startedAt > 0L) add(SessionEvent(SessionEventType.STARTED, startedAt))
@@ -81,22 +104,34 @@ data class SavedSession(
 ) {
     fun durationAt(now: Long): Long? {
         if (startedAt <= 0L) return null
-        val saved = durationMs ?: accumulatedActiveDuration(this)
+        val saved = durationMs?.coerceAtLeast(0L) ?: accumulatedActiveDuration(this)
         return if (status == SessionStatus.ACTIVE && endedAt == null && activeSegmentStartedAt != null) {
-            saved + (now - activeSegmentStartedAt).coerceAtLeast(0L)
+            safeDurationSum(saved, (now - activeSegmentStartedAt).coerceAtLeast(0L))
         } else saved
     }
 }
 
 internal fun accumulatedActiveDuration(session: SavedSession): Long =
-    session.durationMs ?: session.events.zipWithNext().sumOf { (a, b) ->
-        if (a.type == SessionEventType.STARTED || a.type == SessionEventType.RESUMED) {
-            (b.at - a.at).coerceAtLeast(0L)
+    session.durationMs?.coerceAtLeast(0L)
+        ?: accumulatedActiveDurationFromEvents(session.events, session.startedAt, session.endedAt)
+
+internal fun accumulatedActiveDurationFromEvents(
+    events: List<SessionEvent>,
+    startedAt: Long,
+    endedAt: Long?
+): Long {
+    if (events.isEmpty()) {
+        return if (startedAt > 0L && endedAt != null) {
+            (endedAt - startedAt).coerceAtLeast(0L)
         } else 0L
-    }.let { calculated ->
-        if (session.events.isEmpty() && session.startedAt > 0L && session.endedAt != null)
-            (session.endedAt - session.startedAt).coerceAtLeast(0L) else calculated
     }
+    return events.zipWithNext().fold(0L) { total, (first, second) ->
+        val interval = if (
+            first.type == SessionEventType.STARTED || first.type == SessionEventType.RESUMED
+        ) (second.at - first.at).coerceAtLeast(0L) else 0L
+        safeDurationSum(total, interval)
+    }
+}
 
 internal fun finishSession(
     session: SavedSession,
@@ -107,11 +142,14 @@ internal fun finishSession(
     return session.copy(
         status = status,
         endedAt = now,
-        durationMs = accumulatedActiveDuration(session) +
-            if (session.status == SessionStatus.ACTIVE && session.activeSegmentStartedAt != null)
-                (now - session.activeSegmentStartedAt).coerceAtLeast(0L) else 0L,
+        durationMs = safeDurationSum(
+            accumulatedActiveDuration(session),
+            if (session.status == SessionStatus.ACTIVE && session.activeSegmentStartedAt != null) {
+                (now - session.activeSegmentStartedAt).coerceAtLeast(0L)
+            } else 0L
+        ),
         activeSegmentStartedAt = null,
-        events = session.events + SessionEvent(SessionEventType.ENDED, now)
+        events = appendSessionEvent(session.events, SessionEvent(SessionEventType.ENDED, now))
     )
 }
 
@@ -177,7 +215,7 @@ class TasbeehStore(private val context: Context) {
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
             selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId]
         )
-    }
+    }.flowOn(Dispatchers.Default)
 
     /**
      * Migrates only the current/open session. Older historical sessions are not retained.
@@ -333,10 +371,12 @@ class TasbeehStore(private val context: Context) {
             val at = System.currentTimeMillis()
             val paused = session.copy(
                 status = SessionStatus.PAUSED,
-                durationMs = accumulatedActiveDuration(session) +
-                    (session.activeSegmentStartedAt?.let { (at - it).coerceAtLeast(0L) } ?: 0L),
+                durationMs = safeDurationSum(
+                    accumulatedActiveDuration(session),
+                    session.activeSegmentStartedAt?.let { (at - it).coerceAtLeast(0L) } ?: 0L
+                ),
                 activeSegmentStartedAt = null,
-                events = session.events + SessionEvent(SessionEventType.PAUSED, at)
+                events = appendSessionEvent(session.events, SessionEvent(SessionEventType.PAUSED, at))
             )
             prefs[Keys.currentSession] = encodeSession(paused)
         }
@@ -351,7 +391,7 @@ class TasbeehStore(private val context: Context) {
                 status = SessionStatus.ACTIVE,
                 durationMs = accumulatedActiveDuration(session),
                 activeSegmentStartedAt = at,
-                events = session.events + SessionEvent(SessionEventType.RESUMED, at)
+                events = appendSessionEvent(session.events, SessionEvent(SessionEventType.RESUMED, at))
             )
             prefs[Keys.currentSession] = encodeSession(resumed)
         }
