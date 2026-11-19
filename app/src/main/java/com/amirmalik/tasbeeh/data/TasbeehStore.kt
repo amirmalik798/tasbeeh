@@ -135,7 +135,11 @@ class TasbeehStore(private val context: Context) {
      */
     suspend fun migrateToSingleSession() {
         context.tasbeehDataStore.edit { prefs ->
-            if (prefs[Keys.currentSession].isNullOrBlank()) {
+            if (decodeSession(prefs[Keys.currentSession].orEmpty()) == null) {
+                // Recover from a missing or malformed new-format record before
+                // clearing legacy keys, so a partial/corrupt value cannot mask
+                // a still-readable session from the previous app version.
+                prefs.remove(Keys.currentSession)
                 val legacyOpen = decodeLegacySession(prefs[Keys.legacyOpenSession].orEmpty())
                 val latestLegacy = decodeLegacySessions(prefs[Keys.legacySessions].orEmpty()).firstOrNull()
                 val recovered = legacyOpen ?: latestLegacy ?: run {
