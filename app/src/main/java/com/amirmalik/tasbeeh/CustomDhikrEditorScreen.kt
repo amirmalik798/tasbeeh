@@ -1,5 +1,7 @@
 package com.amirmalik.tasbeeh
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -10,7 +12,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,22 +49,32 @@ internal fun CustomDhikrEditorScreen(
     var transliteration by remember(existing?.id) { mutableStateOf(existing?.transliteration.orEmpty()) }
     var meaning by remember(existing?.id) { mutableStateOf(existing?.meaning.orEmpty()) }
     var attemptedSave by remember(existing?.id) { mutableStateOf(false) }
+    var showPreview by remember(existing?.id) { mutableStateOf(false) }
+    var showDiscardDialog by remember(existing?.id) { mutableStateOf(false) }
 
     val cleanTitle = title.trim()
     val duplicateTitle = cleanTitle.isNotEmpty() &&
         existingTitles.any { it.trim().equals(cleanTitle, ignoreCase = true) }
     val titleError = attemptedSave && (cleanTitle.isEmpty() || duplicateTitle)
     val canSave = cleanTitle.isNotEmpty() && !duplicateTitle
+    val isDirty = title != existing?.title.orEmpty() ||
+        arabic != existing?.arabic.orEmpty() ||
+        transliteration != existing?.transliteration.orEmpty() ||
+        meaning != existing?.meaning.orEmpty()
 
-    Column(
-        Modifier.fillMaxSize().background(EditorInk).statusBarsPadding()
-    ) {
+    fun requestLeave() {
+        if (isDirty) showDiscardDialog = true else onBack()
+    }
+
+    BackHandler(enabled = true) { requestLeave() }
+
+    Column(Modifier.fillMaxSize().background(EditorInk).statusBarsPadding()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = onBack,
+                onClick = { requestLeave() },
                 modifier = Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF171B17))
             ) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFFFFD56A))
@@ -70,7 +83,7 @@ internal fun CustomDhikrEditorScreen(
             Column(Modifier.weight(1f)) {
                 Text(
                     if (existing == null) "PERSONAL COLLECTION" else "EDIT YOUR DHIKR",
-                    color = Color(0xFFFFD56A),
+                    color = EditorGold,
                     fontSize = 9.sp,
                     letterSpacing = 2.sp,
                     fontWeight = FontWeight.Bold
@@ -82,55 +95,30 @@ internal fun CustomDhikrEditorScreen(
                     fontWeight = FontWeight.SemiBold
                 )
             }
-            Box(
-                Modifier.size(42.dp).clip(CircleShape)
-                    .background(Color(0xFF272012))
-                    .border(1.dp, EditorGold.copy(alpha = .35f), CircleShape),
-                contentAlignment = Alignment.Center
+            Surface(
+                color = Color(0xFF1B211A),
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, Color(0xFF66502A).copy(alpha = .72f))
             ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = EditorGold, modifier = Modifier.size(20.dp))
+                Text(
+                    "ON THIS DEVICE",
+                    color = Color(0xFFB7B09D),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = .8.sp,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                )
             }
         }
 
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+            Modifier.weight(1f).fillMaxWidth()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
             Spacer(Modifier.height(8.dp))
-            Surface(
-                color = EditorPanel,
-                shape = RoundedCornerShape(22.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF514226).copy(alpha = .72f))
-            ) {
-                Box(
-                    Modifier.fillMaxWidth().background(
-                        Brush.linearGradient(
-                            listOf(Color(0xFF292111), Color(0xFF172019), Color(0xFF111713))
-                        )
-                    ).padding(18.dp)
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("YOUR WORDS. YOUR REMEMBRANCE.", color = EditorGold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-                        Text(
-                            "Make space for the dhikr you return to.",
-                            color = EditorIvory,
-                            fontSize = 21.sp,
-                            lineHeight = 27.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            "Add its Arabic text, pronunciation and meaning. You can save a simple name on its own, too.",
-                            color = Color(0xFFC4BCA9),
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(22.dp))
-            EditorSectionLabel("IDENTITY", "01")
-            Spacer(Modifier.height(10.dp))
+            EditorSectionLabel("NAME", "01")
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it.take(60) },
@@ -140,9 +128,11 @@ internal fun CustomDhikrEditorScreen(
                 placeholder = { Text("e.g. My morning remembrance") },
                 supportingText = {
                     when {
-                        titleError && cleanTitle.isEmpty() -> Text("Give your dhikr a name.", color = Color(0xFFFF9D80))
-                        titleError && duplicateTitle -> Text("You already have a dhikr with this name.", color = Color(0xFFFF9D80))
-                        else -> Text("${title.length}/60", color = EditorMuted)
+                        titleError && cleanTitle.isEmpty() ->
+                            Text("A name is required.", color = Color(0xFFFF9D80))
+                        titleError && duplicateTitle ->
+                            Text("This name is already used in your dhikr library.", color = Color(0xFFFF9D80))
+                        else -> Text("${title.length}/60 · Required", color = EditorMuted)
                     }
                 },
                 isError = titleError,
@@ -150,121 +140,201 @@ internal fun CustomDhikrEditorScreen(
                 colors = editorFieldColors()
             )
 
-            Spacer(Modifier.height(22.dp))
-            EditorSectionLabel("THE WORDS", "02")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(18.dp))
+            EditorSectionLabel("ARABIC TEXT", "02")
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = arabic,
                 onValueChange = { arabic = it.take(800) },
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-                maxLines = 5,
-                label = { Text("Arabic text") },
-                placeholder = { Text("اكتب الذكر هنا", textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth()) },
+                minLines = 3,
+                maxLines = 8,
+                label = { Text("Arabic (optional)") },
+                placeholder = {
+                    Text(
+                        "اكتب الذكر هنا",
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
                 textStyle = TextStyle(
                     color = EditorIvory,
-                    fontSize = 23.sp,
-                    lineHeight = 38.sp,
+                    fontSize = 22.sp,
+                    lineHeight = 36.sp,
                     textAlign = TextAlign.End,
                     textDirection = TextDirection.Rtl
                 ),
-                supportingText = { Text("${arabic.length}/800", color = EditorMuted) },
+                supportingText = {
+                    Text("${arabic.length}/800", color = EditorMuted)
+                },
                 shape = RoundedCornerShape(16.dp),
                 colors = editorFieldColors()
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(18.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    EditorSectionLabel("PRONUNCIATION / TRANSLITERATION", "03")
+                }
+                Text(
+                    "800 MAX",
+                    color = EditorMuted,
+                    fontSize = 9.sp,
+                    letterSpacing = .7.sp
+                )
+            }
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = transliteration,
-                onValueChange = { transliteration = it.take(180) },
+                onValueChange = { transliteration = it.take(800) },
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 1,
-                maxLines = 3,
+                minLines = 4,
+                maxLines = 9,
                 label = { Text("Pronunciation / transliteration") },
-                placeholder = { Text("How it is pronounced") },
-                supportingText = { Text("${transliteration.length}/180", color = EditorMuted) },
+                placeholder = { Text("Write how the dhikr is pronounced") },
+                textStyle = TextStyle(
+                    color = EditorIvory,
+                    fontSize = 16.sp,
+                    lineHeight = 26.sp
+                ),
+                supportingText = {
+                    Text(
+                        "${transliteration.length}/800",
+                        color = if (transliteration.length >= 760) EditorGold else EditorMuted
+                    )
+                },
                 shape = RoundedCornerShape(16.dp),
                 colors = editorFieldColors()
             )
 
-            Spacer(Modifier.height(22.dp))
-            EditorSectionLabel("MEANING & PREVIEW", "03")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(18.dp))
+            EditorSectionLabel("MEANING OR PERSONAL NOTE", "04")
+            Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = meaning,
                 onValueChange = { meaning = it.take(500) },
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-                maxLines = 4,
-                label = { Text("Meaning or personal note") },
-                placeholder = { Text("A translation or a note to help you remember") },
+                minLines = 3,
+                maxLines = 6,
+                label = { Text("Meaning (optional)") },
+                placeholder = { Text("Add a translation or a note for yourself") },
+                textStyle = TextStyle(
+                    color = EditorIvory,
+                    fontSize = 15.sp,
+                    lineHeight = 23.sp
+                ),
                 supportingText = { Text("${meaning.length}/500", color = EditorMuted) },
                 shape = RoundedCornerShape(16.dp),
                 colors = editorFieldColors()
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
             Surface(
-                color = Color(0xFF171B16),
-                shape = RoundedCornerShape(20.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, EditorGold.copy(alpha = .35f))
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(0xFF141A15),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFF393D30))
             ) {
-                Column(Modifier.fillMaxWidth().padding(17.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("LIVE PREVIEW", color = EditorGold, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Spacer(Modifier.weight(1f))
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = EditorGold.copy(alpha = .8f), modifier = Modifier.size(15.dp))
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Text(
-                        cleanTitle.ifBlank { "Your dhikr name" },
-                        color = EditorIvory,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    if (arabic.isNotBlank()) {
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            arabic,
-                            modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFFFFE7AD),
-                            fontSize = 24.sp,
-                            lineHeight = 38.sp,
-                            textAlign = TextAlign.End
+                Column(Modifier.padding(horizontal = 15.dp, vertical = 12.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = EditorGold,
+                            modifier = Modifier.size(17.dp)
                         )
+                        Spacer(Modifier.width(9.dp))
+                        Text(
+                            "Preview your dhikr",
+                            color = EditorIvory,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { showPreview = !showPreview }) {
+                            Text(
+                                if (showPreview) "HIDE" else "SHOW",
+                                color = EditorGold,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = .8.sp
+                            )
+                            Icon(
+                                if (showPreview) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = EditorGold,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
                     }
-                    if (transliteration.isNotBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(transliteration, color = EditorGold, fontSize = 12.sp, lineHeight = 18.sp)
-                    }
-                    if (meaning.isNotBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text(meaning, color = Color(0xFFBEB9AC), fontSize = 12.sp, lineHeight = 18.sp)
-                    }
-                    if (arabic.isBlank() && transliteration.isBlank() && meaning.isBlank()) {
-                        Spacer(Modifier.height(6.dp))
-                        Text("Your Arabic text, pronunciation and meaning will appear here.", color = EditorMuted, fontSize = 12.sp, lineHeight = 18.sp)
+                    if (showPreview) {
+                        HorizontalDivider(color = Color(0xFF34392F))
+                        Spacer(Modifier.height(13.dp))
+                        Text(
+                            cleanTitle.ifBlank { "Your dhikr name" },
+                            color = EditorIvory,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (arabic.isNotBlank()) {
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                arabic,
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Color(0xFFFFE7AD),
+                                fontSize = 23.sp,
+                                lineHeight = 36.sp,
+                                textAlign = TextAlign.End,
+                                style = TextStyle(textDirection = TextDirection.Rtl)
+                            )
+                        }
+                        if (transliteration.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                transliteration,
+                                color = EditorGold,
+                                fontSize = 12.sp,
+                                lineHeight = 19.sp
+                            )
+                        }
+                        if (meaning.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                meaning,
+                                color = Color(0xFFBEB9AC),
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
+                        if (arabic.isBlank() && transliteration.isBlank() && meaning.isBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Your Arabic text, pronunciation and meaning will appear here.",
+                                color = EditorMuted,
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF83BD91), modifier = Modifier.size(16.dp))
-                Text("Saved privately on this device", color = EditorMuted, fontSize = 11.sp)
-            }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
         }
 
         Surface(
             color = Color(0xFF101511),
-            shadowElevation = 16.dp,
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF302B20))
+            shadowElevation = 12.dp,
+            border = BorderStroke(1.dp, Color(0xFF302B20))
         ) {
             Column(
-                Modifier.fillMaxWidth().navigationBarsPadding().imePadding()
-                    .padding(horizontal = 20.dp, vertical = 13.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                Modifier.fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
                 Button(
                     onClick = {
@@ -282,32 +352,63 @@ internal fun CustomDhikrEditorScreen(
                             )
                         }
                     },
-                    enabled = true,
                     modifier = Modifier.fillMaxWidth().height(54.dp),
                     shape = RoundedCornerShape(17.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = EditorGold,
-                        contentColor = Color(0xFF17130A),
-                        disabledContainerColor = Color(0xFF4D4635),
-                        disabledContentColor = Color(0xFFB3A98E)
+                        contentColor = Color(0xFF17130A)
                     )
                 ) {
                     Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(10.dp))
-                    Text(if (existing == null) "SAVE DHIKR" else "SAVE CHANGES", fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                }
-                TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-                    Text("CANCEL", color = EditorMuted, letterSpacing = 1.1.sp)
+                    Text(
+                        if (existing == null) "SAVE DHIKR" else "SAVE CHANGES",
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
                 }
             }
         }
+    }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            containerColor = Color(0xFF171B17),
+            title = { Text("Discard your changes?", color = EditorIvory) },
+            text = {
+                Text(
+                    "Your unsaved edits will be lost. You can stay here and continue editing.",
+                    color = Color(0xFFC4BCA9)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardDialog = false
+                    onBack()
+                }) {
+                    Text("DISCARD", color = Color(0xFFFF9B82))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) {
+                    Text("KEEP EDITING", color = EditorGold)
+                }
+            }
+        )
     }
 }
 
 @Composable
 private fun EditorSectionLabel(title: String, number: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(title, color = EditorGold, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp)
+        Text(
+            title,
+            color = EditorGold,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.35.sp
+        )
         Spacer(Modifier.weight(1f))
         Text(number, color = EditorMuted, fontSize = 10.sp, letterSpacing = 1.sp)
     }
