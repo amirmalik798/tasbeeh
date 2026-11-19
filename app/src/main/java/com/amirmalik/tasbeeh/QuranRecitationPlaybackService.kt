@@ -104,6 +104,12 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
                     Log.w(TAG, "Recorded recitation playback failed", error)
                     clearPlaybackCheckpoint()
                     mainHandler.removeCallbacks(persistenceRunnable)
+                    // An errored playlist must not remain visible as active
+                    // playback or be mistaken for a resumable queue.
+                    runCatching { player.clearMediaItems() }
+                        .onFailure { clearError ->
+                            Log.w(TAG, "Could not clear the failed recitation queue", clearError)
+                        }
                 }
             })
         }
