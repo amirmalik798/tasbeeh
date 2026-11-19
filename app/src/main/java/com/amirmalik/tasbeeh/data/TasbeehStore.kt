@@ -34,10 +34,10 @@ enum class CountOutcome {
     PAUSED
 }
 
-/**
- * A single saved session. Duration is the wall-clock time from start to finish,
- * so it naturally includes any pauses between those timestamps.
- */
+enum class SessionEventType { STARTED, PAUSED, RESUMED, ENDED }
+
+data class SessionEvent(val type: SessionEventType, val at: Long)
+
 data class SavedSession(
     val id: String,
     val dhikr: String,
@@ -49,16 +49,28 @@ data class SavedSession(
     val meaning: String = "",
     val status: SessionStatus = SessionStatus.ACTIVE,
     val endedAt: Long? = null,
-    val durationMs: Long? = null
+    val durationMs: Long? = null,
+    val activeSegmentStartedAt: Long? = startedAt.takeIf { it > 0L },
+    val events: List<SessionEvent> = listOf(SessionEvent(SessionEventType.STARTED, startedAt)).filter { it.at > 0L }
 ) {
-    fun durationAt(now: Long): Long? =
-        durationMs ?: sessionDurationMillis(startedAt, endedAt, now)
+    fun durationAt(now: Long): Long? {
+        if (startedAt <= 0L) return null
+        val saved = durationMs ?: accumulatedActiveDuration(this)
+        return if (status == SessionStatus.ACTIVE && endedAt == null && activeSegmentStartedAt != null) {
+            saved + (now - activeSegmentStartedAt).coerceAtLeast(0L)
+        } else saved
+    }
 }
 
-internal fun sessionDurationMillis(startedAt: Long, endedAt: Long?, now: Long): Long? {
-    if (startedAt <= 0L) return null
-    return ((endedAt ?: now) - startedAt).coerceAtLeast(0L)
-}
+internal fun accumulatedActiveDuration(session: SavedSession): Long =
+    session.durationMs ?: session.events.zipWithNext().sumOf { (a, b) ->
+        if (a.type == SessionEventType.STARTED || a.type == SessionEventType.RESUMED) {
+            (b.at - a.at).coerceAtLeast(0L)
+        } else 0L
+    }.let { calculated ->
+        if (session.events.isEmpty() && session.startedAt > 0L && session.endedAt != null)
+            (session.endedAt - session.startedAt).coerceAtLeast(0L) else calculated
+    }
 
 internal fun finishSession(
     session: SavedSession,
@@ -69,7 +81,11 @@ internal fun finishSession(
     return session.copy(
         status = status,
         endedAt = now,
-        durationMs = sessionDurationMillis(session.startedAt, now, now)
+        durationMs = accumulatedActiveDuration(session) +
+            if (session.status == SessionStatus.ACTIVE && session.activeSegmentStartedAt != null)
+                (now - session.activeSegmentStartedAt).coerceAtLeast(0L) else 0L,
+        activeSegmentStartedAt = null,
+        events = session.events + SessionEvent(SessionEventType.ENDED, now)
     )
 }
 
@@ -90,6 +106,7 @@ data class TasbeehState(
     val hapticsEnabled: Boolean = true,
     val fontScale: Float = DEFAULT_APP_FONT_SCALE,
     val currentSession: SavedSession? = null,
+    val sessions: List<SavedSession> = emptyList(),
     val customDhikrs: List<CustomDhikr> = emptyList(),
     val selectedCustomDhikrId: String? = null
 )
@@ -103,6 +120,7 @@ class TasbeehStore(private val context: Context) {
         val haptics = booleanPreferencesKey("haptics")
         val fontScale = floatPreferencesKey("font_scale")
         val currentSession = stringPreferencesKey("current_session")
+        val sessionHistory = stringPreferencesKey("session_history")
 
         // Legacy keys are read once during migration, then removed.
         val legacySessions = stringPreferencesKey("sessions")
@@ -123,6 +141,7 @@ class TasbeehStore(private val context: Context) {
             hapticsEnabled = prefs[Keys.haptics] ?: true,
             fontScale = (prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE).coerceIn(1.0f, 1.25f),
             currentSession = decodeSession(prefs[Keys.currentSession].orEmpty()),
+            sessions = decodeSessionList(prefs[Keys.sessionHistory].orEmpty()),
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
             selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId]
         )
@@ -135,6 +154,10 @@ class TasbeehStore(private val context: Context) {
      */
     suspend fun migrateToSingleSession() {
         context.tasbeehDataStore.edit { prefs ->
+            if (prefs[Keys.sessionHistory].isNullOrBlank()) {
+                val oldHistory = decodeLegacySessions(prefs[Keys.legacySessions].orEmpty())
+                if (oldHistory.isNotEmpty()) prefs[Keys.sessionHistory] = encodeSessionList(oldHistory)
+            }
             if (decodeSession(prefs[Keys.currentSession].orEmpty()) == null) {
                 // Recover from a missing or malformed new-format record before
                 // clearing legacy keys, so a partial/corrupt value cannot mask
@@ -158,7 +181,13 @@ class TasbeehStore(private val context: Context) {
                     } else null
                 }
 
-                recovered?.let { prefs[Keys.currentSession] = encodeSession(it) }
+                recovered?.let {
+                    prefs[Keys.currentSession] = encodeSession(it)
+                    val history = decodeSessionList(prefs[Keys.sessionHistory].orEmpty())
+                    if (history.none { item -> item.id == it.id }) {
+                        prefs[Keys.sessionHistory] = encodeSessionList(listOf(it) + history)
+                    }
+                }
             }
 
             prefs.remove(Keys.legacySessions)
@@ -250,6 +279,7 @@ class TasbeehStore(private val context: Context) {
                 session.copy(status = SessionStatus.ACTIVE, endedAt = null, durationMs = null)
             }
             prefs[Keys.currentSession] = encodeSession(saved)
+            upsertHistory(prefs, saved, addIfMissing = startsNewSession)
         }
         return outcome
     }
@@ -282,7 +312,16 @@ class TasbeehStore(private val context: Context) {
         context.tasbeehDataStore.edit { prefs ->
             val session = decodeSession(prefs[Keys.currentSession].orEmpty()) ?: return@edit
             if (session.status != SessionStatus.ACTIVE || session.count <= 0) return@edit
-            prefs[Keys.currentSession] = encodeSession(session.copy(status = SessionStatus.PAUSED))
+            val at = System.currentTimeMillis()
+            val paused = session.copy(
+                status = SessionStatus.PAUSED,
+                durationMs = accumulatedActiveDuration(session) +
+                    (session.activeSegmentStartedAt?.let { (at - it).coerceAtLeast(0L) } ?: 0L),
+                activeSegmentStartedAt = null,
+                events = session.events + SessionEvent(SessionEventType.PAUSED, at)
+            )
+            prefs[Keys.currentSession] = encodeSession(paused)
+            upsertHistory(prefs, paused)
         }
     }
 
@@ -290,7 +329,15 @@ class TasbeehStore(private val context: Context) {
         context.tasbeehDataStore.edit { prefs ->
             val session = decodeSession(prefs[Keys.currentSession].orEmpty()) ?: return@edit
             if (session.status != SessionStatus.PAUSED) return@edit
-            prefs[Keys.currentSession] = encodeSession(session.copy(status = SessionStatus.ACTIVE))
+            val at = System.currentTimeMillis()
+            val resumed = session.copy(
+                status = SessionStatus.ACTIVE,
+                durationMs = accumulatedActiveDuration(session),
+                activeSegmentStartedAt = at,
+                events = session.events + SessionEvent(SessionEventType.RESUMED, at)
+            )
+            prefs[Keys.currentSession] = encodeSession(resumed)
+            upsertHistory(prefs, resumed)
         }
     }
 
@@ -443,6 +490,30 @@ class TasbeehStore(private val context: Context) {
         )
     }
 
+    private fun upsertHistory(
+        prefs: androidx.datastore.preferences.core.MutablePreferences,
+        session: SavedSession,
+        addIfMissing: Boolean = false
+    ) {
+        val history = decodeSessionList(prefs[Keys.sessionHistory].orEmpty()).toMutableList()
+        val index = history.indexOfFirst { it.id == session.id }
+        if (index >= 0) history[index] = session else if (addIfMissing) history.add(0, session)
+        prefs[Keys.sessionHistory] = encodeSessionList(history.sortedByDescending { it.startedAt })
+    }
+
+    private fun decodeSessionList(raw: String): List<SavedSession> = runCatching {
+        val array = JSONArray(raw)
+        buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                decodeSession(item.toString())?.let(::add)
+            }
+        }
+    }.getOrDefault(emptyList())
+
+    private fun encodeSessionList(items: List<SavedSession>): String =
+        JSONArray().apply { items.forEach { put(JSONObject(encodeSession(it))) } }.toString()
+
     private fun decodeSession(raw: String): SavedSession? = runCatching {
         if (raw.isBlank()) null else {
             val item = JSONObject(raw)
@@ -464,7 +535,15 @@ class TasbeehStore(private val context: Context) {
                     meaning = item.optString("meaning", ""),
                     status = SessionStatus.fromStoredValue(item.optString("status", "ACTIVE")),
                     endedAt = endedAt,
-                    durationMs = duration
+                    durationMs = duration,
+                    activeSegmentStartedAt = item.optLong("activeSegmentStartedAt").takeIf { it > 0L }
+                        ?: if (item.optString("status") == SessionStatus.ACTIVE.name && endedAt == null) startedAt.takeIf { it > 0L } else null,
+                    events = decodeEvents(item.optJSONArray("events")).ifEmpty {
+                        buildList {
+                            if (startedAt > 0L) add(SessionEvent(SessionEventType.STARTED, startedAt))
+                            if (endedAt != null) add(SessionEvent(SessionEventType.ENDED, endedAt))
+                        }
+                    }
                 )
             }
         }
@@ -482,7 +561,25 @@ class TasbeehStore(private val context: Context) {
         put("status", session.status.name)
         put("endedAt", session.endedAt ?: JSONObject.NULL)
         put("durationMs", session.durationMs ?: JSONObject.NULL)
+        put("activeSegmentStartedAt", session.activeSegmentStartedAt ?: JSONObject.NULL)
+        put("events", JSONArray().apply {
+            session.events.forEach { event ->
+                put(JSONObject().put("type", event.type.name).put("at", event.at))
+            }
+        })
     }.toString()
+
+    private fun decodeEvents(array: JSONArray?): List<SessionEvent> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val type = runCatching { SessionEventType.valueOf(item.optString("type")) }.getOrNull() ?: continue
+                val at = item.optLong("at")
+                if (at > 0L) add(SessionEvent(type, at))
+            }
+        }
+    }
 
     private fun decodeCustomDhikrs(raw: String): List<CustomDhikr> = runCatching {
         val array = JSONArray(raw)
