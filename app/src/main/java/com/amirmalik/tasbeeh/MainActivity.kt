@@ -277,6 +277,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
         }
 
         }
+        }
 
         if (!showDhikrScreen && showReset) AlertDialog(
             onDismissRequest = { showReset = false }, containerColor = Panel,
