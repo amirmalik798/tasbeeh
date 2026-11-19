@@ -7,76 +7,86 @@ import org.junit.Test
 class SavedSessionTest {
 
     @Test
-    fun totalDurationIsTheDifferenceBetweenStartAndEnd() {
-        assertEquals(
-            90_000L,
-            sessionDurationMillis(
-                startedAt = 10_000L,
-                endedAt = 100_000L,
-                now = 500_000L
+    fun activeDurationAdvancesFromCurrentActiveSegment() {
+        val active = session(startedAt = 10_000L, activeSegmentStartedAt = 10_000L)
+        assertEquals(65_000L, active.durationAt(75_000L))
+    }
+
+    @Test
+    fun pausedDurationDoesNotAdvanceWhilePaused() {
+        val paused = session(
+            startedAt = 10_000L,
+            status = SessionStatus.PAUSED,
+            durationMs = 30_000L,
+            activeSegmentStartedAt = null,
+            events = listOf(
+                SessionEvent(SessionEventType.STARTED, 10_000L),
+                SessionEvent(SessionEventType.PAUSED, 40_000L)
             )
         )
+        assertEquals(30_000L, paused.durationAt(500_000L))
     }
 
     @Test
-    fun unfinishedSessionDurationRunsFromStartUntilNow() {
-        assertEquals(
-            65_000L,
-            sessionDurationMillis(
-                startedAt = 10_000L,
-                endedAt = null,
-                now = 75_000L
+    fun resumeAndSecondPauseAccumulateOnlyActiveIntervals() {
+        val secondPause = session(
+            startedAt = 10_000L,
+            status = SessionStatus.PAUSED,
+            durationMs = 50_000L,
+            activeSegmentStartedAt = null,
+            events = listOf(
+                SessionEvent(SessionEventType.STARTED, 10_000L),
+                SessionEvent(SessionEventType.PAUSED, 40_000L),
+                SessionEvent(SessionEventType.RESUMED, 100_000L),
+                SessionEvent(SessionEventType.PAUSED, 120_000L)
             )
         )
+        assertEquals(50_000L, secondPause.durationAt(900_000L))
+        assertEquals(4, secondPause.events.size)
     }
 
     @Test
-    fun pausedSessionUsesTheSameSimpleStartToEndDuration() {
-        val paused = session(status = SessionStatus.PAUSED)
-        assertEquals(120_000L, paused.durationAt(130_000L))
-    }
+    fun finishingAfterResumeAddsOnlyTheLastActiveSegment() {
+        val resumed = session(
+            startedAt = 10_000L,
+            status = SessionStatus.ACTIVE,
+            durationMs = 30_000L,
+            activeSegmentStartedAt = 100_000L,
+            events = listOf(
+                SessionEvent(SessionEventType.STARTED, 10_000L),
+                SessionEvent(SessionEventType.PAUSED, 40_000L),
+                SessionEvent(SessionEventType.RESUMED, 100_000L)
+            )
+        )
+        val finished = finishSession(resumed, 130_000L, SessionStatus.COMPLETED)
 
-    @Test
-    fun finishingSessionStoresEndTimeAndTotalDuration() {
-        val active = session(startedAt = 10_000L)
-        val finished = finishSession(active, now = 130_000L, status = SessionStatus.INCOMPLETE)
-
+        assertEquals(60_000L, finished.durationMs)
         assertEquals(130_000L, finished.endedAt)
-        assertEquals(120_000L, finished.durationMs)
-        assertEquals(SessionStatus.INCOMPLETE, finished.status)
+        assertEquals(SessionEventType.ENDED, finished.events.last().type)
     }
 
     @Test
-    fun completedSessionDurationDoesNotChangeAfterItEnds() {
-        val completed = finishSession(
-            session(startedAt = 10_000L),
-            now = 130_000L,
-            status = SessionStatus.COMPLETED
-        )
-
-        assertEquals(120_000L, completed.durationAt(900_000L))
-        assertEquals(130_000L, completed.endedAt)
-    }
-
-    @Test
-    fun durationIncludesTheTimeSpentPausedBetweenStartAndEnd() {
-        // The simplified timing model intentionally measures wall-clock
-        // start-to-end duration; pause/resume does not create extra timers.
-        assertEquals(
-            3_600_000L,
-            sessionDurationMillis(
-                startedAt = 1_000L,
-                endedAt = 3_601_000L,
-                now = 9_000_000L
+    fun multiplePauseResumeCyclesExcludeEveryPausedInterval() {
+        val active = session(
+            startedAt = 1_000L,
+            status = SessionStatus.ACTIVE,
+            durationMs = 50_000L,
+            activeSegmentStartedAt = 200_000L,
+            events = listOf(
+                SessionEvent(SessionEventType.STARTED, 1_000L),
+                SessionEvent(SessionEventType.PAUSED, 31_000L),
+                SessionEvent(SessionEventType.RESUMED, 100_000L),
+                SessionEvent(SessionEventType.PAUSED, 120_000L),
+                SessionEvent(SessionEventType.RESUMED, 200_000L)
             )
         )
+        assertEquals(70_000L, active.durationAt(220_000L))
     }
 
     @Test
-    fun unknownLegacyStartTimeDoesNotInventADuration() {
-        val recovered = session(startedAt = 0L)
-        assertNull(recovered.durationAt(1_000_000L))
-        assertNull(sessionDurationMillis(0L, 100_000L, 200_000L))
+    fun unknownLegacyStartTimeDoesNotInventDuration() {
+        val legacy = session(startedAt = 0L, activeSegmentStartedAt = null)
+        assertNull(legacy.durationAt(1_000_000L))
     }
 
     @Test
@@ -87,8 +97,7 @@ class SavedSessionTest {
             target = 99,
             arabic = "Arabic snapshot"
         )
-        val finished = finishSession(active, now = 200_000L, status = SessionStatus.COMPLETED)
-
+        val finished = finishSession(active, 200_000L, SessionStatus.COMPLETED)
         assertEquals("Ayat Ul Kursi", finished.dhikr)
         assertEquals(47, finished.count)
         assertEquals(99, finished.target)
@@ -103,13 +112,19 @@ class SavedSessionTest {
 
     private fun session(
         startedAt: Long = 10_000L,
-        status: SessionStatus = SessionStatus.ACTIVE
+        status: SessionStatus = SessionStatus.ACTIVE,
+        durationMs: Long? = null,
+        activeSegmentStartedAt: Long? = startedAt.takeIf { it > 0L },
+        events: List<SessionEvent> = listOf(SessionEvent(SessionEventType.STARTED, startedAt)).filter { it > 0L }
     ) = SavedSession(
         id = "session-test",
         dhikr = "SubhanAllah",
         count = 7,
         target = 33,
         startedAt = startedAt,
-        status = status
+        status = status,
+        durationMs = durationMs,
+        activeSegmentStartedAt = activeSegmentStartedAt,
+        events = events
     )
 }
