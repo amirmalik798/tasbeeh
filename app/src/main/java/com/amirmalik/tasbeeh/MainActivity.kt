@@ -200,6 +200,7 @@ internal fun recitationPlaybackFailureMessage(
 class MainActivity : ComponentActivity() {
     private var speechPlaying by mutableStateOf(false)
     private var recitationPreparing by mutableStateOf(false)
+    private var activeRecitationTitle by mutableStateOf("")
     private var mediaController: MediaController? = null
     private var mediaControllerFuture: ListenableFuture<MediaController>? = null
     private var pendingRecitationRequest: PendingRecitationRequest? = null
@@ -219,6 +220,14 @@ class MainActivity : ComponentActivity() {
             updatePlaybackUiState()
         }
 
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            updatePlaybackUiState()
+        }
+
+        override fun onMediaMetadataChanged(mediaMetadata: androidx.media3.common.MediaMetadata) {
+            updatePlaybackUiState()
+        }
+
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             updatePlaybackUiState()
             Log.w("Noor-e-Dhikr", "Background recitation playback failed", error)
@@ -230,6 +239,8 @@ class MainActivity : ComponentActivity() {
         val controller = mediaController
         speechPlaying = controller?.isPlaying == true
         recitationPreparing = controller?.playbackState == Player.STATE_BUFFERING
+        activeRecitationTitle = controller?.currentMediaItem?.mediaMetadata?.title
+            ?.toString().orEmpty()
     }
 
     private fun connectToRecitationService() {
@@ -275,6 +286,7 @@ class MainActivity : ComponentActivity() {
         mediaControllerFuture = null
         speechPlaying = false
         recitationPreparing = false
+        activeRecitationTitle = ""
     }
 
     private fun startRecitationRequest(
@@ -344,6 +356,7 @@ class MainActivity : ComponentActivity() {
         }
         speechPlaying = false
         recitationPreparing = false
+        activeRecitationTitle = ""
     }
 
     private fun showRecitationPlaybackError(message: String) {
@@ -380,9 +393,17 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(9, 11, 10)
         window.navigationBarColor = android.graphics.Color.rgb(9, 11, 10)
         val store = TasbeehStore(applicationContext)
+        val quranRecitationRepository = QuranRecitationRepository(applicationContext)
         setContent {
             val openDuaRepository = remember { OpenDuaCatalogRepository(applicationContext) }
             val quranicDuaRepository = remember { QuranicDuaRepository(applicationContext) }
+            var quranReciters by remember(quranRecitationRepository) {
+                mutableStateOf(quranRecitationRepository.cachedReciters())
+            }
+            LaunchedEffect(quranRecitationRepository) {
+                val refreshed = quranRecitationRepository.refreshReciters()
+                if (refreshed.isNotEmpty()) quranReciters = refreshed
+            }
             val connectivityManager = remember {
                 applicationContext.getSystemService(CONNECTIVITY_SERVICE) as? ConnectivityManager
             }
@@ -586,7 +607,10 @@ class MainActivity : ComponentActivity() {
                     store = store,
                     isSpeaking = speechPlaying,
                     isPreparingSpeech = recitationPreparing,
+                    activeRecitationTitle = activeRecitationTitle,
                     hasInternetConnection = hasInternetConnection,
+                    quranReciters = quranReciters,
+                    quranRecitationRepository = quranRecitationRepository,
                     catalogItems = catalogItems,
                     catalogCategories = openDuaCategories,
                     openDuaIsRefreshing = openDuaIsRefreshing,
@@ -755,7 +779,10 @@ private fun TasbeehApp(
     store: TasbeehStore,
     isSpeaking: Boolean,
     isPreparingSpeech: Boolean,
+    activeRecitationTitle: String,
     hasInternetConnection: Boolean,
+    quranReciters: List<QuranReciter>,
+    quranRecitationRepository: QuranRecitationRepository,
     catalogItems: List<DhikrItem>,
     catalogCategories: List<String>,
     openDuaIsRefreshing: Boolean,
@@ -773,6 +800,12 @@ private fun TasbeehApp(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val pendingStoreOperations = remember { mutableStateMapOf<Long, String>() }
+    var isResolvingQuranRecitation by remember { mutableStateOf(false) }
+    val selectedQuranReciter = remember(quranReciters, state.quranReciterId) {
+        quranReciters.firstOrNull { it.id == state.quranReciterId }
+            ?: quranReciters.firstOrNull()
+            ?: QuranReciterCatalog.fallback.first()
+    }
     var nextStoreOperationId by remember { mutableLongStateOf(0L) }
     var showStoreBusyIndicator by remember { mutableStateOf(false) }
     var failedStoreOperation by remember { mutableStateOf<FailedStoreOperation?>(null) }
@@ -784,6 +817,35 @@ private fun TasbeehApp(
             showStoreBusyIndicator = false
             delay(350)
             showStoreBusyIndicator = pendingStoreOperations.isNotEmpty()
+        }
+    }
+
+    fun playQuranRecitation(title: String, ayahKeys: List<String>) {
+        if (isResolvingQuranRecitation || ayahKeys.isEmpty()) return
+        isResolvingQuranRecitation = true
+        val reciter = selectedQuranReciter
+        scope.launch {
+            try {
+                val urls = quranRecitationRepository.audioUrlsForAyahs(reciter.id, ayahKeys)
+                if (urls.size != ayahKeys.size) {
+                    throw java.io.IOException(
+                        "Quran Foundation did not return a complete recording for every ayah. Check your connection and retry."
+                    )
+                }
+                onPlayRecitation(title, reciter.attribution, urls)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e("Noor-e-Dhikr", "Could not resolve Quran recitation for ${reciter.displayName}", error)
+                Toast.makeText(
+                    context,
+                    error.localizedMessage?.takeIf { it.isNotBlank() }
+                        ?: "The selected Quran recitation could not be loaded. Please retry.",
+                    Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                isResolvingQuranRecitation = false
+            }
         }
     }
 
@@ -974,7 +1036,10 @@ private fun TasbeehApp(
                     quranRefreshError = quranRefreshError,
                     quranCacheWriteFailed = quranCacheWriteFailed,
                     isSpeaking = isSpeaking,
-                    isPreparingRecitation = isPreparingSpeech,
+                    isPreparingRecitation = isPreparingSpeech || isResolvingQuranRecitation,
+                    activeRecitationTitle = activeRecitationTitle,
+                    selectedQuranReciter = selectedQuranReciter,
+                    onPlayQuranRecitation = { title, ayahKeys -> playQuranRecitation(title, ayahKeys) },
                     onPlayRecitation = { title, artist, urls ->
                         onPlayRecitation(title, artist, urls)
                     },
@@ -1259,10 +1324,16 @@ private fun TasbeehApp(
         }
         if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
             state = state,
+            quranReciters = quranReciters,
+            selectedQuranReciterId = selectedQuranReciter.id,
             onDismiss = { showSettings = false },
-            onSave = { haptics, fontScale ->
+            onSave = { haptics, fontScale, quranReciterId ->
                 launchStoreOperation(label = "Saving your settings…", onSuccess = { showSettings = false }) {
-                    store.update(hapticsEnabled = haptics, fontScale = fontScale)
+                    store.update(
+                        hapticsEnabled = haptics,
+                        fontScale = fontScale,
+                        quranReciterId = quranReciterId
+                    )
                 }
             }
         )
@@ -2107,11 +2178,23 @@ private fun TargetDialog(
 @Composable
 private fun SettingsDialog(
     state: TasbeehState,
+    quranReciters: List<QuranReciter>,
+    selectedQuranReciterId: Int,
     onDismiss: () -> Unit,
-    onSave: (Boolean, Float) -> Unit
+    onSave: (Boolean, Float, Int) -> Unit
 ) {
     var haptics by remember(state.hapticsEnabled) { mutableStateOf(state.hapticsEnabled) }
     var fontScale by remember(state.fontScale) { mutableFloatStateOf(state.fontScale) }
+    var quranReciterId by remember(state.quranReciterId, selectedQuranReciterId) {
+        mutableIntStateOf(
+            quranReciters.firstOrNull { it.id == state.quranReciterId }?.id
+                ?: selectedQuranReciterId
+        )
+    }
+    var reciterMenuExpanded by remember { mutableStateOf(false) }
+    val selectedReciter = quranReciters.firstOrNull { it.id == quranReciterId }
+        ?: quranReciters.firstOrNull()
+        ?: QuranReciterCatalog.fallback.first()
     val fontSizes = listOf("Standard" to 1.0f, "Comfort" to 1.12f, "Large" to 1.25f)
 
     AlertDialog(
@@ -2120,10 +2203,92 @@ private fun SettingsDialog(
         title = { Text("Preferences", color = Ivory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
         text = {
             Column(
-                Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
+
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "QURAN RECITER",
+                    color = Gold,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                )
+                Text(
+                    "Choose the voice used by Quran audio throughout the app. Your choice is saved on this device.",
+                    color = Muted,
+                    fontSize = 12.sp
+                )
+                Box(Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { reciterMenuExpanded = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(13.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF555044)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Panel2,
+                            contentColor = Ivory
+                        ),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                Text(
+                                    selectedReciter.name,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (!selectedReciter.style.isNullOrBlank()) {
+                                    Text(
+                                        selectedReciter.style,
+                                        color = Muted,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = "Show Quran reciters")
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = reciterMenuExpanded,
+                        onDismissRequest = { reciterMenuExpanded = false },
+                        modifier = Modifier.heightIn(max = 320.dp).background(Panel)
+                    ) {
+                        quranReciters.forEach { reciter ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(reciter.name, color = Ivory, fontSize = 13.sp)
+                                        if (!reciter.style.isNullOrBlank()) {
+                                            Text(reciter.style, color = Muted, fontSize = 10.sp)
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    quranReciterId = reciter.id
+                                    reciterMenuExpanded = false
+                                },
+                                trailingIcon = {
+                                    if (reciter.id == quranReciterId) {
+                                        Icon(Icons.Default.Check, contentDescription = "Selected", tint = Gold)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "${quranReciters.size} recitation options from Quran Foundation",
+                    color = Muted,
+                    fontSize = 10.sp
+                )
 
                 Spacer(Modifier.height(3.dp))
                 Text(
@@ -2172,7 +2337,7 @@ private fun SettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(haptics, fontScale) }) {
+            TextButton(onClick = { onSave(haptics, fontScale, quranReciterId) }) {
                 Text("SAVE SETTINGS", color = Gold)
             }
         },
