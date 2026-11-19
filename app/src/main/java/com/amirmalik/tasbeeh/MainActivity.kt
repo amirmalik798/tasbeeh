@@ -243,8 +243,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             }
             showHistoryScreen -> {
                 SessionHistoryScreen(
-                    sessions = state.sessions,
-                    currentSessionId = state.currentSession?.id,
+                    session = state.currentSession,
                     onBack = { showHistoryScreen = false }
                 )
             }
