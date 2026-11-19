@@ -268,6 +268,9 @@ internal class OpenDuaCatalogRepository(context: Context) {
                 ?: return@runCatching emptySnapshot()
             val rawCategories = preferences.getString("categories", null)
                 ?: return@runCatching emptySnapshot()
+            if (rawItems.length > MAX_OPENDUA_CACHE_CHARS ||
+                rawCategories.length > 16 * 1024
+            ) return@runCatching emptySnapshot()
             val storedChecksum = preferences.getString("cache_sha256", null)
             val sourceEntryCount = preferences.getInt("source_entry_count", 0)
             val canonicalDuaCount = preferences.getInt("canonical_dua_count", 0)
@@ -354,7 +357,7 @@ internal class OpenDuaCatalogRepository(context: Context) {
             if (status !in 200..299) {
                 throw IOException("OpenDua catalogue returned HTTP $status")
             }
-            val payload = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val payload = readUtf8WithLimit(connection.inputStream, MAX_OPENDUA_RESPONSE_BYTES)
             val snapshot = OpenDuaCatalogParser.parse(JSONObject(payload))
                 ?: throw IOException("OpenDua catalogue did not match the complete v${
                     OpenDuaCatalogParser.DATA_VERSION

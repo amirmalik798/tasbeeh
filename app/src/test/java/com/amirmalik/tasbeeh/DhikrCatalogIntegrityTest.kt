@@ -67,6 +67,20 @@ class DhikrCatalogIntegrityTest {
     }
 
     @Test
+    fun savedQuranTextMustProveEveryRequestedAyahWasCached() {
+        val completeItems = QuranicDuaCatalog.fallbackItems().map { it.copy(arabic = "نَصٌّ") }
+        val completeKeys = QuranicDuaCatalog.additions.associate { it.id to it.ayahKeys }
+        assertTrue(hasCompleteQuranicCache(completeItems, completeKeys))
+
+        val missingAyah = completeKeys.toMutableMap().apply {
+            val definition = QuranicDuaCatalog.additions.first()
+            put(definition.id, definition.ayahKeys.dropLast(1))
+        }
+        assertFalse(hasCompleteQuranicCache(completeItems, missingAyah))
+        assertFalse(hasCompleteQuranicCache(completeItems, emptyMap()))
+    }
+
+    @Test
     fun theFourQuranEntriesHaveTheExactRequestedSurahVerseRanges() {
         val items = QuranicDuaCatalog.additions.associateBy { it.id }
         assertEquals(

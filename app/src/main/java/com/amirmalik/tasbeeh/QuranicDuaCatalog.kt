@@ -107,13 +107,29 @@ internal fun hasCompleteQuranicText(items: List<DhikrItem>): Boolean {
     }
 }
 
+internal fun hasCompleteQuranicCache(
+    items: List<DhikrItem>,
+    completedAyahKeysById: Map<String, List<String>>
+): Boolean {
+    if (!hasCompleteQuranicText(items)) return false
+    val itemsById = items.associateBy { it.id }
+    return QuranicDuaCatalog.additions.all { definition ->
+        val item = itemsById[definition.id]
+        item != null &&
+            completedAyahKeysById[definition.id] == definition.ayahKeys &&
+            item.quranAyahKeys == definition.ayahKeys
+    }
+}
+
 internal class QuranicDuaRepository(context: Context) {
     private val preferences = context.getSharedPreferences("quran_catalog_v2", Context.MODE_PRIVATE)
 
     fun loadCachedItems(): List<DhikrItem> {
         val raw = preferences.getString("items", null) ?: return QuranicDuaCatalog.fallbackItems()
+        if (raw.length > MAX_QURAN_CACHE_CHARS) return QuranicDuaCatalog.fallbackItems()
         return runCatching {
             val array = JSONArray(raw)
+            val completedAyahKeysById = mutableMapOf<String, List<String>>()
             if (array.length() != QuranicDuaCatalog.additions.size) {
                 return@runCatching QuranicDuaCatalog.fallbackItems()
             }
@@ -121,9 +137,12 @@ internal class QuranicDuaRepository(context: Context) {
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
                     val keys = item.optJSONArray("ayahKeys") ?: JSONArray()
+                    val id = item.optString("id")
+                    val completedKeys = item.optJSONArray("completedAyahKeys") ?: JSONArray()
+                    completedAyahKeysById[id] = (0 until completedKeys.length()).map { completedKeys.optString(it) }
                     add(
                         DhikrItem(
-                            id = item.optString("id"),
+                            id = id,
                             value = item.optString("value"),
                             title = item.optString("title"),
                             category = "Quran",
@@ -137,7 +156,8 @@ internal class QuranicDuaRepository(context: Context) {
                     )
                 }
             }
-            cached.takeIf(::hasCompleteQuranicText) ?: QuranicDuaCatalog.fallbackItems()
+            cached.takeIf { hasCompleteQuranicCache(it, completedAyahKeysById) }
+                ?: QuranicDuaCatalog.fallbackItems()
         }.getOrDefault(QuranicDuaCatalog.fallbackItems())
     }
 
@@ -193,6 +213,7 @@ internal class QuranicDuaRepository(context: Context) {
                         put("meaning", item.meaning)
                         put("reference", item.reference)
                         put("ayahKeys", JSONArray(item.quranAyahKeys))
+                        put("completedAyahKeys", JSONArray(item.quranAyahKeys))
                     })
                 }
                 preferences.edit().putString("items", array.toString()).commit()
@@ -229,7 +250,7 @@ internal class QuranicDuaRepository(context: Context) {
         }
         return try {
             if (connection.responseCode !in 200..299) return null
-            val payload = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val payload = readUtf8WithLimit(connection.inputStream, MAX_QURAN_SURAH_RESPONSE_BYTES)
             val editions = JSONObject(payload).optJSONArray("data") ?: return null
             if (editions.length() < 2) return null
             val arabicAyahs = editions.optJSONObject(0)?.optJSONArray("ayahs") ?: return null

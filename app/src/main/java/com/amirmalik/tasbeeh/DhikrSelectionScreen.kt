@@ -48,6 +48,8 @@ import com.amirmalik.tasbeeh.data.CustomDhikr
 import java.text.Normalizer
 import java.util.Locale
 
+private val dhikrWhitespaceRegex = Regex("\\s+")
+
 internal fun normalizeDhikrSearchText(value: String): String {
     val decomposed = Normalizer.normalize(value.lowercase(Locale.ROOT), Normalizer.Form.NFD)
     return buildString(decomposed.length) {
@@ -62,7 +64,7 @@ internal fun normalizeDhikrSearchText(value: String): String {
                 character in '\u06D6'..'\u06ED'
             if (!isCombiningMark && character != '\u0640') append(character)
         }
-    }.replace(Regex("\\s+"), " ").trim()
+    }.replace(dhikrWhitespaceRegex, " ").trim()
 }
 
 internal data class DhikrItem(
@@ -97,6 +99,7 @@ internal fun DhikrSelectionScreen(
     openDuaIsRefreshing: Boolean,
     openDuaRefreshError: String?,
     openDuaCacheWriteFailed: Boolean,
+    isStoreBusy: Boolean,
     hasInternetConnection: Boolean,
     quranIsRefreshing: Boolean,
     quranRefreshError: String?,
@@ -137,19 +140,24 @@ internal fun DhikrSelectionScreen(
         }
     }
     val allItems = remember(customItems, catalogItems) { catalogItems + customItems }
-    val filteredItems = remember(query, category, allItems) {
+    // Normalize searchable fields once per catalogue revision, not on every
+    // keystroke. This keeps search responsive while preserving field boundaries.
+    val searchableItems = remember(allItems) {
+        allItems.map { item ->
+            item to (listOf(item.title, item.transliteration, item.meaning, item.arabic, item.reference) +
+                item.categories).map(::normalizeDhikrSearchText)
+        }
+    }
+    val filteredItems = remember(query, category, searchableItems) {
         val normalizedQuery = normalizeDhikrSearchText(query)
-        val matches = allItems.filter { item ->
+        searchableItems.asSequence().filter { (item, searchableFields) ->
             val matchesCategory = category == "All" || category in item.categories || item.category == category
             val matchesSearch = normalizedQuery.isBlank() ||
-                (listOf(item.title, item.transliteration, item.meaning, item.arabic, item.reference) +
-                    item.categories).any { value ->
-                    normalizeDhikrSearchText(value).contains(normalizedQuery)
-                }
+                searchableFields.any { it.contains(normalizedQuery) }
             matchesCategory && matchesSearch
-        }
-        matches
+        }.map { it.first }.toList()
     }
+    val customDhikrsById = remember(customDhikrs) { customDhikrs.associateBy { it.id } }
     Column(
         Modifier.fillMaxSize()
             .background(Color(0xFF090B0A))
@@ -244,6 +252,7 @@ internal fun DhikrSelectionScreen(
                 Spacer(Modifier.width(5.dp))
                 IconButton(
                     onClick = onCreateCustom,
+                    enabled = !isStoreBusy,
                     modifier = Modifier.size(50.dp).clip(RoundedCornerShape(16.dp))
                         .background(
                             Brush.linearGradient(
@@ -358,10 +367,11 @@ internal fun DhikrSelectionScreen(
                     } else {
                         currentCustomDhikrId == null && item.value == currentDhikr
                     }
-                    val custom = item.customId?.let { id -> customDhikrs.firstOrNull { it.id == id } }
+                    val custom = item.customId?.let(customDhikrsById::get)
                     DhikrOptionCard(
                         item = item,
                         selected = isSelected,
+                        enabled = !isStoreBusy,
                         onClick = { onSelect(item) },
                         onEdit = custom?.let { entry -> { onEditCustom(entry) } },
                         onDelete = custom?.let { entry -> { pendingDelete = entry } }
@@ -383,9 +393,10 @@ internal fun DhikrSelectionScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
-                    onDeleteCustom(entry) { pendingDelete = null }
-                }) { Text("DELETE", color = Color(0xFFFF9B82)) }
+                TextButton(
+                    enabled = !isStoreBusy,
+                    onClick = { onDeleteCustom(entry) { pendingDelete = null } }
+                ) { Text(if (isStoreBusy) "DELETING…" else "DELETE", color = Color(0xFFFF9B82)) }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) { Text("KEEP", color = Color(0xFFFFD56A)) }
@@ -419,11 +430,13 @@ private fun CatalogStatusPanel(
         isOffline -> {
             title = "No internet connection"
             message = if (catalogName == "OpenDua") {
-                "The dua catalogue has not been downloaded on this device yet. Connect to the internet, then retry."
+                "The dua catalogue has not been downloaded on this device yet. Connect to the internet to download it."
             } else {
-                "The Qur'anic Arabic text is not saved on this device yet. Connect to the internet, then retry. The four selections remain listed."
+                "The Qur'anic Arabic text is not saved on this device yet. Connect to the internet to download it. The four selections remain listed."
             }
-            showRetry = true
+            // Network callbacks automatically start the refresh when connectivity
+            // returns; offering Retry while offline would only repeat the same no-op.
+            showRetry = false
         }
         cacheWriteFailed -> {
             title = "$catalogName loaded, offline save incomplete"
@@ -514,6 +527,7 @@ private fun CatalogStatusPanel(
 private fun DhikrOptionCard(
     item: DhikrItem,
     selected: Boolean,
+    enabled: Boolean,
     onClick: () -> Unit,
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null
@@ -521,7 +535,7 @@ private fun DhikrOptionCard(
     val gold = Color(0xFFFFD56A)
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(
-            enabled = item.isCountable,
+            enabled = item.isCountable && enabled,
             role = if (item.isCountable) Role.Button else null,
             onClick = onClick
         ),
@@ -563,12 +577,12 @@ private fun DhikrOptionCard(
                     }
                 }
                 if (onEdit != null) {
-                    IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
+                    IconButton(onClick = onEdit, enabled = enabled, modifier = Modifier.size(30.dp)) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit custom dhikr", tint = Color(0xFFB8B49F), modifier = Modifier.size(15.dp))
                     }
                 }
                 if (onDelete != null) {
-                    IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
+                    IconButton(onClick = onDelete, enabled = enabled, modifier = Modifier.size(30.dp)) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete custom dhikr", tint = Color(0xFFC98C78), modifier = Modifier.size(15.dp))
                     }
                 }

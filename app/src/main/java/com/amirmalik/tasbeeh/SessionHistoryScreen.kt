@@ -133,7 +133,8 @@ private fun SessionHistoryCard(session: SavedSession, now: Long) {
                         )
                     }
                     Spacer(Modifier.height(3.dp))
-                    Text(formatSessionDate(session.startedAt), color = HistoryMuted, fontSize = 11.sp)
+                    val startedAtLabel = remember(session.startedAt) { formatSessionDate(session.startedAt) }
+                    Text(startedAtLabel, color = HistoryMuted, fontSize = 11.sp)
                 }
                 Surface(color = tint.copy(alpha = .12f), shape = RoundedCornerShape(50)) {
                     Text(session.status.name, color = tint, fontSize = 9.sp, fontWeight = FontWeight.Bold,
@@ -160,7 +161,10 @@ private fun SessionHistoryCard(session: SavedSession, now: Long) {
                     listOf(SessionEvent(SessionEventType.STARTED, session.startedAt)) + base
                 } else base
             }
-            events.forEach { event ->
+            val displayEvents = remember(events) {
+                events.map { event -> event to formatSessionDate(event.at) }
+            }
+            displayEvents.forEach { (event, eventTimestampLabel) ->
                 val (label, icon) = when (event.type) {
                     SessionEventType.STARTED -> "Session started" to Icons.Default.PlayCircle
                     SessionEventType.PAUSED -> "Session paused" to Icons.Default.PauseCircle
@@ -171,7 +175,7 @@ private fun SessionHistoryCard(session: SavedSession, now: Long) {
                     Icon(icon, contentDescription = null, tint = HistoryGold, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(9.dp))
                     Text(label, color = HistoryIvory, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    Text(formatSessionDate(event.at), color = HistoryMuted, fontSize = 10.sp, textAlign = TextAlign.End)
+                    Text(eventTimestampLabel, color = HistoryMuted, fontSize = 10.sp, textAlign = TextAlign.End)
                 }
             }
             if (active || session.status == SessionStatus.PAUSED) {

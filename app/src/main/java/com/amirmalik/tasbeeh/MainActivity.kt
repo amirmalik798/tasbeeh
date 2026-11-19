@@ -68,7 +68,9 @@ import com.amirmalik.tasbeeh.data.TasbeehState
 import com.amirmalik.tasbeeh.data.TasbeehStore
 import com.amirmalik.tasbeeh.data.sessionSnapshotForDisplay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onStart
@@ -89,6 +91,11 @@ private val Muted = Color(0xFF9A9B8D)
 
 internal const val RECITATION_QUEUE_REPLACE = 0
 internal const val RECITATION_QUEUE_APPEND = 1
+
+private data class PendingRecitation(
+    val url: String,
+    val shouldReportFailure: Boolean
+)
 
 private data class FailedStoreOperation(
     val label: String,
@@ -161,8 +168,9 @@ internal fun recitationPlaybackFailureMessage(
 class MainActivity : ComponentActivity() {
     private var speechPlaying by mutableStateOf(false)
     private var recitationPreparing by mutableStateOf(false)
-    private val pendingRecitationUrls = ArrayDeque<String>()
+    private val pendingRecitationUrls = ArrayDeque<PendingRecitation>()
     private var recitationMediaPlayer: MediaPlayer? = null
+    private var currentRecitationShouldReportFailure = true
 
     private fun refreshSpeechPlayingState() {
         if (isFinishing || isDestroyed) return
@@ -185,6 +193,7 @@ class MainActivity : ComponentActivity() {
         }
         speechPlaying = false
         recitationPreparing = false
+        currentRecitationShouldReportFailure = true
     }
 
     private fun showRecitationPlaybackError(message: String) {
@@ -225,7 +234,12 @@ class MainActivity : ComponentActivity() {
 
         val message = recitationPlaybackFailureMessage(error, mediaPlayerWhat, mediaPlayerExtra)
         Log.w("Noor-e-Dhikr", "recitation stream failed: $message", error)
-        showRecitationPlaybackError(message)
+        if (currentRecitationShouldReportFailure) {
+            showRecitationPlaybackError(message)
+        } else {
+            Log.i("Noor-e-Dhikr", "Automatic recitation stopped without interrupting the counting session")
+        }
+        currentRecitationShouldReportFailure = true
         refreshSpeechPlayingState()
     }
 
@@ -237,8 +251,14 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        val url = pendingRecitationUrls.removeFirst()
-        val player = MediaPlayer()
+        val request = pendingRecitationUrls.removeFirst()
+        currentRecitationShouldReportFailure = request.shouldReportFailure
+        val player = try {
+            MediaPlayer()
+        } catch (error: Exception) {
+            failCurrentRecitation(error)
+            return
+        }
         recitationMediaPlayer = player
 
         try {
@@ -274,7 +294,7 @@ class MainActivity : ComponentActivity() {
                 }
                 true
             }
-            player.setDataSource(url)
+            player.setDataSource(request.url)
             recitationPreparing = true
             player.prepareAsync()
             refreshSpeechPlayingState()
@@ -291,12 +311,14 @@ class MainActivity : ComponentActivity() {
         if (isFinishing || isDestroyed) return
         val safeUrls = urls.map { it.trim() }.filter { isTrustedRecitationUrl(it) }
         if (safeUrls.isEmpty()) {
-            if (urls.isNotEmpty()) {
+            if (queueMode == RECITATION_QUEUE_REPLACE && urls.isNotEmpty()) {
                 showRecitationPlaybackError("The selected recitation URL was not from a supported HTTPS audio host.")
-            } else {
+            } else if (queueMode == RECITATION_QUEUE_REPLACE) {
                 runCatching {
                     Toast.makeText(this, "A recorded recitation is not available for this entry.", Toast.LENGTH_SHORT).show()
                 }
+            } else {
+                Log.w("Noor-e-Dhikr", "Skipping an automatic recitation with no supported recording URL")
             }
             return
         }
@@ -315,7 +337,12 @@ class MainActivity : ComponentActivity() {
         }
 
         if (queueMode == RECITATION_QUEUE_REPLACE) stopRecitationAudio()
-        safeUrls.forEach { pendingRecitationUrls.addLast(it) }
+        val shouldReportFailure = queueMode == RECITATION_QUEUE_REPLACE
+        safeUrls.forEach { url ->
+            pendingRecitationUrls.addLast(
+                PendingRecitation(url = url, shouldReportFailure = shouldReportFailure)
+            )
+        }
         refreshSpeechPlayingState()
         startNextRecitationAudio()
     }
@@ -415,7 +442,7 @@ class MainActivity : ComponentActivity() {
                     Log.w("Noor-e-Dhikr", "OpenDua catalogue refresh failed; retaining the last verified cached release", error)
                     openDuaRefreshError = networkFailureMessage("OpenDua", error)
                 } finally {
-                    openDuaIsRefreshing = false
+                    if (currentCoroutineContext().isActive) openDuaIsRefreshing = false
                 }
             }
 
@@ -447,7 +474,7 @@ class MainActivity : ComponentActivity() {
                     Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; retaining saved references", error)
                     quranRefreshError = networkFailureMessage("Qur'anic text", error)
                 } finally {
-                    quranIsRefreshing = false
+                    if (currentCoroutineContext().isActive) quranIsRefreshing = false
                 }
             }
             val catalogItems = remember(openDuaItems, extendedQuranicItems) {
@@ -616,7 +643,7 @@ private fun TasbeehApp(
     var showStoreBusyIndicator by remember { mutableStateOf(false) }
     var failedStoreOperation by remember { mutableStateOf<FailedStoreOperation?>(null) }
 
-    LaunchedEffect(pendingStoreOperations.size) {
+    LaunchedEffect(pendingStoreOperations.isNotEmpty()) {
         if (pendingStoreOperations.isEmpty()) {
             showStoreBusyIndicator = false
         } else {
@@ -754,7 +781,10 @@ private fun TasbeehApp(
 
     // The editor owns its own BackHandler so it can ask before discarding edits.
     BackHandler(enabled = showDhikrScreen || showHistoryScreen || showSettings) {
-        if (showDhikrScreen) {
+        if (showCustomDhikrEditor) {
+            // The editor owns Back while idle. While saving it disables its
+            // handler so this parent handler consumes Back without unmounting it.
+        } else if (showDhikrScreen) {
             showDhikrScreen = false
         } else if (showHistoryScreen) {
             showHistoryScreen = false
@@ -829,6 +859,7 @@ private fun TasbeehApp(
                     openDuaIsRefreshing = openDuaIsRefreshing,
                     openDuaRefreshError = openDuaRefreshError,
                     openDuaCacheWriteFailed = openDuaCacheWriteFailed,
+                    isStoreBusy = pendingStoreOperations.isNotEmpty(),
                     hasInternetConnection = hasInternetConnection,
                     quranIsRefreshing = quranIsRefreshing,
                     quranRefreshError = quranRefreshError,

@@ -67,7 +67,9 @@ internal fun CustomDhikrEditorScreen(
         if (isDirty) showDiscardDialog = true else onBack()
     }
 
-    BackHandler(enabled = !showDiscardDialog) { requestLeave() }
+    // A save is in flight in the parent store scope. Keep this editor mounted
+    // until it succeeds or fails; otherwise Back could cancel the write.
+    BackHandler(enabled = !showDiscardDialog && !isSaving) { requestLeave() }
 
     Column(Modifier.fillMaxSize().background(EditorInk).statusBarsPadding()) {
         Row(
@@ -76,6 +78,7 @@ internal fun CustomDhikrEditorScreen(
         ) {
             IconButton(
                 onClick = { requestLeave() },
+                enabled = !isSaving,
                 modifier = Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF171B17))
             ) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFFFFD56A))
