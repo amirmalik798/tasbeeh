@@ -110,17 +110,54 @@ internal fun arabicVoiceNameMatchesPreference(voiceName: String, preferredVoice:
     }
 }
 
+internal fun quranPlaybackFailureMessage(
+    error: Throwable? = null,
+    mediaPlayerWhat: Int? = null,
+    mediaPlayerExtra: Int? = null
+): String {
+    val codes = setOfNotNull(mediaPlayerWhat, mediaPlayerExtra)
+    val causes = generateSequence(error) { it.cause }.take(8).toList()
+    val causeMessage = when {
+        android.media.MediaPlayer.MEDIA_ERROR_IO in codes ->
+            "Android could not read the Quran Foundation audio stream. The connection may have dropped or the server may have interrupted the audio."
+        android.media.MediaPlayer.MEDIA_ERROR_TIMED_OUT in codes ||
+            causes.any { it is java.net.SocketTimeoutException } ->
+            "The connection to Quran Foundation timed out before the recitation could load. Check your internet connection and try again."
+        causes.any { it is java.net.UnknownHostException } ->
+            "Android could not resolve the Quran Foundation audio server. Check your internet connection or DNS settings."
+        causes.any { it is java.net.ConnectException } ->
+            "Android could not connect to the Quran Foundation audio server. The server may be unavailable or your network may be blocking it."
+        causes.any { it is java.io.FileNotFoundException } ->
+            "The requested recitation audio file was not found on Quran Foundation."
+        android.media.MediaPlayer.MEDIA_ERROR_MALFORMED in codes ->
+            "The audio stream returned by Quran Foundation is damaged or incomplete, so Android cannot decode it."
+        android.media.MediaPlayer.MEDIA_ERROR_UNSUPPORTED in codes ->
+            "The audio format returned by Quran Foundation is not supported by this Android media player."
+        android.media.MediaPlayer.MEDIA_ERROR_SERVER_DIED in codes ->
+            "Android's media playback service stopped unexpectedly. Try playing the recitation again."
+        android.media.MediaPlayer.MEDIA_ERROR_NOT_VALID_FOR_PROGRESSIVE_PLAYBACK in codes ->
+            "Android cannot stream this audio file in its current format."
+        causes.any { it is java.io.IOException } ->
+            "The network or audio stream was interrupted while Android was reading the Quran Foundation recording."
+        else -> error?.localizedMessage?.takeIf { it.isNotBlank() }
+            ?: "Android reported an unknown error while loading the Quran Foundation recording."
+    }
+    val diagnostics = buildList {
+        mediaPlayerWhat?.let { add("MediaPlayer code: $it") }
+        mediaPlayerExtra?.let { add("detail: $it") }
+    }
+    return if (diagnostics.isEmpty()) {
+        causeMessage
+    } else {
+        "$causeMessage\\n\\nDiagnostic: ${diagnostics.joinToString(", ")}."
+    }
+}
+
 class MainActivity : ComponentActivity() {
     private data class PendingArabicSpeech(
         val text: String,
         val preferredVoice: String,
         val quranAyahKeys: List<String> = emptyList()
-    )
-
-    private data class PendingQuranFallback(
-        val text: String,
-        val preferredVoice: String,
-        val queueMode: Int
     )
 
     private var arabicTextToSpeech: TextToSpeech? = null
@@ -132,8 +169,6 @@ class MainActivity : ComponentActivity() {
     private val pendingArabicUtterances = ConcurrentHashMap.newKeySet<String>()
     private val pendingUntilTtsReady = ArrayDeque<PendingArabicSpeech>()
     private val pendingQuranAudioUrls = ArrayDeque<String>()
-    private val pendingQuranFallbacks = ArrayDeque<PendingQuranFallback>()
-    private var activeQuranFallback: PendingQuranFallback? = null
     private var quranMediaPlayer: MediaPlayer? = null
 
     private fun showArabicVoiceNotice(message: String) {
@@ -149,9 +184,7 @@ class MainActivity : ComponentActivity() {
             speechPlaying = pendingArabicUtterances.isNotEmpty() ||
                 pendingUntilTtsReady.isNotEmpty() ||
                 quranMediaPlayer != null ||
-                pendingQuranAudioUrls.isNotEmpty() ||
-                pendingQuranFallbacks.isNotEmpty() ||
-                activeQuranFallback != null
+                pendingQuranAudioUrls.isNotEmpty()
         }
     }
 
@@ -162,8 +195,6 @@ class MainActivity : ComponentActivity() {
 
     private fun stopQuranAudio() {
         pendingQuranAudioUrls.clear()
-        pendingQuranFallbacks.clear()
-        activeQuranFallback = null
         val player = quranMediaPlayer
         quranMediaPlayer = null
         if (player != null) {
@@ -181,11 +212,33 @@ class MainActivity : ComponentActivity() {
         pendingUntilTtsReady.clear()
     }
 
-    private fun failCurrentQuranItem(error: Throwable? = null) {
-        val fallback = activeQuranFallback
+    private fun showQuranPlaybackError(message: String) {
+        if (isFinishing || isDestroyed) return
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            runCatching {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Qur'anic recitation unavailable")
+                    .setMessage(message)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }.onFailure { dialogError ->
+                Log.w("Noor-e-Dhikr", "Could not display Quran playback error dialog", dialogError)
+                runCatching {
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun failCurrentQuranItem(
+        error: Throwable? = null,
+        mediaPlayerWhat: Int? = null,
+        mediaPlayerExtra: Int? = null
+    ) {
         val player = quranMediaPlayer
         quranMediaPlayer = null
-        activeQuranFallback = null
+        pendingQuranAudioUrls.clear()
         if (player != null) {
             runCatching { player.setOnPreparedListener(null) }
             runCatching { player.setOnCompletionListener(null) }
@@ -193,11 +246,10 @@ class MainActivity : ComponentActivity() {
             runCatching { player.reset() }
             runCatching { player.release() }
         }
-        Log.w("Noor-e-Dhikr", "Qur'anic recitation stream failed; falling back to device Arabic TTS", error)
-        if (fallback != null) {
-            speakArabic(fallback.text, fallback.preferredVoice, fallback.queueMode, showUnavailableNotice = false)
-        }
-        startNextQuranAudio()
+
+        val message = quranPlaybackFailureMessage(error, mediaPlayerWhat, mediaPlayerExtra)
+        Log.w("Noor-e-Dhikr", "Qur'anic recitation stream failed: $message", error)
+        showQuranPlaybackError(message)
         refreshSpeechPlayingState()
     }
 
@@ -209,10 +261,8 @@ class MainActivity : ComponentActivity() {
         }
 
         val url = pendingQuranAudioUrls.removeFirst()
-        val fallback = if (pendingQuranFallbacks.isNotEmpty()) pendingQuranFallbacks.removeFirst() else null
         val player = MediaPlayer()
         quranMediaPlayer = player
-        activeQuranFallback = fallback
 
         try {
             player.setAudioAttributes(
@@ -232,7 +282,6 @@ class MainActivity : ComponentActivity() {
             player.setOnCompletionListener { completed ->
                 if (quranMediaPlayer === player) {
                     quranMediaPlayer = null
-                    activeQuranFallback = null
                     runCatching { completed.release() }
                     startNextQuranAudio()
                 } else {
@@ -241,7 +290,7 @@ class MainActivity : ComponentActivity() {
             }
             player.setOnErrorListener { _, what, extra ->
                 if (quranMediaPlayer === player) {
-                    failCurrentQuranItem(IllegalStateException("MediaPlayer error $what/$extra"))
+                    failCurrentQuranItem(mediaPlayerWhat = what, mediaPlayerExtra = extra)
                 } else {
                     runCatching { player.release() }
                 }
@@ -275,14 +324,11 @@ class MainActivity : ComponentActivity() {
             stopDeviceTtsQueue()
         }
 
-        // A Quran track is a multi-file sequence; a single failure should
-        // discard the remaining track and synthesize the selected Arabic text
-        // once, rather than repeating the complete dhikr after every failed ayah.
+        // Treat a multi-ayah recitation as one track. A failed ayah stops
+        // the remaining files and displays the stream failure; no TTS is used.
         pendingQuranAudioUrls.clear()
-        pendingQuranFallbacks.clear()
         urls.forEach { url ->
             pendingQuranAudioUrls.addLast(url)
-            pendingQuranFallbacks.addLast(PendingQuranFallback(text, preferredVoice, queueMode))
         }
         refreshSpeechPlayingState()
         startNextQuranAudio()
