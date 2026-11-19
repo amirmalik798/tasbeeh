@@ -115,7 +115,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             DhikrSelectionScreen(
                 currentDhikr = state.dhikr,
                 onBack = { showDhikrScreen = false },
-                onUse = { dhikr ->
+                onSelect = { dhikr ->
                     showDhikrScreen = false
                     if (dhikr.value != state.dhikr) {
                         completionRecordedFor = -1
