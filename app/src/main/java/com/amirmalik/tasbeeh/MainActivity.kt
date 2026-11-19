@@ -34,6 +34,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -86,9 +87,9 @@ class MainActivity : ComponentActivity() {
                 initialValue = null,
                 key1 = store
             ) {
+                store.migrateToSingleSession()
                 store.state.collect { value = it }
             }
-            LaunchedEffect(store) { store.migrateToSingleSession() }
             val saved = savedState
             if (saved == null) {
                 TasbeehStartupScreen()
@@ -468,13 +469,6 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 }
             }
         )
-        if (
-            !showDhikrScreen && !showHistoryScreen && !showCustomDhikrEditor &&
-            !showReset && !showTarget && !showSettings &&
-            false
-        ) {
-            // Session pause/resume is controlled explicitly on the main screen.
-        }
         }
     }
 }
@@ -524,7 +518,12 @@ private fun KaabaMark(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = Modifier) {
+private fun TasbeehStrand(
+    count: Int,
+    onCount: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier
+) {
     val rotation = remember { Animatable(count.toFloat()) }
     val pressure = remember { Animatable(0f) }
     val tasselSway = remember { Animatable(0f) }
@@ -562,11 +561,22 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
 
     Canvas(
         modifier
+            .alpha(if (enabled) 1f else .58f)
             .semantics {
-                contentDescription = "Tasbeeh counter: $count repetitions. Tap to count one."
+                contentDescription = if (enabled) {
+                    "Tasbeeh counter: $count repetitions. Tap to count one."
+                } else {
+                    "Tasbeeh counter paused at $count repetitions. Resume the session to continue."
+                }
                 role = Role.Button
+                if (!enabled) stateDescription = "Session paused"
             }
-            .clickable(onClickLabel = "Count one dhikr", onClick = onCount)
+            .then(
+                if (enabled) Modifier.clickable(
+                    onClickLabel = "Count one dhikr",
+                    onClick = onCount
+                ) else Modifier
+            )
     ) {
         val minDimension = size.minDimension
         val cx = size.width * .5f
@@ -1004,6 +1014,40 @@ private fun ProgressTrack(count: Int, target: Int) {
         Box(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(Color(0xFF2A2D25))) {
             Box(Modifier.fillMaxWidth(animated).fillMaxHeight().clip(CircleShape).background(Brush.horizontalGradient(listOf(Color(0xFF92713C), GoldLight))))
         }
+    }
+}
+
+@Composable
+private fun SessionControlButton(
+    paused: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(48.dp),
+        shape = RoundedCornerShape(15.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (paused) Color(0xFF252014) else Color(0xFF14251B),
+            contentColor = if (paused) GoldLight else Color(0xFF9BD0A6)
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (paused) Gold.copy(alpha = .58f) else Color(0xFF427354)
+        )
+    ) {
+        Icon(
+            if (paused) Icons.Default.PlayArrow else Icons.Default.Pause,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(9.dp))
+        Text(
+            if (paused) "RESUME SESSION" else "PAUSE SESSION",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.1.sp
+        )
     }
 }
 
