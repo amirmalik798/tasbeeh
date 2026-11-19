@@ -20,42 +20,23 @@ internal data class QuranicDuaDefinition(
     val context: String
 )
 
-/** The four Qur'anic selections requested for the dedicated Quran category. */
 internal object QuranicDuaCatalog {
     val additions: List<QuranicDuaDefinition> = listOf(
-        q(
-            "quran-surah-al-fatiha",
-            "Surah al-Fatihah",
-            "Qur'an 1:1–7",
+        q("quran-surah-al-fatiha", "Surah al-Fatihah", "Qur'an 1:1–7",
             keys("1:1", "1:2", "1:3", "1:4", "1:5", "1:6", "1:7"),
-            "The opening surah of the Qur'an, including the request for guidance to the straight path."
-        ),
-        q(
-            "quran-four-qul",
-            "4 Qul",
+            "The opening surah of the Qur'an, including the request for guidance to the straight path."),
+        q("quran-four-qul", "4 Qul",
             "Qur'an 109:1–6; 112:1–4; 113:1–5; 114:1–6",
-            keys(
-                "109:1", "109:2", "109:3", "109:4", "109:5", "109:6",
+            keys("109:1", "109:2", "109:3", "109:4", "109:5", "109:6",
                 "112:1", "112:2", "112:3", "112:4",
                 "113:1", "113:2", "113:3", "113:4", "113:5",
-                "114:1", "114:2", "114:3", "114:4", "114:5", "114:6"
-            ),
-            "The complete surahs al-Kafirun, al-Ikhlas, al-Falaq and an-Nas, in that order."
-        ),
-        q(
-            "quran-ayat-al-kursi",
-            "Ayat al-Kursi",
-            "Qur'an 2:255",
-            keys("2:255"),
-            "The Throne Verse, recited as its complete ayah."
-        ),
-        q(
-            "quran-last-two-baqarah",
-            "Last two ayahs of Surah al-Baqarah",
-            "Qur'an 2:285–286",
-            keys("2:285", "2:286"),
-            "The final two complete ayahs of Surah al-Baqarah, recited in order."
-        )
+                "114:1", "114:2", "114:3", "114:4", "114:5", "114:6"),
+            "The complete surahs al-Kafirun, al-Ikhlas, al-Falaq and an-Nas, in that order."),
+        q("quran-ayat-al-kursi", "Ayat al-Kursi", "Qur'an 2:255", keys("2:255"),
+            "The Throne Verse, recited as its complete ayah."),
+        q("quran-last-two-baqarah", "Last two ayahs of Surah al-Baqarah",
+            "Qur'an 2:285–286", keys("2:285", "2:286"),
+            "The final two complete ayahs of Surah al-Baqarah, recited in order.")
     )
 
     init {
@@ -101,19 +82,19 @@ internal fun hasCompleteQuranicText(items: List<DhikrItem>): Boolean {
     val itemsById = items.associateBy { it.id }
     return QuranicDuaCatalog.additions.all { definition ->
         val item = itemsById[definition.id]
-        item != null &&
-            item.arabic.isNotBlank() &&
+        item != null && item.arabic.isNotBlank() &&
+            item.transliteration.isNotBlank() &&
             item.quranAyahKeys == definition.ayahKeys
     }
 }
 
 internal fun hasAllQuranicTextAndTranslations(
     definitions: List<QuranicDuaDefinition>,
-    versesByKey: Map<String, Pair<String, String>>
+    versesByKey: Map<String, Triple<String, String, String>>
 ): Boolean = definitions.all { definition ->
     definition.ayahKeys.all { key ->
-        versesByKey[key]?.let { (arabic, translation) ->
-            arabic.isNotBlank() && translation.isNotBlank()
+        versesByKey[key]?.let { (arabic, transliteration, translation) ->
+            arabic.isNotBlank() && transliteration.isNotBlank() && translation.isNotBlank()
         } == true
     }
 }
@@ -136,164 +117,162 @@ internal fun hasCompleteQuranicCache(
 internal class QuranicDuaRepository(context: Context) {
     private val preferences = context.getSharedPreferences("quran_catalog_v2", Context.MODE_PRIVATE)
 
-    fun loadCachedItems(): List<DhikrItem> {
-        // Preference type/corruption errors must fall back safely rather than
-        // escaping before the JSON validation block.
-        return runCatching {
-            val raw = preferences.getString("items", null)
-                ?: return@runCatching QuranicDuaCatalog.fallbackItems()
-            if (raw.length > MAX_QURAN_CACHE_CHARS) {
-                return@runCatching QuranicDuaCatalog.fallbackItems()
-            }
+    fun loadCachedItems(): List<DhikrItem> = runCatching {
+        val raw = preferences.getString("items", null)
+            ?: return@runCatching QuranicDuaCatalog.fallbackItems()
+        if (raw.length > MAX_QURAN_CACHE_CHARS) return@runCatching QuranicDuaCatalog.fallbackItems()
 
-            val array = JSONArray(raw)
-            val completedAyahKeysById = mutableMapOf<String, List<String>>()
-            if (array.length() != QuranicDuaCatalog.additions.size) {
-                return@runCatching QuranicDuaCatalog.fallbackItems()
+        val array = JSONArray(raw)
+        if (array.length() != QuranicDuaCatalog.additions.size) {
+            return@runCatching QuranicDuaCatalog.fallbackItems()
+        }
+        val completedKeys = mutableMapOf<String, List<String>>()
+        val cached = ArrayList<DhikrItem>(array.length())
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index)
+                ?: return@runCatching QuranicDuaCatalog.fallbackItems()
+            val keys = item.optJSONArray("ayahKeys") ?: return@runCatching QuranicDuaCatalog.fallbackItems()
+            val id = item.optString("id")
+            if (item.has("completedAyahKeys")) {
+                val completed = item.optJSONArray("completedAyahKeys")
+                    ?: return@runCatching QuranicDuaCatalog.fallbackItems()
+                completedKeys[id] = (0 until completed.length()).map { completed.optString(it) }
             }
-            val cached = ArrayList<DhikrItem>(array.length())
-            for (index in 0 until array.length()) {
-                val item = array.optJSONObject(index) ?: continue
-                val keys = item.optJSONArray("ayahKeys") ?: JSONArray()
-                val id = item.optString("id")
-                if (item.has("completedAyahKeys")) {
-                    val completedKeys = item.optJSONArray("completedAyahKeys")
-                        ?: return@runCatching QuranicDuaCatalog.fallbackItems()
-                    completedAyahKeysById[id] =
-                        (0 until completedKeys.length()).map { completedKeys.optString(it) }
-                }
-                cached.add(
-                    DhikrItem(
-                        id = id,
-                        value = item.optString("value"),
-                        title = item.optString("title"),
-                        category = "Quran",
-                        arabic = item.optString("arabic"),
-                        transliteration = "",
-                        meaning = item.optString("meaning"),
-                        reference = item.optString("reference"),
-                        quranAyahKeys = (0 until keys.length()).map { keys.optString(it) },
-                        categories = listOf("Quran")
-                    )
+            cached.add(
+                DhikrItem(
+                    id = id,
+                    value = item.optString("value"),
+                    title = item.optString("title"),
+                    category = "Quran",
+                    arabic = item.optString("arabic"),
+                    transliteration = item.optString("transliteration"),
+                    meaning = item.optString("meaning"),
+                    reference = item.optString("reference"),
+                    quranAyahKeys = (0 until keys.length()).map { keys.optString(it) },
+                    categories = listOf("Quran")
                 )
-            }
-            cached.takeIf { hasCompleteQuranicCache(it, completedAyahKeysById) }
-                ?: QuranicDuaCatalog.fallbackItems()
-        }.getOrDefault(QuranicDuaCatalog.fallbackItems())
-    }
+            )
+        }
+        cached.takeIf { hasCompleteQuranicCache(it, completedKeys) }
+            ?: QuranicDuaCatalog.fallbackItems()
+    }.getOrDefault(QuranicDuaCatalog.fallbackItems())
 
     suspend fun refresh(): QuranicCatalogRefreshResult = withContext(Dispatchers.IO) {
-        val chapters = QuranicDuaCatalog.additions
-            .flatMap { it.ayahKeys }
+        val chapters = QuranicDuaCatalog.additions.flatMap { it.ayahKeys }
             .mapNotNull { it.substringBefore(':').toIntOrNull() }
-            .distinct()
-            .sorted()
-        val verseByKey = mutableMapOf<String, Pair<String, String>>()
+            .distinct().sorted()
+        val verseByKey = mutableMapOf<String, Triple<String, String, String>>()
 
+        // Limit concurrency while avoiding serial network waits across all chapters.
         chapters.chunked(4).forEach { batch ->
             val responses = coroutineScope {
                 batch.map { chapter -> async { fetchChapter(chapter) } }.awaitAll()
             }
-            responses.filterNotNull().forEach { response ->
-                response.forEach { (key, content) -> verseByKey[key] = content }
-            }
+            responses.filterNotNull().forEach { verseByKey.putAll(it) }
+        }
+
+        // Never publish or cache a partial refresh. Retain a complete saved copy instead.
+        val complete = hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, verseByKey)
+        if (!complete) {
+            val cached = loadCachedItems()
+            val cachedComplete = hasCompleteQuranicText(cached)
+            return@withContext QuranicCatalogRefreshResult(
+                items = if (cachedComplete) cached else QuranicDuaCatalog.fallbackItems(),
+                isComplete = cachedComplete,
+                refreshedFromNetwork = false,
+                cachePersisted = cachedComplete
+            )
         }
 
         val items = QuranicDuaCatalog.additions.map { definition ->
-            val verses = definition.ayahKeys.mapNotNull { verseByKey[it] }
-            val arabic = verses.map { it.first }.filter { it.isNotBlank() }.joinToString(" ۞ ")
-            val translation = verses.map { it.second }.filter { it.isNotBlank() }.joinToString(" ")
+            val verses = definition.ayahKeys.mapNotNull(verseByKey::get)
             DhikrItem(
                 id = definition.id,
                 value = definition.title,
                 title = definition.title,
                 category = "Quran",
-                arabic = arabic,
-                transliteration = "",
-                meaning = translation.ifBlank { definition.context },
+                arabic = verses.joinToString(" ۞ ") { it.first },
+                transliteration = verses.joinToString(" ") { it.second },
+                meaning = verses.joinToString(" ") { it.third },
                 reference = definition.reference +
-                    " · Arabic: AlQuran Cloud (Uthmani) · Translation: Sahih International",
+                    " · Arabic: AlQuran Cloud (Uthmani) · Transliteration: AlQuran Cloud · Translation: Sahih International",
                 quranAyahKeys = definition.ayahKeys,
                 categories = listOf("Quran")
             )
         }
 
-        val hasCompleteTextAndTranslations =
-            hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, verseByKey) &&
-                hasCompleteQuranicText(items)
-        if (hasCompleteTextAndTranslations) {
-            val persisted = runCatching {
-                val array = JSONArray()
-                items.forEach { item ->
-                    array.put(JSONObject().apply {
-                        put("id", item.id)
-                        put("value", item.value)
-                        put("title", item.title)
-                        put("arabic", item.arabic)
-                        put("meaning", item.meaning)
-                        put("reference", item.reference)
-                        put("ayahKeys", JSONArray(item.quranAyahKeys))
-                        put("completedAyahKeys", JSONArray(item.quranAyahKeys))
-                    })
-                }
-                preferences.edit().putString("items", array.toString()).commit()
-            }.getOrDefault(false)
+        val persisted = runCatching {
+            val array = JSONArray()
+            items.forEach { item ->
+                array.put(JSONObject().apply {
+                    put("id", item.id)
+                    put("value", item.value)
+                    put("title", item.title)
+                    put("arabic", item.arabic)
+                    put("transliteration", item.transliteration)
+                    put("meaning", item.meaning)
+                    put("reference", item.reference)
+                    put("ayahKeys", JSONArray(item.quranAyahKeys))
+                    put("completedAyahKeys", JSONArray(item.quranAyahKeys))
+                })
+            }
+            preferences.edit().putString("items", array.toString()).commit()
+        }.getOrDefault(false)
 
-            QuranicCatalogRefreshResult(
-                items = items,
-                isComplete = true,
-                refreshedFromNetwork = true,
-                cachePersisted = persisted
-            )
-        } else {
-            val cachedItems = loadCachedItems()
-            val hasCompleteCachedText = hasCompleteQuranicText(cachedItems)
-            QuranicCatalogRefreshResult(
-                items = if (hasCompleteCachedText) cachedItems else QuranicDuaCatalog.fallbackItems(),
-                isComplete = hasCompleteCachedText,
-                refreshedFromNetwork = false,
-                cachePersisted = hasCompleteCachedText
-            )
-        }
+        QuranicCatalogRefreshResult(
+            items = items,
+            isComplete = true,
+            refreshedFromNetwork = true,
+            cachePersisted = persisted
+        )
     }
 
-    private fun fetchChapter(chapter: Int): Map<String, Pair<String, String>>? {
-        // Qur'anic text is supplied by AlQuran Cloud (Uthmani + Sahih International).
-        // Audio always resolves independently through Quran Foundation.
-        val address = "https://api.alquran.cloud/v1/surah/§chapter/editions/quran-uthmani,en.sahih"
+    private fun fetchChapter(chapter: Int): Map<String, Triple<String, String, String>>? {
+        val address = "https://api.alquran.cloud/v1/surah/$chapter/editions/quran-uthmani,en.transliteration,en.sahih"
         val connection = (URL(address).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
+            instanceFollowRedirects = true
+            useCaches = false
             connectTimeout = 7_000
-            readTimeout = 10_000
+            readTimeout = 12_000
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "NOOR-E-DHIKR/1.0")
+            setRequestProperty("Accept-Encoding", "identity")
+            setRequestProperty("User-Agent", "SereneDhikr/1.0")
         }
         return try {
             if (connection.responseCode !in 200..299) return null
             val payload = readUtf8WithLimit(connection.inputStream, MAX_QURAN_SURAH_RESPONSE_BYTES)
             val editions = JSONObject(payload).optJSONArray("data") ?: return null
-            if (editions.length() < 2) return null
+            if (editions.length() < 3) return null
             val arabicAyahs = editions.optJSONObject(0)?.optJSONArray("ayahs") ?: return null
-            val translationAyahs = editions.optJSONObject(1)?.optJSONArray("ayahs") ?: return null
-            val translationsByNumber = buildMap<Int, String> {
-                for (index in 0 until translationAyahs.length()) {
-                    val ayah = translationAyahs.optJSONObject(index) ?: continue
+            val transliterationAyahs = editions.optJSONObject(1)?.optJSONArray("ayahs") ?: return null
+            val translationAyahs = editions.optJSONObject(2)?.optJSONArray("ayahs") ?: return null
+
+            fun textByAyah(ayahs: JSONArray): Map<Int, String> = buildMap {
+                for (index in 0 until ayahs.length()) {
+                    val ayah = ayahs.optJSONObject(index) ?: continue
                     val number = ayah.optInt("numberInSurah", -1)
-                    val text = ayah.optString("text").trim()
+                    val value = ayah.optString("text").trim()
                         .replace(Regex("<[^>]*>"), " ")
                         .replace(Regex("\\s+"), " ")
                         .trim()
-                    if (number > 0 && text.isNotBlank()) put(number, text)
+                    if (number > 0 && value.isNotBlank()) put(number, value)
                 }
             }
+
+            val transliterations = textByAyah(transliterationAyahs)
+            val translations = textByAyah(translationAyahs)
             buildMap {
                 for (index in 0 until arabicAyahs.length()) {
                     val ayah = arabicAyahs.optJSONObject(index) ?: continue
                     val number = ayah.optInt("numberInSurah", -1)
                     val arabic = ayah.optString("text").trim()
-                    val translation = translationsByNumber[number].orEmpty()
-                    if (number > 0 && arabic.isNotBlank()) {
-                        put("§chapter:§number", arabic to translation)
+                    val transliteration = transliterations[number].orEmpty()
+                    val translation = translations[number].orEmpty()
+                    if (number > 0 && arabic.isNotBlank() &&
+                        transliteration.isNotBlank() && translation.isNotBlank()
+                    ) {
+                        put("$chapter:$number", Triple(arabic, transliteration, translation))
                     }
                 }
             }
