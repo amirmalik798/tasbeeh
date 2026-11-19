@@ -1,161 +1,115 @@
 package com.amirmalik.tasbeeh.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class SavedSessionTest {
 
     @Test
-    fun activeDurationIncludesTheCurrentActiveSegment() {
-        val session = session(
-            lastActivityAt = 10_000L,
-            activeDurationMs = 45_000L,
-            status = SessionStatus.ACTIVE
-        )
-
-        assertEquals(55_000L, session.activeDurationAt(20_000L))
-    }
-
-    @Test
-    fun activeDurationNeverCountsMoreThanTheInactivityWindow() {
-        val session = session(
-            lastActivityAt = 10_000L,
-            activeDurationMs = 45_000L,
-            status = SessionStatus.ACTIVE
-        )
-
+    fun totalDurationIsTheDifferenceBetweenStartAndEnd() {
         assertEquals(
-            45_000L + SESSION_IDLE_TIMEOUT_MS,
-            session.activeDurationAt(10_000L + SESSION_IDLE_TIMEOUT_MS + 60_000L)
+            90_000L,
+            sessionDurationMillis(
+                startedAt = 10_000L,
+                endedAt = 100_000L,
+                now = 500_000L
+            )
         )
     }
 
     @Test
-    fun pausedSessionDoesNotAccumulateActiveTime() {
-        val session = session(
-            lastActivityAt = 10_000L,
-            activeDurationMs = 180_000L,
-            status = SessionStatus.PAUSED
+    fun unfinishedSessionDurationRunsFromStartUntilNow() {
+        assertEquals(
+            65_000L,
+            sessionDurationMillis(
+                startedAt = 10_000L,
+                endedAt = null,
+                now = 75_000L
+            )
         )
-
-        assertEquals(180_000L, session.activeDurationAt(24L * 60L * 60L * 1000L))
     }
 
     @Test
-    fun completedElapsedDurationIsStableAfterCompletion() {
-        val session = session(
-            startedAt = 1_000L,
-            lastActivityAt = 30_000L,
-            status = SessionStatus.COMPLETED,
-            completedAt = 61_000L,
-            endedAt = 61_000L
-        )
-
-        assertEquals(60_000L, session.totalElapsedAt(10_000_000L))
+    fun pausedSessionUsesTheSameSimpleStartToEndDuration() {
+        val paused = session(status = SessionStatus.PAUSED)
+        assertEquals(120_000L, paused.durationAt(130_000L))
     }
 
     @Test
-    fun incompleteElapsedDurationIncludesTheWholeSession() {
-        val session = session(
-            startedAt = 1_000L,
-            lastActivityAt = 30_000L,
-            status = SessionStatus.INCOMPLETE,
-            endedAt = 91_000L
-        )
+    fun finishingSessionStoresEndTimeAndTotalDuration() {
+        val active = session(startedAt = 10_000L)
+        val finished = finishSession(active, now = 130_000L, status = SessionStatus.INCOMPLETE)
 
-        assertEquals(90_000L, session.totalElapsedAt(500_000L))
+        assertEquals(130_000L, finished.endedAt)
+        assertEquals(120_000L, finished.durationMs)
+        assertEquals(SessionStatus.INCOMPLETE, finished.status)
     }
 
     @Test
-    fun activeElapsedDurationContinuesUntilTheCurrentTime() {
-        val session = session(
-            startedAt = 1_000L,
-            lastActivityAt = 30_000L,
-            status = SessionStatus.ACTIVE
+    fun completedSessionDurationDoesNotChangeAfterItEnds() {
+        val completed = finishSession(
+            session(startedAt = 10_000L),
+            now = 130_000L,
+            status = SessionStatus.COMPLETED
         )
 
-        assertEquals(59_000L, session.totalElapsedAt(60_000L))
+        assertEquals(120_000L, completed.durationAt(900_000L))
+        assertEquals(130_000L, completed.endedAt)
     }
 
     @Test
-    fun invalidStoredStatusFallsBackToCompletedForLegacyRecords() {
+    fun durationIncludesTheTimeSpentPausedBetweenStartAndEnd() {
+        // The simplified timing model intentionally measures wall-clock
+        // start-to-end duration; pause/resume does not create extra timers.
+        assertEquals(
+            3_600_000L,
+            sessionDurationMillis(
+                startedAt = 1_000L,
+                endedAt = 3_601_000L,
+                now = 9_000_000L
+            )
+        )
+    }
+
+    @Test
+    fun unknownLegacyStartTimeDoesNotInventADuration() {
+        val recovered = session(startedAt = 0L)
+        assertNull(recovered.durationAt(1_000_000L))
+        assertNull(sessionDurationMillis(0L, 100_000L, 200_000L))
+    }
+
+    @Test
+    fun finishingPreservesDhikrCountAndTargetSnapshot() {
+        val active = session().copy(
+            dhikr = "Ayat Ul Kursi",
+            count = 47,
+            target = 99,
+            arabic = "Arabic snapshot"
+        )
+        val finished = finishSession(active, now = 200_000L, status = SessionStatus.COMPLETED)
+
+        assertEquals("Ayat Ul Kursi", finished.dhikr)
+        assertEquals(47, finished.count)
+        assertEquals(99, finished.target)
+        assertEquals("Arabic snapshot", finished.arabic)
+    }
+
+    @Test
+    fun invalidStoredStatusRemainsBackwardCompatible() {
         assertEquals(SessionStatus.COMPLETED, SessionStatus.fromStoredValue("UNKNOWN"))
         assertEquals(SessionStatus.COMPLETED, SessionStatus.fromStoredValue(null))
     }
 
-    @Test
-    fun completedRoundStartsFreshEvenWhenTheDefaultTargetChanges() {
-        assertEquals(
-            true,
-            isPreviouslyCompletedRound(
-                storedCount = 99,
-                target = 100,
-                lastCompletedCount = 99,
-                lastCompletedDhikr = "SubhanAllah",
-                currentDhikr = "SubhanAllah"
-            )
-        )
-    }
-
-    @Test
-    fun completionMarkerDoesNotLeakAcrossDifferentDhikr() {
-        assertEquals(
-            false,
-            isPreviouslyCompletedRound(
-                storedCount = 33,
-                target = 99,
-                lastCompletedCount = 33,
-                lastCompletedDhikr = "SubhanAllah",
-                currentDhikr = "Alhamdulillah"
-            )
-        )
-    }
-
-    @Test
-    fun reachingTheCurrentTargetStartsANewRoundWithoutAHistoryMarker() {
-        assertEquals(
-            true,
-            isPreviouslyCompletedRound(
-                storedCount = 7,
-                target = 7,
-                lastCompletedCount = null,
-                lastCompletedDhikr = null,
-                currentDhikr = "SubhanAllah"
-            )
-        )
-    }
-
-    @Test
-    fun incompleteCurrentCountIsNotMistakenForACompletedRound() {
-        assertEquals(
-            false,
-            isPreviouslyCompletedRound(
-                storedCount = 12,
-                target = 33,
-                lastCompletedCount = 33,
-                lastCompletedDhikr = "SubhanAllah",
-                currentDhikr = "SubhanAllah"
-            )
-        )
-    }
-
     private fun session(
-        startedAt: Long = 1_000L,
-        lastActivityAt: Long = 10_000L,
-        activeDurationMs: Long? = 0L,
-        status: SessionStatus = SessionStatus.ACTIVE,
-        completedAt: Long? = null,
-        endedAt: Long? = null
+        startedAt: Long = 10_000L,
+        status: SessionStatus = SessionStatus.ACTIVE
     ) = SavedSession(
         id = "session-test",
         dhikr = "SubhanAllah",
-        count = 1,
+        count = 7,
         target = 33,
         startedAt = startedAt,
-        lastActivityAt = lastActivityAt,
-        activeDurationMs = activeDurationMs,
-        status = status,
-        completedAt = completedAt,
-        endedAt = endedAt
+        status = status
     )
 }
