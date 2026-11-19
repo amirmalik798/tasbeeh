@@ -272,7 +272,7 @@ private fun TasbeehStrand(count: Int, onCount: () -> Unit, modifier: Modifier = 
             // of making the strand spin through dozens of revolutions.
             if (kotlin.math.abs(changedBy) == 1) {
                 rotation.animateTo(
-                    rotation.value + changedBy,
+                    count.toFloat(),
                     spring(dampingRatio = .68f, stiffness = 380f)
                 )
             } else {
