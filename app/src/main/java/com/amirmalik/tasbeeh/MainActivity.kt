@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
@@ -140,7 +141,14 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
         }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Ink, background = Ink, surface = Panel, onSurface = Ivory, secondary = Color(0xFF16714B))) {
+    val systemDensity = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(
+            density = systemDensity.density,
+            fontScale = systemDensity.fontScale * state.fontScale
+        )
+    ) {
+        MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Ink, background = Ink, surface = Panel, onSurface = Ivory, secondary = Color(0xFF16714B))) {
         when {
             showCustomDhikrEditor -> {
                 CustomDhikrEditorScreen(
@@ -370,9 +378,19 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             scope.launch { store.update(target = target) }
             showTarget = false
         }
-        if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(state, { showSettings = false }) { sound, haptics ->
-            scope.launch { store.update(soundEnabled = sound, hapticsEnabled = haptics) }
-        }
+        if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
+            state = state,
+            onDismiss = { showSettings = false },
+            onSave = { sound, haptics, fontScale ->
+                scope.launch {
+                    store.update(
+                        soundEnabled = sound,
+                        hapticsEnabled = haptics,
+                        fontScale = fontScale
+                    )
+                }
+            }
+        )
         if (
             !showDhikrScreen && !showHistoryScreen && !showCustomDhikrEditor &&
             !showReset && !showTarget && !showSettings &&
@@ -386,6 +404,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                     onHistory = { showHistoryScreen = true }
                 )
             }
+        }
         }
     }
 }
@@ -1135,19 +1154,97 @@ private fun formatSessionDurationShort(durationMs: Long): String {
 }
 
 @Composable
-private fun SettingsDialog(state: TasbeehState, onDismiss: () -> Unit, onSave: (Boolean, Boolean) -> Unit) {
+private fun SettingsDialog(
+    state: TasbeehState,
+    onDismiss: () -> Unit,
+    onSave: (Boolean, Boolean, Float) -> Unit
+) {
     var sound by remember(state.soundEnabled) { mutableStateOf(state.soundEnabled) }
     var haptics by remember(state.hapticsEnabled) { mutableStateOf(state.hapticsEnabled) }
+    var fontScale by remember(state.fontScale) { mutableFloatStateOf(state.fontScale) }
+
+    val fontSizes = listOf(
+        "Standard" to 1.0f,
+        "Comfort" to 1.12f,
+        "Large" to 1.25f
+    )
+
     AlertDialog(
-        onDismissRequest = onDismiss, containerColor = Panel,
-        title = { Text("Preferences", color = Ivory) },
+        onDismissRequest = onDismiss,
+        containerColor = Panel,
+        title = { Text("Preferences", color = Ivory, fontSize = 20.sp, fontWeight = FontWeight.SemiBold) },
         text = {
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SettingToggle("Counting sound", "A soft sound on each bead", sound) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
+
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    "TEXT SIZE",
+                    color = Gold,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                )
+                Text(
+                    "Adjust text throughout the entire app.",
+                    color = Muted,
+                    fontSize = 12.sp
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    fontSizes.forEach { (label, scale) ->
+                        FilterChip(
+                            selected = kotlin.math.abs(fontScale - scale) < .01f,
+                            onClick = { fontScale = scale },
+                            modifier = Modifier.weight(1f),
+                            label = {
+                                Text(
+                                    label,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                    fontSize = 10.sp,
+                                    maxLines = 1
+                                )
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Gold,
+                                selectedLabelColor = Ink,
+                                containerColor = Panel2,
+                                labelColor = Ivory
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = kotlin.math.abs(fontScale - scale) < .01f,
+                                borderColor = Color(0xFF41463D),
+                                selectedBorderColor = Gold
+                            )
+                        )
+                    }
+                }
+                Text(
+                    when {
+                        fontScale >= 1.2f -> "Large text selected"
+                        fontScale >= 1.1f -> "Comfortable text selected"
+                        else -> "Standard text selected"
+                    },
+                    color = Muted,
+                    fontSize = 10.sp
+                )
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(sound, haptics); onDismiss() }) { Text("DONE", color = Gold) } }
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(sound, haptics, fontScale)
+                onDismiss()
+            }) { Text("SAVE SETTINGS", color = Gold) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("CANCEL", color = Muted) }
+        }
     )
 }
 
