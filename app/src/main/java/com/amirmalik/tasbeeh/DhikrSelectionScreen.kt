@@ -115,6 +115,7 @@ internal fun DhikrSelectionScreen(
     onPlayQuranRecitation: (String, List<String>) -> Unit,
     isSpeaking: Boolean,
     isPreparingRecitation: Boolean,
+    isResolvingQuranRecitation: Boolean,
     onPlayRecitation: (String, String, List<String>) -> Unit,
     onStopRecitation: () -> Unit,
     onRetryQuranText: () -> Unit,
@@ -403,7 +404,8 @@ internal fun DhikrSelectionScreen(
                         enabled = !isStoreBusy,
                         selectable = isCounterSelectableDhikr(item),
                         showListenButton = true,
-                        listenEnabled = hasRecording && hasInternetConnection && !isPreparingRecitation,
+                        listenEnabled = hasRecording && hasInternetConnection &&
+                            !isPreparingRecitation && !isResolvingQuranRecitation,
                         showQuranSurahSummary = showSurahSummary,
                         onClick = {
                             if (showSurahSummary) openReader?.invoke()
@@ -455,6 +457,7 @@ internal fun DhikrSelectionScreen(
             item = surah,
             isSpeaking = isSpeaking,
             isPreparingRecitation = isPreparingRecitation,
+            isResolvingQuranRecitation = isResolvingQuranRecitation,
             activeRecitationTitle = activeRecitationTitle,
             selectedQuranReciter = selectedQuranReciter,
             hasInternetConnection = hasInternetConnection,
