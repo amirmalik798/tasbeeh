@@ -44,15 +44,19 @@ internal object QuranBasmala {
 
     private fun normalizedArabicLetters(text: String): String = buildString {
         text.forEach { character ->
-            if (isArabicLetter(character)) append(character)
+            when {
+                // Uthmani editions commonly use alif wasla (ٱ) where the
+                // presentation string uses a plain alif (ا).
+                character.code == 0x0671 -> append(0x0627.toChar())
+                isArabicLetter(character) -> append(character)
+            }
         }
     }
 
     private fun isArabicLetter(character: Char): Boolean {
         val code = character.code
-        // Harakat and the Uthmani dagger alif are combining marks, not
-        // additional base letters in the normalized basmala comparison.
-        if (code in 0x064B..0x065F || code == 0x0670) return false
+        // Harakat, tatweel and the Uthmani dagger alif are not base letters.
+        if (code in 0x064B..0x065F || code == 0x0670 || code == 0x0640) return false
         return code in 0x0621..0x064A ||
             code in 0x066E..0x06D3 ||
             code in 0x06FA..0x06FC
