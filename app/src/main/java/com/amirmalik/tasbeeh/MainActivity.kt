@@ -95,7 +95,17 @@ internal fun arabicPlaybackControlEnabled(hasArabicText: Boolean, isSpeaking: Bo
     hasArabicText || isSpeaking
 
 class MainActivity : ComponentActivity() {
-    private data class PendingArabicSpeech(val text: String, val preferredVoice: String)
+    private data class PendingArabicSpeech(
+        val text: String,
+        val preferredVoice: String,
+        val quranAyahKeys: List<String> = emptyList()
+    )
+
+    private data class PendingQuranFallback(
+        val text: String,
+        val preferredVoice: String,
+        val queueMode: Int
+    )
 
     private var arabicTextToSpeech: TextToSpeech? = null
     private var arabicSpeechReady = false
@@ -106,8 +116,9 @@ class MainActivity : ComponentActivity() {
     private val pendingArabicUtterances = ConcurrentHashMap.newKeySet<String>()
     private val pendingUntilTtsReady = ArrayDeque<PendingArabicSpeech>()
     private val pendingQuranAudioUrls = ArrayDeque<String>()
+    private val pendingQuranFallbacks = ArrayDeque<PendingQuranFallback>()
+    private var activeQuranFallback: PendingQuranFallback? = null
     private var quranMediaPlayer: MediaPlayer? = null
-
 
     private fun showArabicVoiceNotice(message: String) {
         if (hasShownArabicVoiceNotice || isFinishing || isDestroyed) return
@@ -122,7 +133,9 @@ class MainActivity : ComponentActivity() {
             speechPlaying = pendingArabicUtterances.isNotEmpty() ||
                 pendingUntilTtsReady.isNotEmpty() ||
                 quranMediaPlayer != null ||
-                pendingQuranAudioUrls.isNotEmpty()
+                pendingQuranAudioUrls.isNotEmpty() ||
+                pendingQuranFallbacks.isNotEmpty() ||
+                activeQuranFallback != null
         }
     }
 
@@ -133,18 +146,43 @@ class MainActivity : ComponentActivity() {
 
     private fun stopQuranAudio() {
         pendingQuranAudioUrls.clear()
+        pendingQuranFallbacks.clear()
+        activeQuranFallback = null
         val player = quranMediaPlayer
         quranMediaPlayer = null
         if (player != null) {
+            runCatching { player.setOnPreparedListener(null) }
+            runCatching { player.setOnCompletionListener(null) }
+            runCatching { player.setOnErrorListener(null) }
             runCatching { player.stop() }
             runCatching { player.release() }
         }
     }
 
     private fun stopDeviceTtsQueue() {
-        if (arabicSpeechReady) runCatching { arabicTextToSpeech?.stop() }
+        runCatching { arabicTextToSpeech?.stop() }
         pendingArabicUtterances.clear()
         pendingUntilTtsReady.clear()
+    }
+
+    private fun failCurrentQuranItem(error: Throwable? = null) {
+        val fallback = activeQuranFallback
+        val player = quranMediaPlayer
+        quranMediaPlayer = null
+        activeQuranFallback = null
+        if (player != null) {
+            runCatching { player.setOnPreparedListener(null) }
+            runCatching { player.setOnCompletionListener(null) }
+            runCatching { player.setOnErrorListener(null) }
+            runCatching { player.reset() }
+            runCatching { player.release() }
+        }
+        Log.w("Noor-e-Dhikr", "Qur'anic recitation stream failed; falling back to device Arabic TTS", error)
+        if (fallback != null) {
+            speakArabic(fallback.text, fallback.preferredVoice, fallback.queueMode, showUnavailableNotice = false)
+        }
+        startNextQuranAudio()
+        refreshSpeechPlayingState()
     }
 
     private fun startNextQuranAudio() {
@@ -155,25 +193,10 @@ class MainActivity : ComponentActivity() {
         }
 
         val url = pendingQuranAudioUrls.removeFirst()
+        val fallback = if (pendingQuranFallbacks.isNotEmpty()) pendingQuranFallbacks.removeFirst() else null
         val player = MediaPlayer()
         quranMediaPlayer = player
-
-        fun failPlayback(error: Throwable? = null) {
-            if (quranMediaPlayer === player) {
-                quranMediaPlayer = null
-                pendingQuranAudioUrls.clear()
-                runCatching { player.release() }
-                Log.w("Noor-e-Dhikr", "Qur'anic recitation stream failed", error)
-                Toast.makeText(
-                    this,
-                    "Qur'anic recitation could not be streamed. Check your internet connection and try again.",
-                    Toast.LENGTH_LONG
-                ).show()
-                refreshSpeechPlayingState()
-            } else {
-                runCatching { player.release() }
-            }
-        }
+        activeQuranFallback = fallback
 
         try {
             player.setAudioAttributes(
@@ -188,11 +211,12 @@ class MainActivity : ComponentActivity() {
                     return@setOnPreparedListener
                 }
                 runCatching { prepared.start() }
-                    .onFailure { failPlayback(it) }
+                    .onFailure { failCurrentQuranItem(it) }
             }
             player.setOnCompletionListener { completed ->
                 if (quranMediaPlayer === player) {
                     quranMediaPlayer = null
+                    activeQuranFallback = null
                     runCatching { completed.release() }
                     startNextQuranAudio()
                 } else {
@@ -200,21 +224,30 @@ class MainActivity : ComponentActivity() {
                 }
             }
             player.setOnErrorListener { _, what, extra ->
-                failPlayback(IllegalStateException("MediaPlayer error $what/$extra"))
+                if (quranMediaPlayer === player) {
+                    failCurrentQuranItem(IllegalStateException("MediaPlayer error $what/$extra"))
+                } else {
+                    runCatching { player.release() }
+                }
                 true
             }
             player.setDataSource(url)
             player.prepareAsync()
             refreshSpeechPlayingState()
         } catch (error: Exception) {
-            failPlayback(error)
+            failCurrentQuranItem(error)
         }
     }
 
-    private fun enqueueQuranRecitation(ayahKeys: List<String>, queueMode: Int) {
+    private fun enqueueQuranRecitation(
+        text: String,
+        preferredVoice: String,
+        ayahKeys: List<String>,
+        queueMode: Int
+    ) {
         val urls = QuranRecitationAudio.audioUrlsForAyahs(ayahKeys)
         if (urls.isEmpty()) {
-            Toast.makeText(this, "A recitation is not available for this Qur'anic selection.", Toast.LENGTH_LONG).show()
+            speakArabic(text, preferredVoice, queueMode, showUnavailableNotice = false)
             return
         }
 
@@ -222,13 +255,64 @@ class MainActivity : ComponentActivity() {
             stopDeviceTtsQueue()
             stopQuranAudio()
         } else if (pendingArabicUtterances.isNotEmpty() || pendingUntilTtsReady.isNotEmpty()) {
-            // Do not let a device TTS utterance overlap a streamed qari recording.
+            // Avoid overlap between device TTS and the recorded qari.
             stopDeviceTtsQueue()
         }
 
-        pendingQuranAudioUrls.addAll(urls)
+        urls.forEach { url ->
+            pendingQuranAudioUrls.addLast(url)
+            pendingQuranFallbacks.addLast(PendingQuranFallback(text, preferredVoice, queueMode))
+        }
         refreshSpeechPlayingState()
         startNextQuranAudio()
+    }
+
+    private fun selectArabicVoice(engine: TextToSpeech, preferredVoice: String): Boolean {
+        val voices = runCatching { engine.voices.orEmpty() }.getOrDefault(emptyList())
+        val arabicVoices = voices.filter { it.locale.language == "ar" }
+        if (arabicVoices.isEmpty()) {
+            val languageResult = runCatching { engine.setLanguage(Locale("ar")) }
+                .getOrDefault(TextToSpeech.LANG_NOT_SUPPORTED)
+            return languageResult != TextToSpeech.LANG_MISSING_DATA &&
+                languageResult != TextToSpeech.LANG_NOT_SUPPORTED
+        }
+
+        val wantedMale = preferredVoice.equals("male", ignoreCase = true)
+        fun voiceGenderMatch(voice: android.speech.tts.Voice): Boolean? {
+            val name = voice.name.lowercase(Locale.ROOT)
+            // Engine voice names are inconsistent. Exclude the opposite gender
+            // first, then use common naming conventions as a best-effort hint.
+            val explicitFemale = name.contains("female") || name.contains("woman") ||
+                name.contains("feminine") || name.contains("girl")
+            val explicitMale = name.contains("male") || name.contains("man") ||
+                name.contains("masculine") || name.contains("boy")
+            return when {
+                wantedMale && explicitFemale && !explicitMale -> false
+                !wantedMale && explicitMale && !explicitFemale -> false
+                wantedMale && explicitMale -> true
+                !wantedMale && explicitFemale -> true
+                else -> null
+            }
+        }
+
+        val requested = arabicVoices.firstOrNull { voiceGenderMatch(it) == true }
+        val candidates = if (requested != null) listOf(requested) else arabicVoices
+        for (voice in candidates) {
+            val supported = runCatching {
+                engine.voice = voice
+                val result = engine.setLanguage(voice.locale)
+                result != TextToSpeech.LANG_MISSING_DATA &&
+                    result != TextToSpeech.LANG_NOT_SUPPORTED
+            }.getOrDefault(false)
+            if (supported) return true
+        }
+
+        // Keep playback useful even when this engine exposes no gender metadata
+        // or a requested gender-specific voice is not installed.
+        val languageResult = runCatching { engine.setLanguage(Locale("ar")) }
+            .getOrDefault(TextToSpeech.LANG_NOT_SUPPORTED)
+        return languageResult != TextToSpeech.LANG_MISSING_DATA &&
+            languageResult != TextToSpeech.LANG_NOT_SUPPORTED
     }
 
     private fun speakArabic(
@@ -241,62 +325,31 @@ class MainActivity : ComponentActivity() {
         if (text.isBlank()) return
 
         if (quranAyahKeys.isNotEmpty()) {
-            enqueueQuranRecitation(quranAyahKeys, queueMode)
+            enqueueQuranRecitation(text, preferredVoice, quranAyahKeys, queueMode)
             return
         }
 
-        // Switching back to device TTS must not overlap a previous qari stream.
-        if (quranMediaPlayer != null || pendingQuranAudioUrls.isNotEmpty()) {
-            stopQuranAudio()
-        }
+        if (quranMediaPlayer != null || pendingQuranAudioUrls.isNotEmpty()) stopQuranAudio()
 
-        val engine = arabicTextToSpeech
-        // Manual playback replaces all queued speech. Count playback appends,
-        // including counts made during the short asynchronous TTS startup.
         if (queueMode == TextToSpeech.QUEUE_FLUSH) {
-            if (arabicSpeechReady) runCatching { engine?.stop() }
-            pendingArabicUtterances.clear()
-            pendingUntilTtsReady.clear()
+            stopDeviceTtsQueue()
             speechPlaying = false
         }
 
+        val engine = arabicTextToSpeech
         if (!arabicSpeechReady || engine == null) {
             if (!ttsInitializationFinished) {
-                // Also buffer a manual Play request made during startup. A
-                // QUEUE_FLUSH request has already cleared older pending items.
                 pendingUntilTtsReady.addLast(PendingArabicSpeech(text, preferredVoice))
                 speechPlaying = true
             } else if (showUnavailableNotice || queueMode == TextToSpeech.QUEUE_ADD) {
-                showArabicVoiceNotice(
-                    "Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings."
-                )
+                showArabicVoiceNotice("Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings.")
             }
             return
         }
 
-        val arabicVoices = runCatching {
-            engine.voices.orEmpty().filter { it.locale.language == "ar" }
-        }.getOrDefault(emptyList())
-        val requestedVoice = arabicVoices.firstOrNull { voice ->
-            val name = voice.name.lowercase(Locale.ROOT)
-            if (preferredVoice == "male") {
-                (name.contains("male") && !name.contains("female")) ||
-                    (name.contains("man") && !name.contains("woman"))
-            } else {
-                name.contains("female") || name.contains("woman")
-            }
-        }
-
-        if (requestedVoice != null) {
-            runCatching { engine.voice = requestedVoice }
-                .onFailure { runCatching { engine.setLanguage(Locale("ar")) } }
-        } else {
-            runCatching { engine.setLanguage(Locale("ar")) }
-            if (showUnavailableNotice) {
-                showArabicVoiceNotice(
-                    "Requested Arabic voice unavailable; using the device default."
-                )
-            }
+        val voiceSelected = selectArabicVoice(engine, preferredVoice)
+        if (!voiceSelected && showUnavailableNotice) {
+            showArabicVoiceNotice("No Arabic voice is available in the selected Android speech engine.")
         }
 
         val utteranceId = "noor-e-dhikr-${utteranceSequence.incrementAndGet()}"
