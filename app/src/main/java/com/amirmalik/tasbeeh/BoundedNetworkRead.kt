@@ -17,7 +17,18 @@ internal fun readUtf8WithLimit(input: InputStream, maxBytes: Int): String {
     while (true) {
         val count = input.read(buffer)
         if (count < 0) break
-        if (count == 0) continue
+        if (count == 0) {
+            // Defensive progress for unusual InputStreams that return zero for
+            // a non-empty read request; never spin forever on a broken stream.
+            val singleByte = input.read()
+            if (singleByte < 0) break
+            if (totalBytes >= maxBytes) {
+                throw IOException("Network response exceeded the $maxBytes-byte safety limit.")
+            }
+            output.write(singleByte)
+            totalBytes++
+            continue
+        }
         if (count > maxBytes - totalBytes) {
             throw IOException("Network response exceeded the $maxBytes-byte safety limit.")
         }
