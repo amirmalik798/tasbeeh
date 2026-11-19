@@ -34,7 +34,8 @@ enum class SessionStatus {
 enum class CountOutcome {
     COUNTED,
     TARGET_REACHED,
-    PAUSED
+    PAUSED,
+    STALE_SELECTION
 }
 
 internal fun shouldUseLegacyCountOnlyRecovery(
@@ -385,10 +386,17 @@ class TasbeehStore(private val context: Context) {
         transliteration: String,
         meaning: String,
         fallbackTarget: Int,
-        now: Long
+        now: Long,
+        expectedCustomDhikrId: String? = null
     ): CountOutcome {
         var outcome = CountOutcome.COUNTED
         context.tasbeehDataStore.edit { prefs ->
+            if (expectedCustomDhikrId != null &&
+                prefs[Keys.selectedCustomDhikrId] != expectedCustomDhikrId
+            ) {
+                outcome = CountOutcome.STALE_SELECTION
+                return@edit
+            }
             val existing = decodeSession(prefs[Keys.currentSession].orEmpty())
             if (existing?.status == SessionStatus.PAUSED) {
                 outcome = CountOutcome.PAUSED
