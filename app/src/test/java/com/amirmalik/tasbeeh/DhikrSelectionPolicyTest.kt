@@ -8,13 +8,18 @@ import org.junit.Test
 class DhikrSelectionPolicyTest {
 
     @Test
-    fun libraryCategoriesKeepTheRequestedPinnedOrderBeforeOpenDuaTopics() {
+    fun libraryCategoriesOmitAllAndKeepPinnedCategoriesBeforeOpenDuaTopics() {
         assertEquals(
-            listOf("All", "Favorites", "My Dhikhrs", "Quran", "Morning and Evening", "Travel"),
+            listOf("Favorites", "My Dhikhrs", "Quran", "Morning and Evening", "Travel"),
             orderedDhikrCategories(
                 listOf("Quran", "Morning and Evening", "Favorites", "Travel", "My Dhikhrs", "All")
             )
         )
+    }
+
+    @Test
+    fun dynamicOpenDuaTopicsCannotReintroduceTheRemovedAllCategory() {
+        assertFalse(orderedDhikrCategories(listOf("All", "Travel")).contains("All"))
     }
 
     @Test
