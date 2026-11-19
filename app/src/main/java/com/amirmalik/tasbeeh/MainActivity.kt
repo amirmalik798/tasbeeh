@@ -302,9 +302,15 @@ class MainActivity : ComponentActivity() {
         }
 
         if (!hasValidatedInternetConnection(applicationContext)) {
-            showRecitationPlaybackError(
-                "No internet connection is available. Recorded recitations are streamed and need an internet connection. Reconnect and try again."
-            )
+            if (queueMode == RECITATION_QUEUE_REPLACE) {
+                showRecitationPlaybackError(
+                    "No internet connection is available. Recorded recitations are streamed and need an internet connection. Reconnect and try again."
+                )
+            } else {
+                // Automatic recitation on each count must never interrupt an
+                // offline counting session with a modal error on every tap.
+                Log.i("Noor-e-Dhikr", "Skipping automatic recitation while offline")
+            }
             return
         }
 
