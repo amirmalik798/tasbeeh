@@ -19,6 +19,14 @@ internal object QuranRecitationAudio {
         return urls.distinct()
     }
 
+    /**
+     * Quran Foundation playback is only appropriate for entries that carry
+     * an explicit, validated ayah mapping. User-authored Arabic text is not
+     * inferred to be Qur'anic from its wording or title.
+     */
+    fun shouldUseQuranFoundation(ayahKeys: List<String>): Boolean =
+        ayahKeys.isNotEmpty() && audioUrlsForAyahs(ayahKeys).isNotEmpty()
+
     fun audioUrlForAyah(ayahKey: String): String? {
         val parts = ayahKey.split(':')
         if (parts.size != 2) return null
