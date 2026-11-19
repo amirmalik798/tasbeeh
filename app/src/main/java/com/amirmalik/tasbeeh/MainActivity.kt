@@ -1,6 +1,6 @@
 package com.amirmalik.tasbeeh
 
-import android.media.AudioAttributes
+import android.content.ComponentName
 import android.media.MediaPlayer
 import android.net.ConnectivityManager
 import android.net.Network
@@ -12,6 +12,12 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.core.content.ContextCompat
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -76,7 +82,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onStart
-import java.util.ArrayDeque
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
@@ -93,11 +98,6 @@ private val Muted = Color(0xFF9A9B8D)
 
 internal const val RECITATION_QUEUE_REPLACE = 0
 internal const val RECITATION_QUEUE_APPEND = 1
-
-private data class PendingRecitation(
-    val url: String,
-    val shouldReportFailure: Boolean
-)
 
 private data class FailedStoreOperation(
     val label: String,
@@ -188,32 +188,150 @@ internal fun recitationPlaybackFailureMessage(
 class MainActivity : ComponentActivity() {
     private var speechPlaying by mutableStateOf(false)
     private var recitationPreparing by mutableStateOf(false)
-    private val pendingRecitationUrls = ArrayDeque<PendingRecitation>()
-    private var recitationMediaPlayer: MediaPlayer? = null
-    private var currentRecitationShouldReportFailure = true
+    private var mediaController: MediaController? = null
+    private var mediaControllerFuture: ListenableFuture<MediaController>? = null
+    private var pendingRecitationRequest: PendingRecitationRequest? = null
 
-    private fun refreshSpeechPlayingState() {
-        if (isFinishing || isDestroyed) return
-        runOnUiThread {
-            if (isFinishing || isDestroyed) return@runOnUiThread
-            speechPlaying = recitationMediaPlayer != null || pendingRecitationUrls.isNotEmpty()
+    private data class PendingRecitationRequest(
+        val title: String,
+        val artist: String,
+        val urls: List<String>
+    )
+
+    private val playbackListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            updatePlaybackUiState()
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            updatePlaybackUiState()
+        }
+
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            updatePlaybackUiState()
+            Log.w("Noor-e-Dhikr", "Background recitation playback failed", error)
+            showRecitationPlaybackError(recitationPlaybackFailureMessage(error))
         }
     }
 
-    private fun stopRecitationAudio() {
-        pendingRecitationUrls.clear()
-        val player = recitationMediaPlayer
-        recitationMediaPlayer = null
-        if (player != null) {
-            runCatching { player.setOnPreparedListener(null) }
-            runCatching { player.setOnCompletionListener(null) }
-            runCatching { player.setOnErrorListener(null) }
-            runCatching { player.stop() }
-            runCatching { player.release() }
+    private fun updatePlaybackUiState() {
+        val controller = mediaController
+        speechPlaying = controller?.isPlaying == true
+        recitationPreparing = controller?.playbackState == Player.STATE_BUFFERING
+    }
+
+    private fun connectToRecitationService() {
+        if (mediaController != null || mediaControllerFuture != null || isFinishing || isDestroyed) return
+        val token = SessionToken(
+            applicationContext,
+            ComponentName(applicationContext, QuranRecitationPlaybackService::class.java)
+        )
+        val future = MediaController.Builder(applicationContext, token).buildAsync()
+        mediaControllerFuture = future
+        future.addListener(
+            {
+                if (mediaControllerFuture !== future || isFinishing || isDestroyed) {
+                    MediaController.releaseFuture(future)
+                    return@addListener
+                }
+                runCatching { future.get() }
+                    .onSuccess { controller ->
+                        mediaController = controller
+                        controller.addListener(playbackListener)
+                        updatePlaybackUiState()
+                        pendingRecitationRequest?.let { request ->
+                            pendingRecitationRequest = null
+                            startRecitationRequest(controller, request)
+                        }
+                    }
+                    .onFailure { error ->
+                        mediaControllerFuture = null
+                        Log.w("Noor-e-Dhikr", "Could not connect to background recitation service", error)
+                        speechPlaying = false
+                        recitationPreparing = false
+                    }
+            },
+            ContextCompat.getMainExecutor(this)
+        )
+    }
+
+    private fun disconnectFromRecitationService() {
+        val controller = mediaController
+        controller?.removeListener(playbackListener)
+        mediaController = null
+        mediaControllerFuture?.let(MediaController::releaseFuture)
+        mediaControllerFuture = null
+        speechPlaying = false
+        recitationPreparing = false
+    }
+
+    private fun startRecitationRequest(
+        controller: MediaController,
+        request: PendingRecitationRequest
+    ) {
+        val mediaItems = createRecitationMediaItems(request.title, request.artist, request.urls)
+        if (mediaItems.isEmpty()) {
+            showRecitationPlaybackError("The selected recitation does not contain a supported recording URL.")
+            return
+        }
+        runCatching {
+            controller.setMediaItems(mediaItems)
+            controller.prepare()
+            controller.play()
+        }.onFailure { error ->
+            Log.w("Noor-e-Dhikr", "Could not start the requested recitation", error)
+            showRecitationPlaybackError(recitationPlaybackFailureMessage(error))
+        }
+    }
+
+    private fun playRecitations(title: String, artist: String, urls: List<String>) {
+        if (isFinishing || isDestroyed) return
+        val safeUrls = urls.map { it.trim() }
+            .filter(::isTrustedRecitationUrl)
+            .distinct()
+        if (safeUrls.isEmpty()) {
+            showRecitationPlaybackError(
+                if (urls.isEmpty()) {
+                    "A recording was not provided for this dua."
+                } else {
+                    "The selected recording URL was not from a supported HTTPS audio host."
+                }
+            )
+            return
+        }
+        if (!hasValidatedInternetConnection(applicationContext)) {
+            showRecitationPlaybackError(
+                "No internet connection is available. Recitations are streamed and need an internet connection."
+            )
+            return
+        }
+
+        val request = PendingRecitationRequest(
+            title = title.trim().take(120).ifBlank { "Recorded recitation" },
+            artist = artist.trim().take(180).ifBlank { "Recorded recitation" },
+            urls = safeUrls
+        )
+        val controller = mediaController
+        if (controller != null) {
+            startRecitationRequest(controller, request)
+        } else {
+            pendingRecitationRequest = request
+            connectToRecitationService()
+        }
+    }
+
+    private fun stopRecitationPlayback() {
+        pendingRecitationRequest = null
+        mediaController?.let { controller ->
+            runCatching {
+                controller.pause()
+                controller.clearMediaItems()
+            }.onFailure { error ->
+                Log.w("Noor-e-Dhikr", "Could not stop the background recitation", error)
+            }
         }
         speechPlaying = false
         recitationPreparing = false
-        currentRecitationShouldReportFailure = true
     }
 
     private fun showRecitationPlaybackError(message: String) {
@@ -235,149 +353,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun failCurrentRecitation(
-        error: Throwable? = null,
-        mediaPlayerWhat: Int? = null,
-        mediaPlayerExtra: Int? = null
-    ) {
-        val player = recitationMediaPlayer
-        recitationMediaPlayer = null
-        pendingRecitationUrls.clear()
-        recitationPreparing = false
-        if (player != null) {
-            runCatching { player.setOnPreparedListener(null) }
-            runCatching { player.setOnCompletionListener(null) }
-            runCatching { player.setOnErrorListener(null) }
-            runCatching { player.reset() }
-            runCatching { player.release() }
-        }
-
-        val message = recitationPlaybackFailureMessage(error, mediaPlayerWhat, mediaPlayerExtra)
-        Log.w("Noor-e-Dhikr", "recitation stream failed: $message", error)
-        if (currentRecitationShouldReportFailure) {
-            showRecitationPlaybackError(message)
-        } else {
-            Log.i("Noor-e-Dhikr", "Automatic recitation stopped without interrupting the counting session")
-        }
-        currentRecitationShouldReportFailure = true
-        refreshSpeechPlayingState()
+    override fun onStart() {
+        super.onStart()
+        connectToRecitationService()
     }
 
-    private fun startNextRecitationAudio() {
-        if (isFinishing || isDestroyed || recitationMediaPlayer != null) return
-        if (pendingRecitationUrls.isEmpty()) {
-            recitationPreparing = false
-            refreshSpeechPlayingState()
-            return
-        }
-
-        val request = pendingRecitationUrls.removeFirst()
-        currentRecitationShouldReportFailure = request.shouldReportFailure
-        val player = try {
-            MediaPlayer()
-        } catch (error: Exception) {
-            failCurrentRecitation(error)
-            return
-        }
-        recitationMediaPlayer = player
-
-        try {
-            player.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            player.setOnPreparedListener { prepared ->
-                if (recitationMediaPlayer !== player || isFinishing || isDestroyed) {
-                    runCatching { prepared.release() }
-                    return@setOnPreparedListener
-                }
-                recitationPreparing = false
-                runCatching { prepared.start() }
-                    .onFailure { failCurrentRecitation(it) }
-            }
-            player.setOnCompletionListener { completed ->
-                if (recitationMediaPlayer === player) {
-                    recitationMediaPlayer = null
-                    runCatching { completed.release() }
-                    startNextRecitationAudio()
-                } else {
-                    runCatching { completed.release() }
-                }
-            }
-            player.setOnErrorListener { _, what, extra ->
-                if (recitationMediaPlayer === player) {
-                    failCurrentRecitation(mediaPlayerWhat = what, mediaPlayerExtra = extra)
-                } else {
-                    runCatching { player.release() }
-                }
-                true
-            }
-            player.setDataSource(request.url)
-            recitationPreparing = true
-            player.prepareAsync()
-            refreshSpeechPlayingState()
-        } catch (error: Exception) {
-            failCurrentRecitation(error)
-        }
-    }
-
-    private fun playRecitations(urls: List<String>, queueMode: Int) {
-        if (isFinishing || isDestroyed) return
-        val safeUrls = urls.map { it.trim() }.filter { isTrustedRecitationUrl(it) }
-        if (safeUrls.isEmpty()) {
-            if (queueMode == RECITATION_QUEUE_REPLACE && urls.isNotEmpty()) {
-                showRecitationPlaybackError("The selected recitation URL was not from a supported HTTPS audio host.")
-            } else if (queueMode == RECITATION_QUEUE_REPLACE) {
-                runCatching {
-                    Toast.makeText(this, "A recorded recitation is not available for this entry.", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Log.w("Noor-e-Dhikr", "Skipping an automatic recitation with no supported recording URL")
-            }
-            return
-        }
-
-        if (!shouldAcceptRecitationRequest(
-                queueMode = queueMode,
-                hasActivePlayer = recitationMediaPlayer != null,
-                hasPendingRecitations = pendingRecitationUrls.isNotEmpty()
-            )
-        ) {
-            Log.d(
-                "Noor-e-Dhikr",
-                "Skipping automatic recitation while another selection is queued or playing"
-            )
-            return
-        }
-
-        if (!hasValidatedInternetConnection(applicationContext)) {
-            if (queueMode == RECITATION_QUEUE_REPLACE) {
-                showRecitationPlaybackError(
-                    "No internet connection is available. Recorded recitations are streamed and need an internet connection. Reconnect and try again."
-                )
-            } else {
-                // Automatic recitation on each count must never interrupt an
-                // offline counting session with a modal error on every tap.
-                Log.i("Noor-e-Dhikr", "Skipping automatic recitation while offline")
-            }
-            return
-        }
-
-        if (queueMode == RECITATION_QUEUE_REPLACE) stopRecitationAudio()
-        val shouldReportFailure = queueMode == RECITATION_QUEUE_REPLACE
-        safeUrls.forEach { url ->
-            pendingRecitationUrls.addLast(
-                PendingRecitation(url = url, shouldReportFailure = shouldReportFailure)
-            )
-        }
-        refreshSpeechPlayingState()
-        startNextRecitationAudio()
-    }
-
-    private fun stopRecitationPlayback() {
-        stopRecitationAudio()
+    override fun onStop() {
+        disconnectFromRecitationService()
+        super.onStop()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -602,7 +585,7 @@ class MainActivity : ComponentActivity() {
                     quranCacheWriteFailed = quranCacheWriteFailed,
                     onRetryQuranText = { quranRetryCount++ },
                     onRetryOpenDuaCatalog = { openDuaRetryCount++ },
-                    onPlayRecitation = { urls, queueMode -> playRecitations(urls, queueMode) },
+                    onPlayRecitation = { title, artist, urls -> playRecitations(title, artist, urls) },
                     onStopSpeech = { stopRecitationPlayback() }
                 ) {
                     if (saved.hapticsEnabled) {
@@ -616,7 +599,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        stopRecitationAudio()
+        disconnectFromRecitationService()
         super.onDestroy()
     }
 }
@@ -715,7 +698,7 @@ private fun TasbeehApp(
     quranCacheWriteFailed: Boolean,
     onRetryQuranText: () -> Unit,
     onRetryOpenDuaCatalog: () -> Unit,
-    onPlayRecitation: (List<String>, Int) -> Unit,
+    onPlayRecitation: (String, String, List<String>) -> Unit,
     onStopSpeech: () -> Unit,
     onTap: () -> Unit
 ) {
