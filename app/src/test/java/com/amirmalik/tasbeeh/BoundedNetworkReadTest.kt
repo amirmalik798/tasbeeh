@@ -5,6 +5,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.IOException
+import java.io.InputStream
 
 class BoundedNetworkReadTest {
 
@@ -24,6 +25,25 @@ class BoundedNetworkReadTest {
         assertThrows(IOException::class.java) {
             readUtf8WithLimit(input, 32)
         }
+    }
+
+    @Test
+    fun makesProgressWhenAnInputStreamReturnsZeroForABulkRead() {
+        val bytes = "safe read".toByteArray(Charsets.UTF_8)
+        val delegate = ByteArrayInputStream(bytes)
+        var returnedZero = false
+        val unusualStream = object : InputStream() {
+            override fun read(): Int = delegate.read()
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (!returnedZero) {
+                    returnedZero = true
+                    return 0
+                }
+                return delegate.read(buffer, offset, length)
+            }
+        }
+
+        assertEquals("safe read", readUtf8WithLimit(unusualStream, bytes.size))
     }
 
     @Test
