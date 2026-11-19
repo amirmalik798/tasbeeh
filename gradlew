@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Lightweight Gradle bootstrapper for Linux/macOS, matching BreatheEasy's wrapper approach.
 set -eu
-GRADLE_VERSION="8.9"
+GRADLE_VERSION="8.11.1"
 CACHE_ROOT="${GRADLE_USER_HOME:-${HOME}/.gradle}/tasbeeh"
 GRADLE_HOME_DIR="${CACHE_ROOT}/gradle-${GRADLE_VERSION}"
 GRADLE_BIN="${GRADLE_HOME_DIR}/bin/gradle"
