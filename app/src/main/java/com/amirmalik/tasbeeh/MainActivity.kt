@@ -297,6 +297,7 @@ class MainActivity : ComponentActivity() {
                 key2 = storageRetryCount
             ) {
                 storageReadError = false
+                value = null
                 try {
                     store.migrateToSingleSession()
                     store.state.collect { value = it }
