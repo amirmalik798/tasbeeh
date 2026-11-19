@@ -295,6 +295,12 @@ internal data class QuranicCatalogRefreshResult(
     val completedSurahCount: Int = 0
 )
 
+private data class QuranSurahFetchResult(
+    val number: Int,
+    val text: QuranSurahText?,
+    val cachePersisted: Boolean
+)
+
 internal fun quranSessionSnapshotText(value: String, isFullSurah: Boolean): String =
     if (isFullSurah) value.take(240) else value
 
@@ -336,6 +342,7 @@ internal fun hasAllQuranicTextAndTranslations(
 internal class QuranicDuaRepository(context: Context) {
     private val preferences = context.getSharedPreferences("quran_catalog_v2", Context.MODE_PRIVATE)
     private val cacheDirectory = File(context.filesDir, "quran_catalog_v3")
+    private val cacheDirectoryLock = Any()
 
     fun loadCachedItems(): List<DhikrItem> {
         val cachedSurahs = readAllCachedSurahs()
@@ -361,7 +368,12 @@ internal class QuranicDuaRepository(context: Context) {
             missing.map { definition ->
                 async {
                     semaphore.withPermit {
-                        definition.number to fetchChapter(definition.number)
+                        val text = fetchChapter(definition.number)
+                        // Commit each complete chapter immediately, rather than
+                        // keeping every successful response in memory until the
+                        // slowest request finishes.
+                        val persisted = text?.let(::writeSurahCache) ?: true
+                        QuranSurahFetchResult(definition.number, text, persisted)
                     }
                 }
             }.awaitAll()
@@ -369,11 +381,12 @@ internal class QuranicDuaRepository(context: Context) {
 
         var refreshedCount = 0
         var allWritesSucceeded = true
-        results.forEach { (number, text) ->
+        results.forEach { result ->
+            val text = result.text
             if (text != null) {
                 refreshedCount += 1
-                cachedSurahs[number] = text
-                if (!writeSurahCache(text)) allWritesSucceeded = false
+                cachedSurahs[result.number] = text
+                if (!result.cachePersisted) allWritesSucceeded = false
             }
         }
 
@@ -429,8 +442,12 @@ internal class QuranicDuaRepository(context: Context) {
     }.getOrNull()
 
     private fun writeSurahCache(text: QuranSurahText): Boolean = runCatching {
-        if (!cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
-            throw IllegalStateException("Could not create the private Qur'an cache directory.")
+        if (!cacheDirectory.isDirectory) {
+            synchronized(cacheDirectoryLock) {
+                if (!cacheDirectory.isDirectory && !cacheDirectory.mkdirs() && !cacheDirectory.isDirectory) {
+                    throw IllegalStateException("Could not create the private Qur'an cache directory.")
+                }
+            }
         }
         val file = cacheFile(text.surahNumber)
         val root = JSONObject().apply {
