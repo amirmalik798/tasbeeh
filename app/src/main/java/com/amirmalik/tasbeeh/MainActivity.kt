@@ -345,18 +345,14 @@ class MainActivity : ComponentActivity() {
 
         val engine = arabicTextToSpeech
         if (!arabicSpeechReady || engine == null) {
-            if (queueMode == TextToSpeech.QUEUE_FLUSH) {
-                pendingUntilTtsReady.clear()
-                pendingUntilTtsReady.addLast(PendingArabicSpeech(text, preferredVoice))
-            } else {
-                pendingUntilTtsReady.addLast(PendingArabicSpeech(text, preferredVoice))
-            }
             if (!ttsInitializationFinished) {
+                pendingUntilTtsReady.addLast(PendingArabicSpeech(text, preferredVoice))
                 speechPlaying = true
-            } else if (showUnavailableNotice || queueMode == TextToSpeech.QUEUE_ADD) {
-                pendingUntilTtsReady.clear()
+            } else {
                 refreshSpeechPlayingState()
-                showArabicVoiceNotice("Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings.")
+                if (showUnavailableNotice || queueMode == TextToSpeech.QUEUE_ADD) {
+                    showArabicVoiceNotice("Arabic voice is not available. Install an Arabic voice in Text-to-Speech settings.")
+                }
             }
             return
         }
