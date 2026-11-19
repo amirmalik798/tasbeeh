@@ -8,7 +8,11 @@ import java.util.Locale
  * instead of trusting a string prefix, which can be spoofed by a look-alike
  * hostname or user-info segment.
  */
-internal fun isTrustedRecitationUrl(value: String): Boolean = runCatching {
+private const val MAX_TRUSTED_RECITATION_URL_CHARS = 2_048
+
+internal fun isTrustedRecitationUrl(value: String): Boolean {
+    if (value.length > MAX_TRUSTED_RECITATION_URL_CHARS) return false
+    return runCatching {
     val uri = URI(value.trim())
     val host = uri.host?.lowercase(Locale.ROOT) ?: return@runCatching false
     uri.isAbsolute &&
@@ -19,7 +23,7 @@ internal fun isTrustedRecitationUrl(value: String): Boolean = runCatching {
         uri.rawPath.isNotBlank() &&
         host in setOf("verses.quran.foundation", "audio.opendua.org")
 }.getOrDefault(false)
-
+}
 
 /** OpenDua recordings must come from its exact audio host, not a look-alike URL. */
 internal fun isTrustedOpenDuaAudioUrl(value: String): Boolean =
