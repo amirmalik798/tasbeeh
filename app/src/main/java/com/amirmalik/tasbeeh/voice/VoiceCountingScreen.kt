@@ -163,7 +163,7 @@ internal fun VoiceCountingScreen(
         }
         Spacer(Modifier.height(22.dp))
         Text("COUNT", color = VoiceMuted, fontSize = 10.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold)
-        Text("$"+"count / $"+"target", color = VoiceIvory, fontSize = 31.sp, fontWeight = FontWeight.Light)
+        Text("$count / $target", color = VoiceIvory, fontSize = 31.sp, fontWeight = FontWeight.Light)
         Spacer(Modifier.height(9.dp))
         Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(Color(0xFF293128))) {
             Box(
