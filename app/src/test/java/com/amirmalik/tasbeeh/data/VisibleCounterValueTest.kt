@@ -26,4 +26,20 @@ class VisibleCounterValueTest {
     fun negativeStoredCountsAreClampedToZero() {
         assertEquals(0, visibleCounterValue(-5, null))
     }
+
+    @Test
+    fun safeIncrementAdvancesOrdinaryCounts() {
+        assertEquals(1, incrementCounterValueSafely(0))
+        assertEquals(42, incrementCounterValueSafely(41))
+    }
+
+    @Test
+    fun safeIncrementDoesNotOverflowMaximumInteger() {
+        assertEquals(Int.MAX_VALUE, incrementCounterValueSafely(Int.MAX_VALUE))
+    }
+
+    @Test
+    fun safeIncrementRecoversFromNegativeStoredCount() {
+        assertEquals(1, incrementCounterValueSafely(-1))
+    }
 }

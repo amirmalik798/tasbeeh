@@ -3,6 +3,7 @@ package com.amirmalik.tasbeeh
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
 import android.widget.Toast
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
@@ -63,9 +64,9 @@ import com.amirmalik.tasbeeh.data.SessionStatus
 import com.amirmalik.tasbeeh.data.TasbeehState
 import com.amirmalik.tasbeeh.data.TasbeehStore
 import com.amirmalik.tasbeeh.data.sessionSnapshotForDisplay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.IOException
 import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
@@ -102,9 +103,9 @@ class MainActivity : ComponentActivity() {
     private val pendingUntilTtsReady = ArrayDeque<PendingArabicSpeech>()
 
     private fun showArabicVoiceNotice(message: String) {
-        if (hasShownArabicVoiceNotice) return
+        if (hasShownArabicVoiceNotice || isFinishing || isDestroyed) return
         hasShownArabicVoiceNotice = true
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        runCatching { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
     }
 
     private fun refreshSpeechPlayingState() {
@@ -205,6 +206,7 @@ class MainActivity : ComponentActivity() {
         arabicTextToSpeech = TextToSpeech(this) { status ->
             val engine = arabicTextToSpeech ?: return@TextToSpeech
             runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 ttsInitializationFinished = true
                 if (status == TextToSpeech.SUCCESS) {
                     val languageResult = runCatching {
@@ -301,9 +303,12 @@ class MainActivity : ComponentActivity() {
                 try {
                     store.migrateToSingleSession()
                     store.state.collect { value = it }
-                } catch (_: IOException) {
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
                     // Do not replace a failed read with default preferences:
                     // that could make existing user data appear to be erased.
+                    Log.e("Noor-e-Dhikr", "Unable to load saved state", error)
                     storageReadError = true
                 }
             }
@@ -328,7 +333,9 @@ class MainActivity : ComponentActivity() {
                     onStopSpeech = { stopArabicSpeech() }
                 ) {
                     if (saved.hapticsEnabled) {
-                        window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        runCatching {
+                            window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        }
                     }
                 }
             }
@@ -442,14 +449,18 @@ private fun TasbeehApp(
         scope.launch {
             try {
                 operation()
-                onSuccess()
-            } catch (_: IOException) {
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e("Noor-e-Dhikr", "A saved-data operation failed", error)
                 Toast.makeText(
                     context,
-                    "Unable to access saved data. Your changes may not have been saved. Please try again.",
+                    "The action could not be completed. Your saved data has not been intentionally reset. Please try again.",
                     Toast.LENGTH_LONG
                 ).show()
+                return@launch
             }
+            onSuccess()
         }
     }
 
@@ -588,18 +599,21 @@ private fun TasbeehApp(
                     customDhikrs = state.customDhikrs,
                     onBack = { showDhikrScreen = false },
                     onSelect = { item ->
-                        showDhikrScreen = false
                         when {
                             item.customId != null && item.customId != state.selectedCustomDhikrId -> {
                                 val custom = state.customDhikrs.firstOrNull { it.id == item.customId }
-                                if (custom != null) launchStoreOperation {
+                                if (custom != null) launchStoreOperation(
+                                    onSuccess = { showDhikrScreen = false }
+                                ) {
                                     store.selectCustomDhikr(custom, System.currentTimeMillis())
                                 }
                             }
                             item.customId == null &&
                                 (state.selectedCustomDhikrId != null || item.value != state.dhikr) -> {
                                 val builtIn = DhikrCatalog.byValue(item.value)
-                                launchStoreOperation {
+                                launchStoreOperation(
+                                    onSuccess = { showDhikrScreen = false }
+                                ) {
                                     store.selectBuiltInDhikr(
                                         item.value,
                                         builtIn?.arabic.orEmpty(),
@@ -607,6 +621,7 @@ private fun TasbeehApp(
                                     )
                                 }
                             }
+                            else -> showDhikrScreen = false
                         }
                     },
                     onCreateCustom = {
@@ -617,8 +632,10 @@ private fun TasbeehApp(
                         editingCustomDhikr = custom
                         showCustomDhikrEditor = true
                     },
-                    onDeleteCustom = { custom ->
-                        launchStoreOperation { store.deleteCustomDhikr(custom.id, System.currentTimeMillis()) }
+                    onDeleteCustom = { custom, onDeleted ->
+                        launchStoreOperation(onSuccess = onDeleted) {
+                            store.deleteCustomDhikr(custom.id, System.currentTimeMillis())
+                        }
                     }
                 )
             }
@@ -848,7 +865,7 @@ private fun TasbeehApp(
             onStopSpeech = onStopSpeech,
             onDismiss = { showSettings = false },
             onSave = { sound, haptics, fontScale, voice ->
-                launchStoreOperation {
+                launchStoreOperation(onSuccess = { showSettings = false }) {
                     store.update(soundEnabled = sound, hapticsEnabled = haptics,
                         fontScale = fontScale, ttsVoicePreference = voice)
                 }
@@ -1791,7 +1808,6 @@ private fun SettingsDialog(
         confirmButton = {
             TextButton(onClick = {
                 onSave(sound, haptics, fontScale, ttsVoice)
-                onDismiss()
             }) { Text("SAVE SETTINGS", color = Gold) }
         },
         dismissButton = {

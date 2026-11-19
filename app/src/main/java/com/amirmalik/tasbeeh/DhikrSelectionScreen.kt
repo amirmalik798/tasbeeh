@@ -112,7 +112,7 @@ internal fun DhikrSelectionScreen(
     onSelect: (DhikrItem) -> Unit,
     onCreateCustom: () -> Unit,
     onEditCustom: (CustomDhikr) -> Unit,
-    onDeleteCustom: (CustomDhikr) -> Unit
+    onDeleteCustom: (CustomDhikr, onDeleted: () -> Unit) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
@@ -339,8 +339,7 @@ internal fun DhikrSelectionScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    onDeleteCustom(entry)
-                    pendingDelete = null
+                    onDeleteCustom(entry) { pendingDelete = null }
                 }) { Text("DELETE", color = Color(0xFFFF9B82)) }
             },
             dismissButton = {

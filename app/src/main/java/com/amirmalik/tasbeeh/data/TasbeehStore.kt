@@ -43,6 +43,11 @@ internal fun canUndoCount(count: Int, sessionStatus: SessionStatus?): Boolean =
         sessionStatus != SessionStatus.COMPLETED &&
         sessionStatus != SessionStatus.INCOMPLETE
 
+internal fun incrementCounterValueSafely(storedCount: Int): Int {
+    val nonNegativeCount = storedCount.coerceAtLeast(0)
+    return if (nonNegativeCount == Int.MAX_VALUE) Int.MAX_VALUE else nonNegativeCount + 1
+}
+
 enum class SessionEventType { STARTED, PAUSED, RESUMED, ENDED }
 
 data class SessionEvent(val type: SessionEventType, val at: Long)
@@ -269,7 +274,7 @@ class TasbeehStore(private val context: Context) {
                 existing.status == SessionStatus.COMPLETED ||
                 existing.status == SessionStatus.INCOMPLETE
             val baseCount = if (startsNewSession) 0 else storedCount
-            val nextCount = baseCount + 1
+            val nextCount = incrementCounterValueSafely(baseCount)
 
             val session = if (startsNewSession) {
                 SavedSession(
