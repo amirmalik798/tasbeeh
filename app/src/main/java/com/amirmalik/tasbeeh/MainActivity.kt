@@ -207,6 +207,7 @@ class MainActivity : ComponentActivity() {
     private var mediaController: MediaController? = null
     private var mediaControllerFuture: ListenableFuture<MediaController>? = null
     private var pendingRecitationRequest: PendingRecitationRequest? = null
+    private var pendingRecitationPlayWhenReady = true
 
     private data class PendingRecitationRequest(
         val title: String,
@@ -284,8 +285,9 @@ class MainActivity : ComponentActivity() {
                         controller.addListener(playbackListener)
                         updatePlaybackUiState()
                         pendingRecitationRequest?.let { request ->
+                            val shouldPlay = pendingRecitationPlayWhenReady
                             pendingRecitationRequest = null
-                            startRecitationRequest(controller, request)
+                            startRecitationRequest(controller, request, shouldPlay)
                         }
                     }
                     .onFailure { error ->
@@ -294,6 +296,7 @@ class MainActivity : ComponentActivity() {
                         speechPlaying = false
                         recitationPreparing = false
                         pendingRecitationRequest = null
+                        pendingRecitationPlayWhenReady = true
                         activeRecitationTitle = ""
                         activeRecitationArtist = ""
                         activeRecitationSubtitle = ""
@@ -318,7 +321,8 @@ class MainActivity : ComponentActivity() {
 
     private fun startRecitationRequest(
         controller: MediaController,
-        request: PendingRecitationRequest
+        request: PendingRecitationRequest,
+        playWhenReady: Boolean = true
     ) {
         val mediaItems = createRecitationMediaItems(request.title, request.artist, request.urls)
         if (mediaItems.isEmpty()) {
@@ -331,9 +335,9 @@ class MainActivity : ComponentActivity() {
             activeRecitationArtist = request.artist
             activeRecitationSubtitle = "Starting recitation…"
             recitationPreparing = true
-            speechPlaying = true
+            speechPlaying = playWhenReady
             controller.prepare()
-            controller.play()
+            if (playWhenReady) controller.play() else controller.pause()
         }.onFailure { error ->
             Log.w("Noor-e-Dhikr", "Could not start the requested recitation", error)
             stopRecitationPlayback()
@@ -370,6 +374,7 @@ class MainActivity : ComponentActivity() {
         )
         val controller = mediaController
         pendingRecitationRequest = request
+        pendingRecitationPlayWhenReady = true
         activeRecitationTitle = request.title
         activeRecitationArtist = request.artist
         activeRecitationSubtitle = "Connecting to audio…"
@@ -377,7 +382,7 @@ class MainActivity : ComponentActivity() {
         speechPlaying = true
         if (controller != null) {
             pendingRecitationRequest = null
-            startRecitationRequest(controller, request)
+            startRecitationRequest(controller, request, pendingRecitationPlayWhenReady)
         } else {
             connectToRecitationService()
         }
@@ -385,6 +390,7 @@ class MainActivity : ComponentActivity() {
 
     private fun stopRecitationPlayback() {
         pendingRecitationRequest = null
+        pendingRecitationPlayWhenReady = true
         mediaController?.let { controller ->
             runCatching {
                 controller.pause()
@@ -401,8 +407,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun toggleRecitationPlayback() {
-        val controller = mediaController ?: return
-        if (controller.mediaItemCount == 0) return
+        val controller = mediaController
+        if (controller == null || controller.mediaItemCount == 0) {
+            if (pendingRecitationRequest != null) {
+                pendingRecitationPlayWhenReady = !pendingRecitationPlayWhenReady
+                speechPlaying = pendingRecitationPlayWhenReady
+            }
+            return
+        }
         runCatching {
             if (controller.playWhenReady) controller.pause() else controller.play()
         }.onFailure { error ->
