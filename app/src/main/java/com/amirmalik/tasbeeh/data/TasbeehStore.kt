@@ -148,9 +148,8 @@ class TasbeehStore(private val context: Context) {
     }
 
     /**
-     * Converts older session-list storage to one current-session record.
-     * The open session takes precedence; otherwise only the newest saved
-     * history entry is retained. Older entries are then removed.
+     * Migrates legacy session records into the complete, persistent session history.
+     * The currently open session is retained separately for the live counter.
      */
     suspend fun migrateToSingleSession() {
         context.tasbeehDataStore.edit { prefs ->
@@ -225,8 +224,8 @@ class TasbeehStore(private val context: Context) {
     }
 
     /**
-     * The count and its single session snapshot are saved atomically. There
-     * is no per-tap history append and no scan over old sessions.
+     * The count and its current-session snapshot are saved atomically. The
+     * session history is updated by session lifecycle events, not each tap.
      */
     suspend fun countDhikr(
         dhikr: String,
@@ -276,7 +275,7 @@ class TasbeehStore(private val context: Context) {
             val saved = if (nextCount >= target) {
                 finishSession(session, now, SessionStatus.COMPLETED)
             } else {
-                session.copy(status = SessionStatus.ACTIVE, endedAt = null, durationMs = null)
+                session.copy(status = SessionStatus.ACTIVE, endedAt = null)
             }
             prefs[Keys.currentSession] = encodeSession(saved)
             upsertHistory(prefs, saved, addIfMissing = startsNewSession)
