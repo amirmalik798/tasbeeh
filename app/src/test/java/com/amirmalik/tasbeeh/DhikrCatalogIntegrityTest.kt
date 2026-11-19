@@ -70,7 +70,7 @@ class DhikrCatalogIntegrityTest {
     fun QuranRefreshRequiresEveryArabicAyahAndEveryTranslation() {
         val allVerses = QuranicDuaCatalog.additions
             .flatMap { it.ayahKeys }
-            .associateWith { "نَصٌّ" to "Translation" }
+            .associateWith { Triple("نَصٌّ", "Nass", "Translation") }
         assertTrue(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, allVerses))
 
         val missingArabic = allVerses.toMutableMap().apply {
