@@ -36,6 +36,12 @@ enum class CountOutcome {
     PAUSED
 }
 
+internal fun shouldUseLegacyCountOnlyRecovery(
+    rawCurrentSession: String,
+    hasRecoverableLegacySession: Boolean,
+    legacyCount: Int
+): Boolean = rawCurrentSession.isBlank() && !hasRecoverableLegacySession && legacyCount > 0
+
 internal fun visibleCounterValue(storedCount: Int, sessionStatus: SessionStatus?): Int =
     if (sessionStatus == SessionStatus.INCOMPLETE) 0 else storedCount.coerceAtLeast(0)
 
@@ -276,20 +282,24 @@ class TasbeehStore(private val context: Context) {
                 // then keeps the original DataStore value intact for diagnosis.
                 val legacyOpen = decodeLegacySession(prefs[Keys.legacyOpenSession].orEmpty())
                 val latestLegacy = decodeLegacySessions(prefs[Keys.legacySessions].orEmpty()).firstOrNull()
-                val recovered = legacyOpen ?: latestLegacy ?: if (rawCurrentSession.isBlank()) {
-                    val legacyCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
-                    if (legacyCount > 0) {
-                        // The former counter did not always create a session record.
-                        // Keep its count, but do not invent a historical start time.
-                        SavedSession(
-                            id = UUID.randomUUID().toString(),
-                            dhikr = prefs[Keys.dhikr] ?: "Surah al-Fatihah",
-                            count = legacyCount,
-                            target = (prefs[Keys.target] ?: 33).coerceIn(1, 9999),
-                            startedAt = 0L,
-                            status = SessionStatus.ACTIVE
-                        )
-                    } else null
+                val legacyCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
+                val hasRecoverableLegacySession = legacyOpen != null || latestLegacy != null
+                val recoverCountOnly = shouldUseLegacyCountOnlyRecovery(
+                    rawCurrentSession,
+                    hasRecoverableLegacySession,
+                    legacyCount
+                )
+                val recovered = legacyOpen ?: latestLegacy ?: if (recoverCountOnly) {
+                    // The former counter did not always create a session record.
+                    // Keep its count, but do not invent a historical start time.
+                    SavedSession(
+                        id = UUID.randomUUID().toString(),
+                        dhikr = prefs[Keys.dhikr] ?: "Surah al-Fatihah",
+                        count = legacyCount,
+                        target = (prefs[Keys.target] ?: 33).coerceIn(1, 9999),
+                        startedAt = 0L,
+                        status = SessionStatus.ACTIVE
+                    )
                 } else null
 
                 when {
