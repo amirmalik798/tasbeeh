@@ -33,7 +33,7 @@ internal fun QuranSurahReaderDialog(
     isSpeaking: Boolean,
     isPreparingRecitation: Boolean,
     hasInternetConnection: Boolean,
-    onPlayRecitation: () -> Unit,
+    onPlayRecitation: (String, String, List<String>) -> Unit,
     onStopRecitation: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -94,7 +94,7 @@ internal fun QuranSurahReaderDialog(
                 FilledTonalButton(
                     onClick = {
                         if (isSpeaking || isPreparingRecitation) onStopRecitation()
-                        else onPlayRecitation()
+                        else onPlayRecitation(item.title, QuranRecitationAudio.ATTRIBUTION, QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys))
                     },
                     enabled = isSpeaking || isPreparingRecitation ||
                         (hasInternetConnection && canPlay),
