@@ -86,6 +86,8 @@ internal data class DhikrItem(
     val isCountable: Boolean = contentType == "invocation"
 )
 
+internal fun isCounterSelectableDhikr(item: DhikrItem): Boolean = item.customId != null
+
 internal fun orderedDhikrCategories(openDuaCategories: List<String>): List<String> =
     (listOf("All", "Quran", "My Dhikhrs") + openDuaCategories
         .map { it.trim() }
@@ -106,7 +108,7 @@ internal fun DhikrSelectionScreen(
     quranCacheWriteFailed: Boolean,
     isSpeaking: Boolean,
     isPreparingRecitation: Boolean,
-    onPlayRecitation: (List<String>) -> Unit,
+    onPlayRecitation: (String, String, List<String>) -> Unit,
     onStopRecitation: () -> Unit,
     onRetryQuranText: () -> Unit,
     onRetryOpenDuaCatalog: () -> Unit,
@@ -120,7 +122,7 @@ internal fun DhikrSelectionScreen(
     onDeleteCustom: (CustomDhikr, onDeleted: () -> Unit) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("All") }
+    var category by remember { mutableStateOf("My Dhikhrs") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
     var readingSurah by remember { mutableStateOf<DhikrItem?>(null) }
     val categories = remember(openDuaCategories) {
@@ -362,7 +364,7 @@ internal fun DhikrSelectionScreen(
                     Spacer(Modifier.height(9.dp))
                     TextButton(onClick = {
                         query = ""
-                        category = "All"
+                        category = "My Dhikhrs"
                         keyboardController?.hide()
                     }) {
                         Text("CLEAR SEARCH & FILTERS", color = Color(0xFFFFD56A), fontSize = 11.sp)
@@ -376,17 +378,30 @@ internal fun DhikrSelectionScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
-                    val isSelected = if (item.customId != null) {
+                    val isSelected = item.customId != null &&
                         item.customId == currentCustomDhikrId
-                    } else {
-                        currentCustomDhikrId == null && item.value == currentDhikr
-                    }
                     val custom = item.customId?.let(customDhikrsById::get)
+                    val isQuran = item.quranAyahKeys.isNotEmpty()
+                    val hasRecording = isQuran || item.recitationAudioUrls.isNotEmpty()
                     DhikrOptionCard(
                         item = item,
                         selected = isSelected,
                         enabled = !isStoreBusy,
-                        onClick = { onSelect(item) },
+                        selectable = isCounterSelectableDhikr(item),
+                        showListenButton = item.customId == null,
+                        listenEnabled = hasRecording && hasInternetConnection,
+                        onClick = { if (isCounterSelectableDhikr(item)) onSelect(item) },
+                        onListen = if (hasRecording) {
+                            {
+                                val urls = if (isQuran) {
+                                    QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys)
+                                } else item.recitationAudioUrls
+                                val artist = if (isQuran) {
+                                    QuranRecitationAudio.ATTRIBUTION
+                                } else item.recitationCredit.ifBlank { "OpenDua recitation" }
+                                onPlayRecitation(item.title, artist, urls)
+                            }
+                        } else null,
                         onRead = item.takeIf(QuranicDuaCatalog::isFullSurah)?.let { { readingSurah = it } },
                         onEdit = custom?.let { entry -> { onEditCustom(entry) } },
                         onDelete = custom?.let { entry -> { pendingDelete = entry } }
@@ -425,7 +440,11 @@ internal fun DhikrSelectionScreen(
             isPreparingRecitation = isPreparingRecitation,
             hasInternetConnection = hasInternetConnection,
             onPlayRecitation = {
-                onPlayRecitation(QuranRecitationAudio.audioUrlsForAyahs(surah.quranAyahKeys))
+                onPlayRecitation(
+                    surah.title,
+                    QuranRecitationAudio.ATTRIBUTION,
+                    QuranRecitationAudio.audioUrlsForAyahs(surah.quranAyahKeys)
+                )
             },
             onStopRecitation = onStopRecitation,
             onDismiss = { readingSurah = null }
@@ -557,6 +576,10 @@ private fun DhikrOptionCard(
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
+    selectable: Boolean,
+    showListenButton: Boolean,
+    listenEnabled: Boolean,
+    onListen: (() -> Unit)? = null,
     onRead: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null
@@ -574,8 +597,8 @@ private fun DhikrOptionCard(
     } else item.meaning
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(
-            enabled = item.isCountable && enabled,
-            role = if (item.isCountable) Role.Button else null,
+            enabled = selectable && enabled,
+            role = if (selectable) Role.Button else null,
             onClick = onClick
         ),
         color = if (selected) Color(0xFF252014) else Color(0xFF121714),
@@ -594,6 +617,20 @@ private fun DhikrOptionCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (showListenButton) {
+                    IconButton(
+                        onClick = { onListen?.invoke() },
+                        enabled = listenEnabled && onListen != null,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.VolumeUp,
+                            contentDescription = "Listen to ${item.title}",
+                            tint = if (listenEnabled && onListen != null) gold else Color(0xFF667064),
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
                 Box(
                     Modifier.clip(RoundedCornerShape(50))
                         .background(if (selected) Color(0xFF4A3919) else Color(0xFF222820))
@@ -605,7 +642,7 @@ private fun DhikrOptionCard(
                     Spacer(Modifier.width(6.dp))
                     Icon(Icons.Default.Check, contentDescription = "Selected", tint = gold, modifier = Modifier.size(17.dp))
                 }
-                if (!item.isCountable) {
+                if (!selectable) {
                     Spacer(Modifier.width(6.dp))
                     Box(
                         Modifier.clip(RoundedCornerShape(50))
@@ -683,7 +720,7 @@ private fun DhikrOptionCard(
                 Spacer(Modifier.height(7.dp))
                 Text(item.reference, color = Color(0xFF7F8C78), fontSize = 10.sp, letterSpacing = .25.sp)
             }
-            if (!item.isCountable) {
+            if (!selectable) {
                 Spacer(Modifier.height(7.dp))
                 Text(
                     "REFERENCE ONLY · NOT A COUNTABLE DU'A",
