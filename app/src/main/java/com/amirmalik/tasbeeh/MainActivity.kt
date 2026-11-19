@@ -617,6 +617,62 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+private fun MyDhikrsEmptyState(onOpenLibrary: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            color = Color(0xFF171D18),
+            shape = RoundedCornerShape(24.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF514329))
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = GoldLight,
+                    modifier = Modifier.size(34.dp)
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Your personal Dhikrs",
+                    color = Ivory,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "The tasbeeh counter works only with entries in My Dhikhrs. Add your own remembrance to begin counting. Quran and other dua collections remain available to read and listen to.",
+                    color = Muted,
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = onOpenLibrary,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Gold,
+                        contentColor = Ink
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(7.dp))
+                    Text("OPEN MY DHIKRS", fontWeight = FontWeight.Bold, letterSpacing = .5.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun TasbeehStartupScreen() {
     Box(
         Modifier.fillMaxSize()
@@ -1004,6 +1060,9 @@ private fun TasbeehApp(
                         }
                     }
                 }
+                if (selectedCustomDhikr == null) {
+                    MyDhikrsEmptyState(onOpenLibrary = { showDhikrScreen = true })
+                } else {
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(Modifier.size(6.dp).background(Gold, CircleShape))
@@ -1136,6 +1195,7 @@ private fun TasbeehApp(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 7.dp)
                 )
+                }
             }
         }
 
