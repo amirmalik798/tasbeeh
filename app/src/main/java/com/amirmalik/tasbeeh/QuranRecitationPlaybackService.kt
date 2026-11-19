@@ -15,8 +15,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
-import com.google.common.util.concurrent.Futures
-import com.google.common.util.concurrent.ListenableFuture
 import org.json.JSONArray
 
 /**
@@ -106,26 +104,9 @@ internal class QuranRecitationPlaybackService : MediaSessionService() {
             })
         }
 
+        // The service owns its playlist while alive. ExoPlayer and MediaSession
+        // keep playback independent of Activity lifecycle, including backgrounding.
         mediaSession = MediaSession.Builder(this, player)
-            .setCallback(object : MediaSession.Callback {
-                override fun onPlaybackResumption(
-                    mediaSession: MediaSession,
-                    controller: MediaSession.ControllerInfo,
-                    isForPlayback: Boolean
-                ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-                    val checkpoint = readPlaybackCheckpoint()
-                        ?: return Futures.immediateFailedFuture(
-                            IllegalStateException("There is no saved recitation to resume.")
-                        )
-                    return Futures.immediateFuture(
-                        MediaSession.MediaItemsWithStartPosition(
-                            checkpoint.items,
-                            checkpoint.startIndex,
-                            checkpoint.startPositionMs
-                        )
-                    )
-                }
-            })
             .build()
     }
 
