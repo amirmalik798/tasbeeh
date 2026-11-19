@@ -428,14 +428,12 @@ class MainActivity : ComponentActivity() {
                     }.isSuccess
 
                     if (!listenerInstalled) {
-                        // The recorded Quran audio does not depend on the device
-                        // TTS callback listener. Keep the app usable and allow
-                        // queued Quran passages to continue through their normal
-                        // primary/fallback handling.
+                        // Without completion callbacks, the UI cannot reliably track
+                        // device speech, but Quran streaming remains available.
                         arabicSpeechReady = false
+                        pendingArabicUtterances.clear()
                         val waiting = pendingUntilTtsReady.toList()
                         pendingUntilTtsReady.clear()
-                        pendingArabicUtterances.clear()
                         waiting.filter { it.quranAyahKeys.isNotEmpty() }.forEach { pending ->
                             enqueueQuranRecitation(
                                 pending.text,
@@ -444,9 +442,7 @@ class MainActivity : ComponentActivity() {
                                 TextToSpeech.QUEUE_ADD
                             )
                         }
-                        speechPlaying = quranMediaPlayer != null ||
-                            pendingQuranAudioUrls.isNotEmpty() ||
-                            pendingQuranFallbacks.isNotEmpty()
+                        refreshSpeechPlayingState()
                         if (waiting.any { it.quranAyahKeys.isEmpty() }) {
                             showArabicVoiceNotice(
                                 "Arabic text-to-speech could not start reliably. Check your device's TTS settings."
@@ -459,7 +455,7 @@ class MainActivity : ComponentActivity() {
                     pendingUntilTtsReady.clear()
                     if (arabicSpeechReady) {
                         waiting.forEach { pending ->
-                            if (pending.quranAyahKeys.isNotEmpty()) {
+                            if (QuranRecitationAudio.shouldUseQuranFoundation(pending.quranAyahKeys)) {
                                 enqueueQuranRecitation(
                                     pending.text,
                                     pending.preferredVoice,
@@ -476,7 +472,9 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     } else {
-                        waiting.filter { it.quranAyahKeys.isNotEmpty() }.forEach { pending ->
+                        waiting.filter {
+                            QuranRecitationAudio.shouldUseQuranFoundation(it.quranAyahKeys)
+                        }.forEach { pending ->
                             enqueueQuranRecitation(
                                 pending.text,
                                 pending.preferredVoice,
@@ -494,7 +492,9 @@ class MainActivity : ComponentActivity() {
                 } else {
                     val waiting = pendingUntilTtsReady.toList()
                     pendingUntilTtsReady.clear()
-                    waiting.filter { it.quranAyahKeys.isNotEmpty() }.forEach { pending ->
+                    waiting.filter {
+                        QuranRecitationAudio.shouldUseQuranFoundation(it.quranAyahKeys)
+                    }.forEach { pending ->
                         enqueueQuranRecitation(
                             pending.text,
                             pending.preferredVoice,
