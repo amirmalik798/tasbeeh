@@ -115,7 +115,7 @@ class SavedSessionTest {
         status: SessionStatus = SessionStatus.ACTIVE,
         durationMs: Long? = null,
         activeSegmentStartedAt: Long? = startedAt.takeIf { it > 0L },
-        events: List<SessionEvent> = listOf(SessionEvent(SessionEventType.STARTED, startedAt)).filter { it > 0L }
+        events: List<SessionEvent> = listOf(SessionEvent(SessionEventType.STARTED, startedAt)).filter { it.at > 0L }
     ) = SavedSession(
         id = "session-test",
         dhikr = "SubhanAllah",
