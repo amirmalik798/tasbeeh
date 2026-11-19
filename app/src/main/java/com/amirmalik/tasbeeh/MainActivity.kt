@@ -501,7 +501,6 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-                }
             }
         }
         } catch (error: Exception) {
