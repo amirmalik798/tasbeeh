@@ -573,8 +573,13 @@ internal class QuranicDuaRepository(context: Context) {
             setRequestProperty("User-Agent", "SereneDhikr/1.0")
         }
         return try {
-            if (connection.responseCode !in 200..299) return null
-            val payload = readUtf8WithLimit(connection.inputStream, MAX_QURAN_SURAH_RESPONSE_BYTES)
+            if (connection.responseCode !in 200..299) {
+                runCatching { connection.errorStream?.close() }
+                return null
+            }
+            val payload = connection.inputStream.use { input ->
+                readUtf8WithLimit(input, MAX_QURAN_SURAH_RESPONSE_BYTES)
+            }
             val editions = JSONObject(payload).optJSONArray("data") ?: return null
             if (editions.length() < 3) return null
 
