@@ -134,14 +134,19 @@ class QuranRecitationTest {
 
 
     @Test
-    fun expandedQuranicCatalogueHasOneHundredExplicitlyMappedEntries() {
-        val originalQuranic = DhikrCatalog.items.count { it.quranAyahKeys.isNotEmpty() }
-        assertEquals(37, originalQuranic)
+    fun expandedQuranicCatalogueHasOneHundredUniqueExplicitlyMappedEntries() {
         assertEquals(63, QuranicDuaCatalog.additions.size)
-        assertEquals(100, originalQuranic + QuranicDuaCatalog.additions.size)
-        QuranicDuaCatalog.additions.forEach { item ->
-            assertTrue("Missing ayah mapping for " + item.id, item.ayahKeys.isNotEmpty())
-            assertEquals(item.ayahKeys.size, QuranRecitationAudio.audioUrlsForAyahs(item.ayahKeys).size)
+        val combinedQuranic = (DhikrCatalog.items + QuranicDuaCatalog.fallbackItems())
+            .distinctBy { it.id }
+            .filter { it.quranAyahKeys.isNotEmpty() }
+        assertEquals(100, combinedQuranic.size)
+        assertEquals(100, combinedQuranic.map { it.id }.distinct().size)
+        combinedQuranic.forEach { item ->
+            assertEquals(
+                "Every ayah in " + item.id + " must resolve to Quran Foundation",
+                item.quranAyahKeys.size,
+                QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys).size
+            )
         }
     }
 }
