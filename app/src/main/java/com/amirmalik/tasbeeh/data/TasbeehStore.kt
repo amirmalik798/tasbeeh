@@ -268,11 +268,12 @@ class TasbeehStore(private val context: Context) {
      */
     suspend fun migrateToSingleSession() {
         context.tasbeehDataStore.edit { prefs ->
-            if (decodeSession(prefs[Keys.currentSession].orEmpty()) == null) {
-                // Recover from a missing or malformed new-format record before
-                // clearing legacy keys, so a partial/corrupt value cannot mask
-                // a still-readable session from the previous app version.
-                prefs.remove(Keys.currentSession)
+            val rawCurrentSession = prefs[Keys.currentSession].orEmpty()
+            if (decodeSession(rawCurrentSession) == null) {
+                // Prefer a readable legacy copy when the current representation
+                // is damaged. Do not erase an unreadable non-empty record when
+                // there is nothing safe to recover; the caller's recovery screen
+                // then keeps the original DataStore value intact for diagnosis.
                 val legacyOpen = decodeLegacySession(prefs[Keys.legacyOpenSession].orEmpty())
                 val latestLegacy = decodeLegacySessions(prefs[Keys.legacySessions].orEmpty()).firstOrNull()
                 val recovered = legacyOpen ?: latestLegacy ?: run {
@@ -291,8 +292,12 @@ class TasbeehStore(private val context: Context) {
                     } else null
                 }
 
-                recovered?.let {
-                    prefs[Keys.currentSession] = encodeSession(it)
+                when {
+                    recovered != null -> prefs[Keys.currentSession] = encodeSession(recovered)
+                    rawCurrentSession.isBlank() -> prefs.remove(Keys.currentSession)
+                    else -> throw IllegalStateException(
+                        "The saved session is unreadable and no legacy session could be recovered."
+                    )
                 }
             }
 
