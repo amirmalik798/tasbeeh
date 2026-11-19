@@ -265,13 +265,9 @@ internal object QuranicDuaCatalog {
             )
         }
 
-        // Keep the previous first-four ordering and put the remaining surahs
-        // in canonical order immediately after those shortcuts.
-        return buildList {
-            add(surahItems.first())
-            addAll(quickItems)
-            addAll(surahItems.drop(1))
-        }
+        // Keep all 114 surahs together in canonical Qur'anic order.
+        // The established quick selections remain available after the surahs.
+        return surahItems + quickItems
     }
 
     fun isFullSurah(item: DhikrItem): Boolean =
