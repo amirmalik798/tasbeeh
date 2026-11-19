@@ -12,7 +12,9 @@ import kotlinx.coroutines.withContext
 internal data class OpenDuaCatalogSnapshot(
     val items: List<DhikrItem>,
     val categories: List<String>,
-    val dataVersion: String
+    val dataVersion: String,
+    val canonicalDuaCount: Int = 0,
+    val recordingCount: Int = 0
 )
 
 /**
@@ -220,7 +222,7 @@ internal object OpenDuaCatalogParser {
             items.map { it.id }.distinct().size != items.size
         ) return null
 
-        return OpenDuaCatalogSnapshot(items, categories, DATA_VERSION)
+        return OpenDuaCatalogSnapshot(items, categories, DATA_VERSION, canonicalDuaIds.size, recordingIds.size)
     }
 }
 
@@ -248,7 +250,13 @@ internal class OpenDuaCatalogRepository(context: Context) {
             ) {
                 OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
             } else {
-                OpenDuaCatalogSnapshot(items, categories, version)
+                OpenDuaCatalogSnapshot(
+                    items,
+                    categories,
+                    version,
+                    OpenDuaCatalogParser.EXPECTED_DUA_COUNT,
+                    OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
+                )
             }
         }.getOrDefault(OpenDuaCatalogSnapshot(emptyList(), emptyList(), version))
     }
