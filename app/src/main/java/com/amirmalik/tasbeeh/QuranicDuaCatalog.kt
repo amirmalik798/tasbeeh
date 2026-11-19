@@ -245,8 +245,8 @@ internal class QuranicDuaRepository(context: Context) {
             val editions = JSONObject(payload).optJSONArray("data") ?: return null
             if (editions.length() < 3) return null
             val arabicAyahs = editions.optJSONObject(0)?.optJSONArray("ayahs") ?: return null
-            val translationAyahs = editions.optJSONObject(1)?.optJSONArray("ayahs") ?: return null
-            val transliterationAyahs = editions.optJSONObject(2)?.optJSONArray("ayahs") ?: return null
+            val translationAyahs = editions.optJSONObject(2)?.optJSONArray("ayahs") ?: return null
+            val transliterationAyahs = editions.optJSONObject(1)?.optJSONArray("ayahs") ?: return null
 
             fun textByAyah(ayahs: JSONArray): Map<Int, String> = buildMap {
                 for (index in 0 until ayahs.length()) {
