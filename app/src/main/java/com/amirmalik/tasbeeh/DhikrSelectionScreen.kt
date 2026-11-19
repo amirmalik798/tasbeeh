@@ -95,10 +95,12 @@ internal fun isQuranCategorySurah(item: DhikrItem): Boolean =
     QuranicDuaCatalog.isFullSurah(item)
 
 internal fun orderedDhikrCategories(openDuaCategories: List<String>): List<String> {
-    val pinned = listOf("All", "Favorites", "My Dhikhrs", "Quran")
+    val pinned = listOf("Favorites", "My Dhikhrs", "Quran")
     val topics = openDuaCategories.map { it.trim() }
         .filter { it.isNotBlank() }
-        .filterNot { topic -> pinned.any { it.equals(topic, ignoreCase = true) } }
+        .filterNot { topic ->
+            topic.equals("All", ignoreCase = true) || pinned.any { it.equals(topic, ignoreCase = true) }
+        }
     return (pinned + topics).distinct()
 }
 
@@ -139,7 +141,7 @@ internal fun DhikrSelectionScreen(
     onDeleteCustom: (CustomDhikr, onDeleted: () -> Unit) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("All") }
+    var category by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
     var readingSurah by remember { mutableStateOf<DhikrItem?>(null) }
     val categories = remember(openDuaCategories) {
@@ -181,7 +183,7 @@ internal fun DhikrSelectionScreen(
         val normalizedQuery = normalizeDhikrSearchText(query)
         searchableItems.asSequence().filter { (item, searchableFields) ->
             val matchesCategory = when (category) {
-                "All" -> true
+                "" -> true
                 "Favorites" -> item.id in favoriteItemIds
                 "My Dhikhrs" -> item.customId != null
                 "Quran" -> isQuranCategorySurah(item)
@@ -345,7 +347,7 @@ internal fun DhikrSelectionScreen(
             }
         }
 
-        if ((category == "All" || category in openDuaCategories) &&
+        if ((category.isBlank() || category in openDuaCategories) &&
             (openDuaIsRefreshing || openDuaRefreshError != null || openDuaCacheWriteFailed || !hasInternetConnection)
         ) {
             CatalogStatusPanel(
@@ -363,7 +365,7 @@ internal fun DhikrSelectionScreen(
         val quranTextIsCached = quranItems.any {
             it.arabic.isNotBlank() && it.transliteration.isNotBlank()
         }
-        if ((category == "All" || category == "Quran") &&
+        if ((category.isBlank() || category == "Quran") &&
             (quranIsRefreshing || quranRefreshError != null || quranCacheWriteFailed)
         ) {
             CatalogStatusPanel(
@@ -403,7 +405,7 @@ internal fun DhikrSelectionScreen(
                     Spacer(Modifier.height(9.dp))
                     TextButton(onClick = {
                         query = ""
-                        category = "All"
+                        category = ""
                         keyboardController?.hide()
                     }) {
                         Text("CLEAR SEARCH & FILTERS", color = Color(0xFFFFD56A), fontSize = 11.sp)
