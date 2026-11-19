@@ -228,9 +228,7 @@ internal fun DhikrSelectionScreen(
                 }
             }
         }
-
     }
-}
 
     pendingDelete?.let { entry ->
         AlertDialog(
