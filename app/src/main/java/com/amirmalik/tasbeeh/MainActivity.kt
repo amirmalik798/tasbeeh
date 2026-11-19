@@ -55,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.DialogProperties
 import com.amirmalik.tasbeeh.data.CountOutcome
+import com.amirmalik.tasbeeh.data.canUndoCount
 import com.amirmalik.tasbeeh.data.CustomDhikr
 import com.amirmalik.tasbeeh.data.SessionStatus
 import com.amirmalik.tasbeeh.data.TasbeehState
@@ -381,8 +382,7 @@ private fun TasbeehApp(
         ?: state.currentSession?.takeIf { completedRoundStillDisplayed }?.target
         ?: state.target
     val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
-    val sessionCompleted = state.currentSession?.status == SessionStatus.COMPLETED
-    val canUndo = state.count > 0 && !sessionPaused && !sessionCompleted
+    val canUndo = canUndoCount(state.count, state.currentSession?.status)
 
     // The editor owns its own BackHandler so it can ask before discarding edits.
     BackHandler(enabled = showDhikrScreen || showHistoryScreen || showSettings) {
@@ -539,6 +539,28 @@ private fun TasbeehApp(
                     )
                 }
                 Spacer(Modifier.height(8.dp))
+                AnimatedVisibility(
+                    visible = state.count >= effectiveTarget,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    Surface(
+                        color = Color(0xFF243528),
+                        shape = RoundedCornerShape(50),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            Gold.copy(alpha = .45f)
+                        )
+                    ) {
+                        Text(
+                            "✦  Target reached — MashaAllah  ✦",
+                            color = GoldLight,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+                        )
+                    }
+                }
 
                 BoxWithConstraints(
                     Modifier.fillMaxWidth().weight(1f, fill = true),
@@ -602,10 +624,16 @@ private fun TasbeehApp(
                 }
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 11.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                    QuickChip("Target · ${effectiveTarget}", Modifier.weight(1f)) { showTarget = true }
+                    QuickChip(
+                        if (sessionIsOpen || completedRoundStillDisplayed) {
+                            "Next target · ${state.target}"
+                        } else {
+                            "Target · ${state.target}"
+                        },
+                        Modifier.weight(1f)
+                    ) { showTarget = true }
                     QuickChip("Change dhikr", Modifier.weight(1f)) { showDhikrScreen = true }
                 }
-                Spacer(Modifier.weight(1f))
                 Text(
                     "Developed by: Amir Malik (2026)",
                     color = Muted.copy(alpha = .72f),
@@ -614,15 +642,6 @@ private fun TasbeehApp(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 7.dp)
                 )
-            }
-            AnimatedVisibility(
-                visible = state.count >= effectiveTarget,
-                enter = fadeIn(), exit = fadeOut(),
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 82.dp)
-            ) {
-                Surface(color = Color(0xFF243528), shape = RoundedCornerShape(50), border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = .45f))) {
-                    Text("✦  Target reached — MashaAllah  ✦", color = GoldLight, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
-                }
             }
         }
 
@@ -1351,7 +1370,12 @@ private fun TargetDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Panel,
-        title = { Text("Choose your target", color = Ivory) },
+        title = {
+            Text(
+                if (hasOpenSession) "Choose next target" else "Choose your target",
+                color = Ivory
+            )
+        },
         text = {
             Column(
                 Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()),

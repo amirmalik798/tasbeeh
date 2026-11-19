@@ -34,6 +34,12 @@ enum class CountOutcome {
     PAUSED
 }
 
+internal fun canUndoCount(count: Int, sessionStatus: SessionStatus?): Boolean =
+    count > 0 &&
+        sessionStatus != SessionStatus.PAUSED &&
+        sessionStatus != SessionStatus.COMPLETED &&
+        sessionStatus != SessionStatus.INCOMPLETE
+
 enum class SessionEventType { STARTED, PAUSED, RESUMED, ENDED }
 
 data class SessionEvent(val type: SessionEventType, val at: Long)
@@ -278,12 +284,8 @@ class TasbeehStore(private val context: Context) {
     suspend fun undoCount(now: Long) {
         context.tasbeehDataStore.edit { prefs ->
             val currentCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
-            if (currentCount == 0) return@edit
-
             val session = decodeSession(prefs[Keys.currentSession].orEmpty())
-            if (session?.status == SessionStatus.PAUSED || session?.status == SessionStatus.COMPLETED) {
-                return@edit
-            }
+            if (!canUndoCount(currentCount, session?.status)) return@edit
 
             val nextCount = (currentCount - 1).coerceAtLeast(0)
             prefs[Keys.count] = nextCount
