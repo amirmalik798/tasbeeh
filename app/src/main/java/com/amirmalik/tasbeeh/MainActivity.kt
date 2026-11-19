@@ -440,15 +440,22 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 )
             },
             confirmButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    TextButton(onClick = {
-                        scope.launch { store.resetCounter(saveSession = true, now = System.currentTimeMillis()) }
-                        showReset = false
-                    }) { Text("SAVE & RESET", color = Gold) }
+                if (sessionIsOpen) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        TextButton(onClick = {
+                            scope.launch { store.resetCounter(saveSession = true, now = System.currentTimeMillis()) }
+                            showReset = false
+                        }) { Text("SAVE & RESET", color = Gold) }
+                        TextButton(onClick = {
+                            scope.launch { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) }
+                            showReset = false
+                        }) { Text("RESET WITHOUT SAVING", color = Color(0xFFFF9B82)) }
+                    }
+                } else {
                     TextButton(onClick = {
                         scope.launch { store.resetCounter(saveSession = false, now = System.currentTimeMillis()) }
                         showReset = false
-                    }) { Text("RESET WITHOUT SAVING", color = Color(0xFFFF9B82)) }
+                    }) { Text("RESET COUNTER", color = Gold) }
                 }
             },
             dismissButton = { TextButton(onClick = { showReset = false }) { Text("CANCEL", color = Muted) } }
