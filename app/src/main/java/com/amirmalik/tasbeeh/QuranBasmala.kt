@@ -48,8 +48,13 @@ internal object QuranBasmala {
         }
     }
 
-    private fun isArabicLetter(character: Char): Boolean =
-        character.code in 0x0621..0x064A ||
-            character.code in 0x066E..0x06D3 ||
-            character.code in 0x06FA..0x06FC
+    private fun isArabicLetter(character: Char): Boolean {
+        val code = character.code
+        // Harakat and the Uthmani dagger alif are combining marks, not
+        // additional base letters in the normalized basmala comparison.
+        if (code in 0x064B..0x065F || code == 0x0670) return false
+        return code in 0x0621..0x064A ||
+            code in 0x066E..0x06D3 ||
+            code in 0x06FA..0x06FC
+    }
 }
