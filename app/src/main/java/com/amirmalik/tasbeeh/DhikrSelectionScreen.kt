@@ -73,7 +73,8 @@ internal data class DhikrItem(
     val reference: String = "",
     val customId: String? = null,
     val quranAyahKeys: List<String> = emptyList(),
-    val recitationAudioUrls: List<String> = emptyList()
+    val recitationAudioUrls: List<String> = emptyList(),
+    val recitationCredit: String = ""
 )
 
 @Composable
@@ -433,7 +434,7 @@ private fun DhikrOptionCard(
                     letterSpacing = .55.sp
                 )
                 Text(
-                    "Audio streamed from the recording linked to this entry",
+                    item.recitationCredit.ifBlank { "Audio streamed from the recording linked to this entry" },
                     color = Color(0xFF7F8C78),
                     fontSize = 9.sp
                 )

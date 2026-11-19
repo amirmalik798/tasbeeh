@@ -112,6 +112,11 @@ internal class OpenDuaCatalogRepository(context: Context) {
             .filter { it.isNotBlank() }.joinToString(" ")
 
         val recordings = entry.optJSONArray("recordings") ?: JSONArray()
+        val recitationCredit = (0 until recordings.length())
+            .mapNotNull { recordings.optJSONObject(it)?.optString("reciter")?.takeIf(String::isNotBlank) }
+            .distinct()
+            .joinToString(" · ")
+            .ifBlank { "Recorded recitation · OpenDua" }
         val audioUrls = buildList {
             for (index in 0 until recordings.length()) {
                 val recording = recordings.optJSONObject(index) ?: continue
@@ -146,7 +151,8 @@ internal class OpenDuaCatalogRepository(context: Context) {
             transliteration = transliteration,
             meaning = meaning,
             reference = citation + " · OpenDua",
-            recitationAudioUrls = audioUrls
+            recitationAudioUrls = audioUrls,
+            recitationCredit = recitationCredit
         )
     }
 
@@ -183,7 +189,8 @@ internal class OpenDuaCatalogRepository(context: Context) {
                     transliteration = item.optString("transliteration"),
                     meaning = item.optString("meaning"),
                     reference = item.optString("reference"),
-                    recitationAudioUrls = (0 until urls.length()).map { urls.optString(it) }
+                    recitationAudioUrls = (0 until urls.length()).map { urls.optString(it) },
+                    recitationCredit = item.optString("recitationCredit")
                 )
             )
         }
@@ -199,6 +206,7 @@ internal class OpenDuaCatalogRepository(context: Context) {
         put("meaning", item.meaning)
         put("reference", item.reference)
         put("audioUrls", JSONArray(item.recitationAudioUrls))
+        put("recitationCredit", item.recitationCredit)
     }
 
     companion object {

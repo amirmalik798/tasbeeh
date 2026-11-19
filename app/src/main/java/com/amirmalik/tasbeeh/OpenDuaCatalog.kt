@@ -158,7 +158,7 @@ internal object OpenDuaCatalog {
                         transliteration = transliteration,
                         meaning = meaning,
                         reference = reference,
-                        recitationUrls = audioUrls,
+                        recitationAudioUrls = audioUrls,
                         recitationCredit = "Recitation by Muhammad Jumah for OpenDua"
                     )
                 }
