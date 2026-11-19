@@ -30,3 +30,13 @@ class TrustedRecitationUrlTest {
         assertFalse(isTrustedRecitationUrl(""))
     }
 }
+
+    @Test
+    fun openduaRecordingsRequireTheExactApprovedAudioHost() {
+        assertTrue(isTrustedOpenDuaAudioUrl("https://audio.opendua.org/hisn/recitation.mp3"))
+        assertTrue(isTrustedOpenDuaAudioUrl("https://audio.opendua.org:443/hisn/recitation.mp3"))
+        assertFalse(isTrustedOpenDuaAudioUrl("https://audio.opendua.org.attacker.example/file.mp3"))
+        assertFalse(isTrustedOpenDuaAudioUrl("https://audio.opendua.org@attacker.example/file.mp3"))
+        assertFalse(isTrustedOpenDuaAudioUrl("http://audio.opendua.org/hisn/file.mp3"))
+        assertFalse(isTrustedOpenDuaAudioUrl("https://verses.quran.foundation/recitation.mp3"))
+    }
