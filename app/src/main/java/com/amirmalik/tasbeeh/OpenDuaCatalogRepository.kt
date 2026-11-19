@@ -30,6 +30,7 @@ internal object OpenDuaCatalogParser {
     const val EXPECTED_ENTRY_COUNT = 267
     const val EXPECTED_DUA_COUNT = 262
     const val EXPECTED_RECORDING_COUNT = 249
+    const val EXPECTED_CATEGORY_COUNT = 19
 
     fun parse(root: JSONObject): OpenDuaCatalogSnapshot? {
         if (root.optString("dataVersion") != DATA_VERSION) return null
@@ -53,7 +54,7 @@ internal object OpenDuaCatalogParser {
                 }
             }
         }
-        if (categories.isEmpty()) return null
+        if (categories.size != EXPECTED_CATEGORY_COUNT) return null
 
         val reciters = root.optJSONArray("reciters") ?: JSONArray()
         val reciterNames = buildMap<String, String> {
@@ -124,8 +125,7 @@ internal object OpenDuaCatalogParser {
                     ?: JSONArray()
                 val arabicParts = mutableListOf<String>()
                 val transliterationParts = mutableListOf<String>()
-                val translationParts = mutableListOf<String>()
-                val instructionParts = mutableListOf<String>()
+                val meaningParts = mutableListOf<String>()
                 val audioUrls = linkedSetOf<String>()
                 val creditNames = linkedSetOf<String>()
 
@@ -144,7 +144,7 @@ internal object OpenDuaCatalogParser {
                                 dua.optString("transliteration").trim().takeIf { it.isNotBlank() }
                                     ?.let(transliterationParts::add)
                                 dua.optString("translation").trim().takeIf { it.isNotBlank() }
-                                    ?.let(translationParts::add)
+                                    ?.let(meaningParts::add)
                             }
 
                             val recordings = step.optJSONArray("recordings") ?: JSONArray()
@@ -163,7 +163,7 @@ internal object OpenDuaCatalogParser {
                             step.optString("arabic").trim().takeIf { it.isNotBlank() }
                                 ?.let(arabicParts::add)
                             step.optString("text").trim().takeIf { it.isNotBlank() }
-                                ?.let(instructionParts::add)
+                                ?.let(meaningParts::add)
                         }
                     }
                 }
@@ -191,7 +191,6 @@ internal object OpenDuaCatalogParser {
                 val reference = (listOf("OpenDua v$DATA_VERSION") + referenceParts)
                     .joinToString(" · ")
 
-                val meaningParts = (translationParts + instructionParts).distinct()
                 val itemCategory = entryCategories.firstOrNull().orEmpty()
                 items += DhikrItem(
                     id = "opendua-$entryId-$variationId",
@@ -235,7 +234,13 @@ internal class OpenDuaCatalogRepository(context: Context) {
             return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
         }
         val rawItems = preferences.getString("items", null)
-            ?: return OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
+            ?: return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
+        if (preferences.getInt("source_entry_count", 0) != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
+            preferences.getInt("canonical_dua_count", 0) != OpenDuaCatalogParser.EXPECTED_DUA_COUNT ||
+            preferences.getInt("recording_count", 0) != OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
+        ) {
+            return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
+        }
         return runCatching {
             val items = decodeItems(JSONArray(rawItems))
             val rawCategories = preferences.getString("categories", "[]") ?: "[]"
@@ -245,7 +250,7 @@ internal class OpenDuaCatalogRepository(context: Context) {
                 .filter { it.isNotBlank() }
             val sourceEntryCount = items.map { it.sourceEntryId }.distinct().size
             if (sourceEntryCount != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
-                categories.isEmpty() ||
+                categories.size != OpenDuaCatalogParser.EXPECTED_CATEGORY_COUNT ||
                 items.map { it.id }.distinct().size != items.size
             ) {
                 OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
@@ -291,6 +296,9 @@ internal class OpenDuaCatalogRepository(context: Context) {
                 .putString("items", encodedItems.toString())
                 .putString("categories", encodedCategories.toString())
                 .putString("data_version", snapshot.dataVersion)
+                .putInt("source_entry_count", OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT)
+                .putInt("canonical_dua_count", snapshot.canonicalDuaCount)
+                .putInt("recording_count", snapshot.recordingCount)
                 .apply()
             snapshot
         } finally {
