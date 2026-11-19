@@ -38,6 +38,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    // Pinned sherpa-onnx release; Arabic recognition uses Whisper, not the affected transducer decoder.
+    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v2.0.2")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
