@@ -83,6 +83,62 @@ class SavedSessionTest {
         assertEquals(SessionStatus.COMPLETED, SessionStatus.fromStoredValue(null))
     }
 
+    @Test
+    fun completedRoundStartsFreshEvenWhenTheDefaultTargetChanges() {
+        assertEquals(
+            true,
+            isPreviouslyCompletedRound(
+                storedCount = 99,
+                target = 100,
+                lastCompletedCount = 99,
+                lastCompletedDhikr = "SubhanAllah",
+                currentDhikr = "SubhanAllah"
+            )
+        )
+    }
+
+    @Test
+    fun completionMarkerDoesNotLeakAcrossDifferentDhikr() {
+        assertEquals(
+            false,
+            isPreviouslyCompletedRound(
+                storedCount = 33,
+                target = 99,
+                lastCompletedCount = 33,
+                lastCompletedDhikr = "SubhanAllah",
+                currentDhikr = "Alhamdulillah"
+            )
+        )
+    }
+
+    @Test
+    fun reachingTheCurrentTargetStartsANewRoundWithoutAHistoryMarker() {
+        assertEquals(
+            true,
+            isPreviouslyCompletedRound(
+                storedCount = 7,
+                target = 7,
+                lastCompletedCount = null,
+                lastCompletedDhikr = null,
+                currentDhikr = "SubhanAllah"
+            )
+        )
+    }
+
+    @Test
+    fun incompleteCurrentCountIsNotMistakenForACompletedRound() {
+        assertEquals(
+            false,
+            isPreviouslyCompletedRound(
+                storedCount = 12,
+                target = 33,
+                lastCompletedCount = 33,
+                lastCompletedDhikr = "SubhanAllah",
+                currentDhikr = "SubhanAllah"
+            )
+        )
+    }
+
     private fun session(
         startedAt: Long = 1_000L,
         lastActivityAt: Long = 10_000L,
