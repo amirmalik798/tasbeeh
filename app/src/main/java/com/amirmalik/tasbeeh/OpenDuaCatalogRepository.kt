@@ -229,12 +229,13 @@ internal class OpenDuaCatalogRepository(context: Context) {
     private val preferences = context.getSharedPreferences("open_dua_catalog_v004", Context.MODE_PRIVATE)
 
     fun loadCachedSnapshot(): OpenDuaCatalogSnapshot {
-        val version = preferences.getString("data_version", null)
-        if (version != OpenDuaCatalogParser.DATA_VERSION) {
+        val cachedVersion = preferences.getString("data_version", null)
+        if (cachedVersion != OpenDuaCatalogParser.DATA_VERSION) {
             return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
         }
+        val version = OpenDuaCatalogParser.DATA_VERSION
         val rawItems = preferences.getString("items", null)
-            ?: return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
+            ?: return OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
         if (preferences.getInt("source_entry_count", 0) != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
             preferences.getInt("canonical_dua_count", 0) != OpenDuaCatalogParser.EXPECTED_DUA_COUNT ||
             preferences.getInt("recording_count", 0) != OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
