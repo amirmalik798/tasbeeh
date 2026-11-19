@@ -22,6 +22,9 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -429,7 +432,7 @@ private fun OpenDuaCatalogStatusPanel(
                     )
                 } else {
                     Icon(
-                        imageVector = if (errorMessage != null) Icons.Default.CloudOff else Icons.Default.CloudDone,
+                        imageVector = if (errorMessage != null) Icons.Filled.CloudOff else Icons.Filled.CloudDone,
                         contentDescription = null,
                         tint = if (errorMessage != null || cacheWriteFailed) Color(0xFFE7B66A) else Color(0xFF83B994),
                         modifier = Modifier.size(17.dp)
@@ -457,7 +460,7 @@ private fun OpenDuaCatalogStatusPanel(
                     onClick = onRetry,
                     contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
                 ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
+                    Icon(Icons.Filled.Refresh, contentDescription = null, tint = accent, modifier = Modifier.size(15.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("RETRY DOWNLOAD", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
