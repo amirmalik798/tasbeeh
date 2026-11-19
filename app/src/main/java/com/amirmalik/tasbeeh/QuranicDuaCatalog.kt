@@ -107,6 +107,17 @@ internal fun hasCompleteQuranicText(items: List<DhikrItem>): Boolean {
     }
 }
 
+internal fun hasAllQuranicTextAndTranslations(
+    definitions: List<QuranicDuaDefinition>,
+    versesByKey: Map<String, Pair<String, String>>
+): Boolean = definitions.all { definition ->
+    definition.ayahKeys.all { key ->
+        versesByKey[key]?.let { (arabic, translation) ->
+            arabic.isNotBlank() && translation.isNotBlank()
+        } == true
+    }
+}
+
 internal fun hasCompleteQuranicCache(
     items: List<DhikrItem>,
     completedAyahKeysById: Map<String, List<String>>
@@ -139,7 +150,9 @@ internal class QuranicDuaRepository(context: Context) {
                     val item = array.optJSONObject(index) ?: continue
                     val keys = item.optJSONArray("ayahKeys") ?: JSONArray()
                     val id = item.optString("id")
-                    item.optJSONArray("completedAyahKeys")?.let { completedKeys ->
+                    if (item.has("completedAyahKeys")) {
+                        val completedKeys = item.optJSONArray("completedAyahKeys")
+                            ?: return@runCatching QuranicDuaCatalog.fallbackItems()
                         completedAyahKeysById[id] =
                             (0 until completedKeys.length()).map { completedKeys.optString(it) }
                     }
@@ -200,11 +213,10 @@ internal class QuranicDuaRepository(context: Context) {
             )
         }
 
-        val allRequestedVersesPresent = QuranicDuaCatalog.additions.all { definition ->
-            definition.ayahKeys.all { key -> verseByKey[key]?.first?.isNotBlank() == true }
-        }
-        val hasCompleteArabicText = allRequestedVersesPresent && hasCompleteQuranicText(items)
-        if (hasCompleteArabicText) {
+        val hasCompleteTextAndTranslations =
+            hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, verseByKey) &&
+                hasCompleteQuranicText(items)
+        if (hasCompleteTextAndTranslations) {
             val persisted = runCatching {
                 val array = JSONArray()
                 items.forEach { item ->

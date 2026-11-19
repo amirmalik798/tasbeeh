@@ -67,6 +67,31 @@ class DhikrCatalogIntegrityTest {
     }
 
     @Test
+    fun QuranRefreshRequiresEveryArabicAyahAndEveryTranslation() {
+        val allVerses = QuranicDuaCatalog.additions
+            .flatMap { it.ayahKeys }
+            .associateWith { "نَصٌّ" to "Translation" }
+        assertTrue(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, allVerses))
+
+        val missingArabic = allVerses.toMutableMap().apply {
+            val key = QuranicDuaCatalog.additions.first().ayahKeys.first()
+            put(key, "" to "Translation")
+        }
+        assertFalse(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, missingArabic))
+
+        val missingTranslation = allVerses.toMutableMap().apply {
+            val key = QuranicDuaCatalog.additions.first().ayahKeys.first()
+            put(key, "نَصٌّ" to "")
+        }
+        assertFalse(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, missingTranslation))
+
+        val missingVerse = allVerses.toMutableMap().apply {
+            remove(QuranicDuaCatalog.additions.first().ayahKeys.first())
+        }
+        assertFalse(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, missingVerse))
+    }
+
+    @Test
     fun savedQuranTextMustProveEveryRequestedAyahWasCached() {
         val completeItems = QuranicDuaCatalog.fallbackItems().map { it.copy(arabic = "نَصٌّ") }
         val completeKeys = QuranicDuaCatalog.additions.associate { it.id to it.ayahKeys }
