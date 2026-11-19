@@ -202,6 +202,8 @@ class MainActivity : ComponentActivity() {
     private var speechPlaying by mutableStateOf(false)
     private var recitationPreparing by mutableStateOf(false)
     private var activeRecitationTitle by mutableStateOf("")
+    private var activeRecitationArtist by mutableStateOf("")
+    private var activeRecitationSubtitle by mutableStateOf("")
     private var mediaController: MediaController? = null
     private var mediaControllerFuture: ListenableFuture<MediaController>? = null
     private var pendingRecitationRequest: PendingRecitationRequest? = null
@@ -238,10 +240,24 @@ class MainActivity : ComponentActivity() {
 
     private fun updatePlaybackUiState() {
         val controller = mediaController
-        speechPlaying = controller?.isPlaying == true
-        recitationPreparing = controller?.playbackState == Player.STATE_BUFFERING
-        activeRecitationTitle = controller?.currentMediaItem?.mediaMetadata?.title
-            ?.toString().orEmpty()
+        if (controller == null || controller.mediaItemCount == 0 ||
+            controller.playbackState == Player.STATE_ENDED
+        ) {
+            speechPlaying = false
+            recitationPreparing = false
+            activeRecitationTitle = ""
+            activeRecitationArtist = ""
+            activeRecitationSubtitle = ""
+            return
+        }
+        // playWhenReady reflects the user's intent, including while a stream
+        // buffers. The current title remains visible when the user pauses it.
+        speechPlaying = controller.playWhenReady
+        recitationPreparing = controller.playbackState == Player.STATE_BUFFERING
+        val metadata = controller.currentMediaItem?.mediaMetadata
+        activeRecitationTitle = metadata?.title?.toString().orEmpty()
+        activeRecitationArtist = metadata?.artist?.toString().orEmpty()
+        activeRecitationSubtitle = metadata?.subtitle?.toString().orEmpty()
     }
 
     private fun connectToRecitationService() {
@@ -273,6 +289,10 @@ class MainActivity : ComponentActivity() {
                         Log.w("Noor-e-Dhikr", "Could not connect to background recitation service", error)
                         speechPlaying = false
                         recitationPreparing = false
+                        pendingRecitationRequest = null
+                        activeRecitationTitle = ""
+                        activeRecitationArtist = ""
+                        activeRecitationSubtitle = ""
                     }
             },
             ContextCompat.getMainExecutor(this)
@@ -288,6 +308,8 @@ class MainActivity : ComponentActivity() {
         speechPlaying = false
         recitationPreparing = false
         activeRecitationTitle = ""
+        activeRecitationArtist = ""
+        activeRecitationSubtitle = ""
     }
 
     private fun startRecitationRequest(
@@ -301,10 +323,16 @@ class MainActivity : ComponentActivity() {
         }
         runCatching {
             controller.setMediaItems(mediaItems)
+            activeRecitationTitle = request.title
+            activeRecitationArtist = request.artist
+            activeRecitationSubtitle = "Starting recitation…"
+            recitationPreparing = true
+            speechPlaying = true
             controller.prepare()
             controller.play()
         }.onFailure { error ->
             Log.w("Noor-e-Dhikr", "Could not start the requested recitation", error)
+            stopRecitationPlayback()
             showRecitationPlaybackError(recitationPlaybackFailureMessage(error))
         }
     }
@@ -337,10 +365,16 @@ class MainActivity : ComponentActivity() {
             urls = safeUrls
         )
         val controller = mediaController
+        pendingRecitationRequest = request
+        activeRecitationTitle = request.title
+        activeRecitationArtist = request.artist
+        activeRecitationSubtitle = "Connecting to audio…"
+        recitationPreparing = true
+        speechPlaying = false
         if (controller != null) {
+            pendingRecitationRequest = null
             startRecitationRequest(controller, request)
         } else {
-            pendingRecitationRequest = request
             connectToRecitationService()
         }
     }
@@ -358,6 +392,20 @@ class MainActivity : ComponentActivity() {
         speechPlaying = false
         recitationPreparing = false
         activeRecitationTitle = ""
+        activeRecitationArtist = ""
+        activeRecitationSubtitle = ""
+    }
+
+    private fun toggleRecitationPlayback() {
+        val controller = mediaController ?: return
+        if (controller.mediaItemCount == 0) return
+        runCatching {
+            if (controller.playWhenReady) controller.pause() else controller.play()
+        }.onFailure { error ->
+            Log.w("Noor-e-Dhikr", "Could not change recitation playback state", error)
+            showRecitationPlaybackError(recitationPlaybackFailureMessage(error))
+        }
+        updatePlaybackUiState()
     }
 
     private fun showRecitationPlaybackError(message: String) {
@@ -610,6 +658,8 @@ class MainActivity : ComponentActivity() {
                     isSpeaking = speechPlaying,
                     isPreparingSpeech = recitationPreparing,
                     activeRecitationTitle = activeRecitationTitle,
+                    activeRecitationArtist = activeRecitationArtist,
+                    activeRecitationSubtitle = activeRecitationSubtitle,
                     hasInternetConnection = hasInternetConnection,
                     quranReciters = quranReciters,
                     quranRecitationRepository = quranRecitationRepository,
@@ -624,6 +674,7 @@ class MainActivity : ComponentActivity() {
                     onRetryQuranText = { quranRetryCount++ },
                     onRetryOpenDuaCatalog = { openDuaRetryCount++ },
                     onPlayRecitation = { title, artist, urls -> playRecitations(title, artist, urls) },
+                    onToggleSpeech = { toggleRecitationPlayback() },
                     onStopSpeech = { stopRecitationPlayback() }
                 ) {
                     if (saved.hapticsEnabled) {
@@ -643,9 +694,13 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun MyDhikrsEmptyState(onOpenLibrary: () -> Unit) {
+private fun MyDhikrsEmptyState(
+    modifier: Modifier = Modifier,
+    onCreateDhikr: () -> Unit,
+    onBrowseLibrary: () -> Unit
+) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+        modifier = modifier.fillMaxSize().padding(horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -682,7 +737,7 @@ private fun MyDhikrsEmptyState(onOpenLibrary: () -> Unit) {
                 )
                 Spacer(Modifier.height(18.dp))
                 Button(
-                    onClick = onOpenLibrary,
+                    onClick = onCreateDhikr,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Gold,
                         contentColor = Ink
@@ -691,7 +746,11 @@ private fun MyDhikrsEmptyState(onOpenLibrary: () -> Unit) {
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(Modifier.width(7.dp))
-                    Text("OPEN MY DHIKRS", fontWeight = FontWeight.Bold, letterSpacing = .5.sp)
+                    Text("CREATE YOUR FIRST DHIKR", fontWeight = FontWeight.Bold, letterSpacing = .4.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onBrowseLibrary) {
+                    Text("BROWSE QURAN & DUAS", color = GoldLight, fontWeight = FontWeight.SemiBold, letterSpacing = .45.sp)
                 }
             }
         }
@@ -782,6 +841,8 @@ private fun TasbeehApp(
     isSpeaking: Boolean,
     isPreparingSpeech: Boolean,
     activeRecitationTitle: String,
+    activeRecitationArtist: String,
+    activeRecitationSubtitle: String,
     hasInternetConnection: Boolean,
     quranReciters: List<QuranReciter>,
     quranRecitationRepository: QuranRecitationRepository,
@@ -796,6 +857,7 @@ private fun TasbeehApp(
     onRetryQuranText: () -> Unit,
     onRetryOpenDuaCatalog: () -> Unit,
     onPlayRecitation: (String, String, List<String>) -> Unit,
+    onToggleSpeech: () -> Unit,
     onStopSpeech: () -> Unit,
     onTap: () -> Unit
 ) {
@@ -1046,12 +1108,21 @@ private fun TasbeehApp(
                     isPreparingRecitation = isPreparingSpeech,
                     isResolvingQuranRecitation = isResolvingQuranRecitation,
                     activeRecitationTitle = activeRecitationTitle,
+                    activeRecitationArtist = activeRecitationArtist,
                     selectedQuranReciter = selectedQuranReciter,
                     onPlayQuranRecitation = { title, ayahKeys -> playQuranRecitation(title, ayahKeys) },
                     onPlayRecitation = { title, artist, urls ->
                         onPlayRecitation(title, artist, urls)
                     },
+                    onToggleRecitationPlayback = onToggleSpeech,
+                    onToggleRecitationPlayback = onToggleSpeech,
                     onStopRecitation = onStopSpeech,
+                    favoriteItemIds = state.favoriteItemIds,
+                    onToggleFavorite = { itemId ->
+                        launchStoreOperation(label = "Updating favorites…") {
+                            store.toggleFavorite(itemId)
+                        }
+                    },
                     onRetryQuranText = onRetryQuranText,
                     onRetryOpenDuaCatalog = onRetryOpenDuaCatalog,
                     currentDhikr = state.dhikr,
@@ -1110,6 +1181,16 @@ private fun TasbeehApp(
                     onHistory = { showHistoryScreen = true },
                     onSettings = { showSettings = true }
                 )
+                RecitationPlaybackBar(
+                    title = activeRecitationTitle,
+                    artist = activeRecitationArtist,
+                    subtitle = activeRecitationSubtitle,
+                    isPlaying = isSpeaking,
+                    isPreparing = isPreparingSpeech,
+                    onTogglePlayback = onToggleSpeech,
+                    onStop = onStopSpeech,
+                    modifier = Modifier.fillMaxWidth().padding(top = 7.dp)
+                )
                 if (!hasInternetConnection) {
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -1134,7 +1215,14 @@ private fun TasbeehApp(
                     }
                 }
                 if (selectedCustomDhikr == null) {
-                    MyDhikrsEmptyState(onOpenLibrary = { showDhikrScreen = true })
+                    MyDhikrsEmptyState(
+                        modifier = Modifier.weight(1f),
+                        onCreateDhikr = {
+                            editingCustomDhikr = null
+                            showCustomDhikrEditor = true
+                        },
+                        onBrowseLibrary = { showDhikrScreen = true }
+                    )
                 } else {
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 14.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
