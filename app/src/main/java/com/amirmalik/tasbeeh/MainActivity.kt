@@ -139,6 +139,18 @@ internal fun shouldRepairMissingDhikrSelection(
     hasOpenSession: Boolean
 ): Boolean = storedDhikr.isBlank() && !hasValidSelection && !hasOpenSession
 
+internal fun shouldSelectFirstMyDhikr(
+    hasSelectedCustomDhikr: Boolean,
+    customDhikrCount: Int
+): Boolean = !hasSelectedCustomDhikr && customDhikrCount > 0
+
+internal fun shouldClearCounterDhikrSelection(
+    hasSelectedCustomDhikr: Boolean,
+    hasCustomDhikrs: Boolean,
+    hasLegacySelection: Boolean,
+    hasOpenSession: Boolean
+): Boolean = !hasSelectedCustomDhikr && !hasCustomDhikrs && (hasLegacySelection || hasOpenSession)
+
 internal fun arabicPlaybackControlEnabled(hasArabicText: Boolean, isSpeaking: Boolean): Boolean =
     hasArabicText || isSpeaking
 
@@ -755,112 +767,74 @@ private fun TasbeehApp(
     var showCustomDhikrEditor by remember { mutableStateOf(false) }
     var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
     val selectedCustomDhikr = state.customDhikrs.firstOrNull { it.id == state.selectedCustomDhikrId }
-    LaunchedEffect(catalogItems, state.dhikr, state.selectedCustomDhikrId, state.customDhikrs, state.currentSession?.status) {
-        val customSelectionExists = state.selectedCustomDhikrId?.let { selectedId ->
-            state.customDhikrs.any { it.id == selectedId }
-        } ?: false
-        val builtInSelectionExists = state.selectedCustomDhikrId == null &&
-            catalogItems.any { it.value == state.dhikr }
-        val sessionIsOpenForSelection = state.currentSession?.status == SessionStatus.ACTIVE ||
+    LaunchedEffect(state.selectedCustomDhikrId, state.customDhikrs, state.dhikr, state.currentSession?.status) {
+        val hasOpenSession = state.currentSession?.status == SessionStatus.ACTIVE ||
             state.currentSession?.status == SessionStatus.PAUSED
-        if (shouldRepairMissingDhikrSelection(
-                storedDhikr = state.dhikr,
-                hasValidSelection = customSelectionExists || builtInSelectionExists,
-                hasOpenSession = sessionIsOpenForSelection
-            )
-        ) {
-            val fallback = catalogItems.firstOrNull { it.category == "Quran" } ?: catalogItems.firstOrNull()
-            if (fallback != null) {
-                launchStoreOperation(label = "Preparing your selected Dhikr…") {
-                    store.selectBuiltInDhikr(fallback.value, fallback.arabic, System.currentTimeMillis())
+        when {
+            shouldSelectFirstMyDhikr(
+                hasSelectedCustomDhikr = selectedCustomDhikr != null,
+                customDhikrCount = state.customDhikrs.size
+            ) -> {
+                val firstPersonalDhikr = state.customDhikrs.firstOrNull()
+                if (firstPersonalDhikr != null) {
+                    launchStoreOperation(label = "Preparing your personal Dhikr…") {
+                        store.selectCustomDhikr(firstPersonalDhikr, System.currentTimeMillis())
+                    }
+                }
+            }
+            shouldClearCounterDhikrSelection(
+                hasSelectedCustomDhikr = selectedCustomDhikr != null,
+                hasCustomDhikrs = state.customDhikrs.isNotEmpty(),
+                hasLegacySelection = state.selectedCustomDhikrId != null || state.dhikr.isNotBlank(),
+                hasOpenSession = hasOpenSession
+            ) -> {
+                launchStoreOperation(label = "Preparing your personal counter…") {
+                    store.clearDhikrSelection(System.currentTimeMillis())
                 }
             }
         }
     }
-    val selectedDhikr = catalogItems.firstOrNull { it.value == state.dhikr }
-    // Keep the completed session's captured content visible until the user
-    // starts the next round. The next count still uses the currently selected
-    // Dhikr, so editing a custom entry affects future sessions only.
-    val sessionIsOpen = state.currentSession?.status == SessionStatus.ACTIVE ||
-        state.currentSession?.status == SessionStatus.PAUSED
+
+    // The counter is deliberately backed only by the user's My Dhikhrs.
+    // Old Quran/OpenDua selections remain in session history but cannot become
+    // the active counter selection.
+    val legacySessionForDisplay = sessionSnapshotForDisplay(state.currentSession, state.count)
+    val sessionForDisplay = legacySessionForDisplay.takeIf { selectedCustomDhikr != null }
+    val sessionIsOpen = selectedCustomDhikr != null &&
+        (state.currentSession?.status == SessionStatus.ACTIVE ||
+            state.currentSession?.status == SessionStatus.PAUSED)
     val activeSession = state.currentSession?.takeIf { sessionIsOpen }
     val completedRoundStillDisplayed =
-        state.currentSession?.status == SessionStatus.COMPLETED &&
-            state.count == state.currentSession.count
-    val sessionForDisplay = sessionSnapshotForDisplay(state.currentSession, state.count)
+        sessionForDisplay?.status == SessionStatus.COMPLETED &&
+            state.count == sessionForDisplay.count
 
-    val selectedDhikrTitle = selectedCustomDhikr?.title ?: selectedDhikr?.title ?: state.dhikr
-    val selectedDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() } ?: selectedDhikr?.arabic
+    val selectedDhikrTitle = selectedCustomDhikr?.title.orEmpty()
+    val selectedDhikrArabic = selectedCustomDhikr?.arabic?.takeIf { it.isNotBlank() }
     val selectedDhikrTransliteration = selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
-        ?: selectedDhikr?.transliteration
-    val selectedDhikrMeaning = selectedCustomDhikr?.meaning.orEmpty().ifBlank { selectedDhikr?.meaning.orEmpty() }
+    val selectedDhikrMeaning = selectedCustomDhikr?.meaning.orEmpty()
 
     val activeDhikrTitle = sessionForDisplay?.dhikr ?: selectedDhikrTitle
     val activeDhikrArabic = if (sessionForDisplay != null) {
         sessionForDisplay.arabic.takeIf { it.isNotBlank() }
-    } else {
-        selectedDhikrArabic
-    }
+    } else selectedDhikrArabic
     val activeDhikrTransliteration = if (sessionForDisplay != null) {
         sessionForDisplay.transliteration.takeIf { it.isNotBlank() }
-    } else {
-        selectedDhikrTransliteration
-    }
+    } else selectedDhikrTransliteration
     val activeDhikrMeaning = sessionForDisplay?.meaning ?: selectedDhikrMeaning
 
-    // Counting after completion starts a new session from the current selection,
-    // not from the historical snapshot still shown on screen.
+    // A completed round remains visible until the next count starts a new
+    // session, but its content can only originate from the selected My Dhikr.
     val countDhikrTitle = activeSession?.dhikr ?: selectedDhikrTitle
     val countDhikrArabic = if (activeSession != null) {
         activeSession.arabic.takeIf { it.isNotBlank() }
-    } else {
-        selectedDhikrArabic
-    }
+    } else selectedDhikrArabic
     val countDhikrTransliteration = if (activeSession != null) {
         activeSession.transliteration.takeIf { it.isNotBlank() }
-    } else {
-        selectedDhikrTransliteration
-    }
+    } else selectedDhikrTransliteration
     val countDhikrMeaning = activeSession?.meaning ?: selectedDhikrMeaning
-    val activeQuranAyahKeys = if (state.selectedCustomDhikrId == null) {
-        catalogItems.firstOrNull { it.value == activeDhikrTitle }?.quranAyahKeys.orEmpty()
-    } else {
-        emptyList()
-    }
-    val countQuranAyahKeys = if (activeSession == null && state.selectedCustomDhikrId == null) {
-        catalogItems.firstOrNull { it.value == countDhikrTitle }?.quranAyahKeys.orEmpty()
-    } else {
-        emptyList()
-    }
-
-    fun recitationUrlsFor(title: String, quranKeys: List<String>, isCustom: Boolean): List<String> {
-        if (isCustom) return emptyList()
-        val item = catalogItems.firstOrNull { it.value == title }
-        val resolvedAyahKeys = quranKeys.ifEmpty { item?.quranAyahKeys.orEmpty() }
-        return item?.recitationAudioUrls?.takeIf { it.isNotEmpty() }
-            ?: QuranRecitationAudio.audioUrlsForAyahs(resolvedAyahKeys)
-    }
-    val activeRecitationUrls = recitationUrlsFor(
-        activeDhikrTitle, activeQuranAyahKeys, state.selectedCustomDhikrId != null
-    )
-    val countSelectionItem = if (state.selectedCustomDhikrId == null) {
-        catalogItems.firstOrNull { it.value == countDhikrTitle }
-    } else null
-    val countQuranSurahAyahCount = countSelectionItem
-        ?.takeIf(QuranicDuaCatalog::isFullSurah)
-        ?.quranAyahKeys
-        ?.size ?: 0
-    // A count tap must not enqueue a hundred or more audio files. Short
-    // established selections retain their former automatic playback behavior;
-    // a longer surah is played deliberately from the full-surah reader.
-    val countRecitationUrls = if (countQuranSurahAyahCount > 21) {
-        emptyList()
-    } else {
-        recitationUrlsFor(countDhikrTitle, countQuranAyahKeys, state.selectedCustomDhikrId != null)
-    }
     val effectiveTarget = sessionForDisplay?.target ?: state.target
-    val sessionPaused = state.currentSession?.status == SessionStatus.PAUSED
-    val canUndo = canUndoCount(state.count, state.currentSession?.status)
+    val sessionPaused = activeSession?.status == SessionStatus.PAUSED
+    val canUndo = canUndoCount(state.count, activeSession?.status)
 
     // The editor owns its own BackHandler so it can ask before discarding edits.
     BackHandler(enabled = showDhikrScreen || showHistoryScreen || showSettings) {
@@ -877,29 +851,18 @@ private fun TasbeehApp(
     }
 
     fun increment() {
+        val selected = selectedCustomDhikr ?: return
         val now = System.currentTimeMillis()
-        val countIsFullSurah = countSelectionItem?.let(QuranicDuaCatalog::isFullSurah) == true
-        // A complete surah can be very large. Keep a compact preview in the
-        // DataStore session snapshot; the complete text remains in its verified
-        // per-surah cache and is shown in the reader.
-        val sessionArabic = quranSessionSnapshotText(countDhikrArabic.orEmpty(), countIsFullSurah)
-        val sessionTransliteration = quranSessionSnapshotText(countDhikrTransliteration.orEmpty(), countIsFullSurah)
-        val sessionMeaning = quranSessionSnapshotText(countDhikrMeaning, countIsFullSurah)
         launchStoreOperation(label = "Saving your count…") {
             val outcome = store.countDhikr(
-                dhikr = countDhikrTitle,
-                arabic = sessionArabic,
-                transliteration = sessionTransliteration,
-                meaning = sessionMeaning,
+                dhikr = countDhikrTitle.ifBlank { selected.title },
+                arabic = countDhikrArabic ?: selected.arabic,
+                transliteration = countDhikrTransliteration ?: selected.transliteration,
+                meaning = countDhikrMeaning,
                 fallbackTarget = effectiveTarget,
                 now = now
             )
-            if (outcome == CountOutcome.COUNTED) {
-                if (state.soundEnabled && countRecitationUrls.isNotEmpty()) {
-                    onPlayRecitation(countRecitationUrls, arabicSpeechQueueMode(manualPlayback = false))
-                }
-                onTap()
-            }
+            if (outcome == CountOutcome.COUNTED) onTap()
         }
     }
 
