@@ -44,6 +44,12 @@ enum class SessionEventType { STARTED, PAUSED, RESUMED, ENDED }
 
 data class SessionEvent(val type: SessionEventType, val at: Long)
 
+internal fun legacySessionEvents(startedAt: Long, endedAt: Long?): List<SessionEvent> =
+    buildList {
+        if (startedAt > 0L) add(SessionEvent(SessionEventType.STARTED, startedAt))
+        endedAt?.takeIf { it > 0L }?.let { add(SessionEvent(SessionEventType.ENDED, it)) }
+    }
+
 data class SavedSession(
     val id: String,
     val dhikr: String,
@@ -475,7 +481,8 @@ class TasbeehStore(private val context: Context) {
             meaning = item.optString("meaning", ""),
             status = status,
             endedAt = endedAt,
-            durationMs = duration
+            durationMs = duration,
+            events = legacySessionEvents(startedAt, endedAt)
         )
     }
 

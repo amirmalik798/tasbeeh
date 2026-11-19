@@ -369,6 +369,7 @@ private fun TasbeehApp(
         activeSession.transliteration.takeIf { it.isNotBlank() }
     } else {
         selectedCustomDhikr?.transliteration?.takeIf { it.isNotBlank() }
+            ?: selectedDhikr?.transliteration
     }
     val activeDhikrMeaning = if (activeSession != null) {
         activeSession.meaning
@@ -1349,7 +1350,9 @@ private fun SmallAction(icon: androidx.compose.ui.graphics.vector.ImageVector, l
 
 @Composable
 private fun QuickChip(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Surface(modifier = modifier.height(48.dp).clickable(onClick = onClick), color = Panel,
+    Surface(
+        modifier = modifier.height(48.dp).clickable(role = Role.Button, onClick = onClick),
+        color = Panel,
         shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2B3028))) {
         Box(contentAlignment = Alignment.Center) { Text(text, color = Ivory, fontSize = 12.sp, fontWeight = FontWeight.Medium) }
     }
