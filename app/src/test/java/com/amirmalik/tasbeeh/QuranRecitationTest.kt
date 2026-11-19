@@ -40,49 +40,59 @@ class QuranRecitationTest {
     }
 
     @Test
-    fun everyQuranicCatalogItemHasVerifiedAyahAudioMapping() {
-        val quranicItems = DhikrCatalog.items.filter {
-            it.category == "Qur'anic" ||
-                it.id in setOf("ayat-al-kursi", "surah-ikhlas", "surah-falaq", "surah-nas")
-        }
-        assertTrue(quranicItems.isNotEmpty())
-        quranicItems.forEach { item ->
+    fun exactlyFourDedicatedQuranSelectionsUseQuranFoundation() {
+        val items = QuranicDuaCatalog.fallbackItems()
+        assertEquals(4, items.size)
+        items.forEach { item ->
+            assertEquals("Quran", item.category)
             assertFalse("Missing ayah keys for ${item.id}", item.quranAyahKeys.isEmpty())
             assertEquals(
                 "Audio URL count should match ayah mapping for ${item.id}",
                 item.quranAyahKeys.size,
                 QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys).size
             )
+            assertTrue(item.recitationAudioUrls.isEmpty())
         }
     }
 
     @Test
-    fun nonQuranicDhikrDoesNotGetRoutedToQariAudio() {
-        val ordinaryDhikr = DhikrCatalog.byValue("SubhanAllah")
-        assertTrue(ordinaryDhikr?.quranAyahKeys.isNullOrEmpty())
+    fun ordinaryOpenDuaAndCustomEntriesNeverGetRoutedToQuranFoundation() {
+        val ordinaryEntry = DhikrItem(
+            id = "opendua-entry-example",
+            value = "An OpenDua entry",
+            title = "An OpenDua entry",
+            category = "Morning and evening",
+            arabic = "اللَّهُمَّ",
+            transliteration = "",
+            meaning = "",
+            recitationAudioUrls = listOf("https://audio.opendua.org/hisn/example.mp3")
+        )
+        assertTrue(ordinaryEntry.quranAyahKeys.isEmpty())
+        assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(ordinaryEntry.quranAyahKeys))
+
+        val customItem = DhikrItem(
+            id = "custom-user-entry",
+            value = "My own dua",
+            title = "My own dua",
+            category = "My Dhikhrs",
+            arabic = "اللَّهُمَّ",
+            transliteration = "",
+            meaning = "",
+            customId = "custom-id",
+            categories = listOf("My Dhikhrs"),
+            contentType = "custom",
+            isCountable = true
+        )
+        assertTrue(customItem.quranAyahKeys.isEmpty())
+        assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(customItem.quranAyahKeys))
     }
+
     @Test
     fun onlyEntriesWithExplicitValidAyahKeysUseQuranFoundation() {
         assertTrue(QuranRecitationAudio.shouldUseQuranFoundation(listOf("2:255")))
         assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(emptyList()))
         assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(listOf("2:999")))
         assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(listOf("not-an-ayah")))
-    }
-
-    @Test
-    fun customDhikrWithoutAyahMappingDoesNotGetRoutedToQuranFoundation() {
-        val customItem = DhikrItem(
-            id = "custom-user-entry",
-            value = "My own dua",
-            title = "My own dua",
-            category = "My Dhikr",
-            arabic = "اللَّهُمَّ",
-            transliteration = "",
-            meaning = "",
-            customId = "custom-id"
-        )
-        assertTrue(customItem.quranAyahKeys.isEmpty())
-        assertFalse(QuranRecitationAudio.shouldUseQuranFoundation(customItem.quranAyahKeys))
     }
 
     @Test
@@ -130,23 +140,5 @@ class QuranRecitationTest {
     fun missingAudioFileReportsThatTheRequestedRecitationWasNotFound() {
         val message = recitationPlaybackFailureMessage(java.io.FileNotFoundException("404"))
         assertTrue(message.contains("not found", ignoreCase = true))
-    }
-
-
-    @Test
-    fun expandedQuranicCatalogueHasOneHundredUniqueExplicitlyMappedEntries() {
-        assertEquals(63, QuranicDuaCatalog.additions.size)
-        val combinedQuranic = (DhikrCatalog.items + QuranicDuaCatalog.fallbackItems())
-            .distinctBy { it.id }
-            .filter { it.quranAyahKeys.isNotEmpty() }
-        assertEquals(100, combinedQuranic.size)
-        assertEquals(100, combinedQuranic.map { it.id }.distinct().size)
-        combinedQuranic.forEach { item ->
-            assertEquals(
-                "Every ayah in " + item.id + " must resolve to Quran Foundation",
-                item.quranAyahKeys.size,
-                QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys).size
-            )
-        }
     }
 }
