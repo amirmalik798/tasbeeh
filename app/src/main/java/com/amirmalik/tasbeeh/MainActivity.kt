@@ -298,6 +298,12 @@ class MainActivity : ComponentActivity() {
                     }
                     .onFailure { error ->
                         mediaControllerFuture = null
+                        // A failed connection has no controller to retain; release
+                        // the future as well so its session binding is not leaked.
+                        runCatching { MediaController.releaseFuture(future) }
+                            .onFailure { releaseError ->
+                                Log.w("Noor-e-Dhikr", "Could not release the failed media controller future", releaseError)
+                            }
                         Log.w("Noor-e-Dhikr", "Could not connect to background recitation service", error)
                         speechPlaying = false
                         recitationPreparing = false
@@ -332,6 +338,9 @@ class MainActivity : ComponentActivity() {
     ) {
         val mediaItems = createRecitationMediaItems(request.title, request.artist, request.urls)
         if (mediaItems.isEmpty()) {
+            // Restore the currently connected player's real state. The requested
+            // playlist may have been rejected before it replaced an older queue.
+            updatePlaybackUiState()
             showRecitationPlaybackError("The selected recitation does not contain a supported recording URL.")
             return
         }
