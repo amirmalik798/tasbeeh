@@ -1,5 +1,3 @@
-@file:OptIn(androidx.media3.common.util.UnstableApi::class)
-
 package com.amirmalik.tasbeeh
 
 import android.content.SharedPreferences
@@ -27,7 +25,7 @@ import org.json.JSONArray
  * Its playlist checkpoint also allows playback resumption after the service
  * process has been terminated.
  */
-@OptIn(UnstableApi::class)
+@UnstableApi
 internal class QuranRecitationPlaybackService : MediaSessionService() {
 
     private lateinit var player: ExoPlayer
