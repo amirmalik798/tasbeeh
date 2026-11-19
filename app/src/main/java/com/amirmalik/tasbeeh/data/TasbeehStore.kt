@@ -106,7 +106,6 @@ data class TasbeehState(
     val hapticsEnabled: Boolean = true,
     val fontScale: Float = DEFAULT_APP_FONT_SCALE,
     val currentSession: SavedSession? = null,
-    val sessions: List<SavedSession> = emptyList(),
     val customDhikrs: List<CustomDhikr> = emptyList(),
     val selectedCustomDhikrId: String? = null
 )
@@ -120,7 +119,6 @@ class TasbeehStore(private val context: Context) {
         val haptics = booleanPreferencesKey("haptics")
         val fontScale = floatPreferencesKey("font_scale")
         val currentSession = stringPreferencesKey("current_session")
-        val sessionHistory = stringPreferencesKey("session_history")
 
         // Legacy keys are read once during migration, then removed.
         val legacySessions = stringPreferencesKey("sessions")
@@ -141,22 +139,16 @@ class TasbeehStore(private val context: Context) {
             hapticsEnabled = prefs[Keys.haptics] ?: true,
             fontScale = (prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE).coerceIn(1.0f, 1.25f),
             currentSession = decodeSession(prefs[Keys.currentSession].orEmpty()),
-            sessions = decodeSessionList(prefs[Keys.sessionHistory].orEmpty()),
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
             selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId]
         )
     }
 
     /**
-     * Migrates legacy session records into the complete, persistent session history.
-     * The currently open session is retained separately for the live counter.
+     * Migrates only the current/open session. Older historical sessions are not retained.
      */
     suspend fun migrateToSingleSession() {
         context.tasbeehDataStore.edit { prefs ->
-            if (prefs[Keys.sessionHistory].isNullOrBlank()) {
-                val oldHistory = decodeLegacySessions(prefs[Keys.legacySessions].orEmpty())
-                if (oldHistory.isNotEmpty()) prefs[Keys.sessionHistory] = encodeSessionList(oldHistory)
-            }
             if (decodeSession(prefs[Keys.currentSession].orEmpty()) == null) {
                 // Recover from a missing or malformed new-format record before
                 // clearing legacy keys, so a partial/corrupt value cannot mask
@@ -182,10 +174,6 @@ class TasbeehStore(private val context: Context) {
 
                 recovered?.let {
                     prefs[Keys.currentSession] = encodeSession(it)
-                    val history = decodeSessionList(prefs[Keys.sessionHistory].orEmpty())
-                    if (history.none { item -> item.id == it.id }) {
-                        prefs[Keys.sessionHistory] = encodeSessionList(listOf(it) + history)
-                    }
                 }
             }
 
@@ -278,7 +266,6 @@ class TasbeehStore(private val context: Context) {
                 session.copy(status = SessionStatus.ACTIVE, endedAt = null)
             }
             prefs[Keys.currentSession] = encodeSession(saved)
-            upsertHistory(prefs, saved, addIfMissing = startsNewSession)
         }
         return outcome
     }
@@ -298,13 +285,9 @@ class TasbeehStore(private val context: Context) {
             if (session != null) {
                 if (nextCount == 0) {
                     prefs.remove(Keys.currentSession)
-                    val history = decodeSessionList(prefs[Keys.sessionHistory].orEmpty())
-                        .filterNot { it.id == session.id }
-                    prefs[Keys.sessionHistory] = encodeSessionList(history)
                 } else {
                     val updated = session.copy(count = nextCount, status = SessionStatus.ACTIVE, endedAt = null, durationMs = null)
                     prefs[Keys.currentSession] = encodeSession(updated)
-                    upsertHistory(prefs, updated)
                 }
             }
         }
@@ -323,7 +306,6 @@ class TasbeehStore(private val context: Context) {
                 events = session.events + SessionEvent(SessionEventType.PAUSED, at)
             )
             prefs[Keys.currentSession] = encodeSession(paused)
-            upsertHistory(prefs, paused)
         }
     }
 
@@ -339,7 +321,6 @@ class TasbeehStore(private val context: Context) {
                 events = session.events + SessionEvent(SessionEventType.RESUMED, at)
             )
             prefs[Keys.currentSession] = encodeSession(resumed)
-            upsertHistory(prefs, resumed)
         }
     }
 
@@ -351,7 +332,6 @@ class TasbeehStore(private val context: Context) {
             ) {
                 val finished = finishSession(session, now, SessionStatus.INCOMPLETE)
                 prefs[Keys.currentSession] = encodeSession(finished)
-                upsertHistory(prefs, finished)
             }
             if (resetCounter) prefs[Keys.count] = 0
         }
@@ -365,13 +345,9 @@ class TasbeehStore(private val context: Context) {
                 saveSession && isOpen -> {
                     val finished = finishSession(session!!, now, SessionStatus.INCOMPLETE)
                     prefs[Keys.currentSession] = encodeSession(finished)
-                    upsertHistory(prefs, finished)
                 }
                 !saveSession && isOpen -> {
                     prefs.remove(Keys.currentSession)
-                    val history = decodeSessionList(prefs[Keys.sessionHistory].orEmpty())
-                        .filterNot { it.id == session?.id }
-                    prefs[Keys.sessionHistory] = encodeSessionList(history)
                 }
             }
             prefs[Keys.count] = 0
@@ -505,30 +481,6 @@ class TasbeehStore(private val context: Context) {
             .filterNot { it.id == sessionId }
         prefs[Keys.sessionHistory] = encodeSessionList(remaining)
     }
-
-    private fun upsertHistory(
-        prefs: androidx.datastore.preferences.core.MutablePreferences,
-        session: SavedSession,
-        addIfMissing: Boolean = false
-    ) {
-        val history = decodeSessionList(prefs[Keys.sessionHistory].orEmpty()).toMutableList()
-        val index = history.indexOfFirst { it.id == session.id }
-        if (index >= 0) history[index] = session else if (addIfMissing) history.add(0, session)
-        prefs[Keys.sessionHistory] = encodeSessionList(history.sortedByDescending { it.startedAt })
-    }
-
-    private fun decodeSessionList(raw: String): List<SavedSession> = runCatching {
-        val array = JSONArray(raw)
-        buildList {
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                decodeSession(item.toString())?.let(::add)
-            }
-        }
-    }.getOrDefault(emptyList())
-
-    private fun encodeSessionList(items: List<SavedSession>): String =
-        JSONArray().apply { items.forEach { put(JSONObject(encodeSession(it))) } }.toString()
 
     private fun decodeSession(raw: String): SavedSession? = runCatching {
         if (raw.isBlank()) null else {
