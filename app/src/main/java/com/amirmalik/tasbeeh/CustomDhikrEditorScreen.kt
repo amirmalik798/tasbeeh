@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.amirmalik.tasbeeh.data.CustomDhikr
+import com.amirmalik.tasbeeh.voice.VoiceEnrollmentSection
 import java.util.UUID
 
 private val EditorInk = Color(0xFF090B0A)
@@ -49,6 +50,9 @@ internal fun CustomDhikrEditorScreen(
     var arabic by remember(existing?.id) { mutableStateOf(existing?.arabic.orEmpty()) }
     var transliteration by remember(existing?.id) { mutableStateOf(existing?.transliteration.orEmpty()) }
     var meaning by remember(existing?.id) { mutableStateOf(existing?.meaning.orEmpty()) }
+    var voiceReferenceText by remember(existing?.id) { mutableStateOf(existing?.voiceReferenceText.orEmpty()) }
+    var voiceProfileSourceHash by remember(existing?.id) { mutableStateOf(existing?.voiceProfileSourceHash.orEmpty()) }
+    var voiceProfileCreatedAt by remember(existing?.id) { mutableStateOf(existing?.voiceProfileCreatedAt ?: 0L) }
     var attemptedSave by remember(existing?.id) { mutableStateOf(false) }
     var showPreview by remember(existing?.id) { mutableStateOf(false) }
     var showDiscardDialog by remember(existing?.id) { mutableStateOf(false) }
@@ -61,7 +65,10 @@ internal fun CustomDhikrEditorScreen(
     val isDirty = title != existing?.title.orEmpty() ||
         arabic != existing?.arabic.orEmpty() ||
         transliteration != existing?.transliteration.orEmpty() ||
-        meaning != existing?.meaning.orEmpty()
+        meaning != existing?.meaning.orEmpty() ||
+        voiceReferenceText != existing?.voiceReferenceText.orEmpty() ||
+        voiceProfileSourceHash != existing?.voiceProfileSourceHash.orEmpty() ||
+        voiceProfileCreatedAt != (existing?.voiceProfileCreatedAt ?: 0L)
 
     fun requestLeave() {
         if (isDirty) showDiscardDialog = true else onBack()
@@ -208,6 +215,21 @@ internal fun CustomDhikrEditorScreen(
                 colors = editorFieldColors()
             )
 
+            Spacer(Modifier.height(18.dp))
+            VoiceEnrollmentSection(
+                dhikrId = existing?.id ?: "new-dhikr",
+                arabic = arabic.trim(),
+                transliteration = transliteration.trim(),
+                savedReferenceText = voiceReferenceText,
+                savedSourceHash = voiceProfileSourceHash,
+                savedAt = voiceProfileCreatedAt,
+                onProfileChanged = { reference, sourceHash, createdAt ->
+                    voiceReferenceText = reference
+                    voiceProfileSourceHash = sourceHash
+                    voiceProfileCreatedAt = createdAt
+                }
+            )
+
             Spacer(Modifier.height(16.dp))
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -330,7 +352,10 @@ internal fun CustomDhikrEditorScreen(
                                     arabic = arabic.trim(),
                                     transliteration = transliteration.trim(),
                                     meaning = meaning.trim(),
-                                    createdAt = existing?.createdAt ?: System.currentTimeMillis()
+                                    createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+                                    voiceReferenceText = voiceReferenceText,
+                                    voiceProfileSourceHash = voiceProfileSourceHash,
+                                    voiceProfileCreatedAt = voiceProfileCreatedAt
                                 )
                             )
                         }
