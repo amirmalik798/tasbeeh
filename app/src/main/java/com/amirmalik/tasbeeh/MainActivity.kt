@@ -294,21 +294,42 @@ class MainActivity : ComponentActivity() {
             val cachedOpenDua = remember(openDuaRepository) { openDuaRepository.loadCachedSnapshot() }
             var openDuaItems by remember { mutableStateOf(cachedOpenDua.items) }
             var openDuaCategories by remember { mutableStateOf(cachedOpenDua.categories) }
+            var openDuaIsRefreshing by remember { mutableStateOf(cachedOpenDua.items.isEmpty()) }
+            var openDuaRefreshError by remember { mutableStateOf<String?>(null) }
+            var openDuaCacheWriteFailed by remember { mutableStateOf(false) }
+            var openDuaRetryCount by remember { mutableIntStateOf(0) }
             var extendedQuranicItems by remember { mutableStateOf(quranicDuaRepository.loadCachedItems()) }
-            LaunchedEffect(openDuaRepository, quranicDuaRepository) {
-                launch {
-                    runCatching {
-                        val snapshot = openDuaRepository.refresh()
-                        openDuaItems = snapshot.items
-                        openDuaCategories = snapshot.categories
-                    }.onFailure {
-                        Log.w("Noor-e-Dhikr", "OpenDua catalogue refresh failed; using the last complete cached release", it)
+
+            LaunchedEffect(openDuaRepository, openDuaRetryCount) {
+                openDuaIsRefreshing = true
+                openDuaRefreshError = null
+                openDuaCacheWriteFailed = false
+                try {
+                    val snapshot = openDuaRepository.refresh()
+                    if (snapshot.items.isEmpty() || snapshot.categories.isEmpty()) {
+                        throw IllegalStateException("OpenDua returned an empty catalogue.")
                     }
+                    openDuaItems = snapshot.items
+                    openDuaCategories = snapshot.categories
+                    openDuaCacheWriteFailed = !snapshot.cachePersisted
+                    if (!snapshot.cachePersisted) {
+                        Log.e("Noor-e-Dhikr", "OpenDua catalogue loaded but could not be committed to offline storage")
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e("Noor-e-Dhikr", "OpenDua catalogue refresh failed; retaining the last verified local copy", error)
+                    openDuaRefreshError = error.localizedMessage
+                        ?.takeIf { it.isNotBlank() }
+                        ?: "The catalogue could not be downloaded. Check your connection and try again."
+                } finally {
+                    openDuaIsRefreshing = false
                 }
-                launch {
-                    runCatching { extendedQuranicItems = quranicDuaRepository.refresh() }
-                        .onFailure { Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; using cached references", it) }
-                }
+            }
+
+            LaunchedEffect(quranicDuaRepository) {
+                runCatching { extendedQuranicItems = quranicDuaRepository.refresh() }
+                    .onFailure { Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; using cached references", it) }
             }
             val catalogItems = remember(openDuaItems, extendedQuranicItems) {
                 (extendedQuranicItems + openDuaItems).distinctBy { it.id }
@@ -342,6 +363,10 @@ class MainActivity : ComponentActivity() {
                     isSpeaking = speechPlaying,
                     catalogItems = catalogItems,
                     catalogCategories = openDuaCategories,
+                    openDuaIsRefreshing = openDuaIsRefreshing,
+                    openDuaRefreshError = openDuaRefreshError,
+                    openDuaCacheWriteFailed = openDuaCacheWriteFailed,
+                    onRetryOpenDuaCatalog = { openDuaRetryCount++ },
                     onPlayRecitation = { urls, queueMode -> playRecitations(urls, queueMode) },
                     onStopSpeech = { stopRecitationPlayback() }
                 ) {
@@ -445,6 +470,10 @@ private fun TasbeehApp(
     isSpeaking: Boolean,
     catalogItems: List<DhikrItem>,
     catalogCategories: List<String>,
+    openDuaIsRefreshing: Boolean,
+    openDuaRefreshError: String?,
+    openDuaCacheWriteFailed: Boolean,
+    onRetryOpenDuaCatalog: () -> Unit,
     onPlayRecitation: (List<String>, Int) -> Unit,
     onStopSpeech: () -> Unit,
     onTap: () -> Unit
@@ -641,6 +670,10 @@ private fun TasbeehApp(
                 DhikrSelectionScreen(
                     catalogItems = catalogItems,
                     openDuaCategories = catalogCategories,
+                    openDuaIsRefreshing = openDuaIsRefreshing,
+                    openDuaRefreshError = openDuaRefreshError,
+                    openDuaCacheWriteFailed = openDuaCacheWriteFailed,
+                    onRetryOpenDuaCatalog = onRetryOpenDuaCatalog,
                     currentDhikr = state.dhikr,
                     currentCustomDhikrId = state.selectedCustomDhikrId,
                     customDhikrs = state.customDhikrs,
