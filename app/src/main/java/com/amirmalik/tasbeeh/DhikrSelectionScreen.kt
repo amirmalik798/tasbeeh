@@ -130,7 +130,7 @@ internal fun DhikrSelectionScreen(
             }
             Spacer(Modifier.width(13.dp))
             Column(Modifier.weight(1f)) {
-                Text("DHIKR LIBRARY", color = Color(0xFFFFD56A), fontSize = 9.sp, letterSpacing = 2.1.sp, fontWeight = FontWeight.Bold)
+                Text("DHIKR LIBRARY", color = Color(0xFFFFD56A), fontSize = 10.sp, letterSpacing = 2.1.sp, fontWeight = FontWeight.Bold)
                 Text("Choose your remembrance", color = Color(0xFFFFF8EA), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
             Box(
@@ -138,7 +138,7 @@ internal fun DhikrSelectionScreen(
                     .border(1.dp, Color(0xFFD6A63D).copy(alpha = .38f), RoundedCornerShape(50))
                     .padding(horizontal = 11.dp, vertical = 7.dp)
             ) {
-                Text("${allItems.size} DHIKRS", color = Color(0xFFFFD875), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
+                Text("${allItems.size} DHIKRS", color = Color(0xFFFFD875), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
             }
         }
 
@@ -195,7 +195,7 @@ internal fun DhikrSelectionScreen(
                     FilterChip(
                         selected = category == item,
                         onClick = { category = item },
-                        label = { Text(item, fontSize = 11.sp) },
+                        label = { Text(item, fontSize = 12.sp) },
                         shape = RoundedCornerShape(50),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Color(0xFFF0BF4E),
@@ -291,7 +291,7 @@ private fun DhikrOptionCard(
                         .background(if (selected) Color(0xFF4A3919) else Color(0xFF222820))
                         .padding(horizontal = 9.dp, vertical = 5.dp)
                 ) {
-                    Text(item.category.uppercase(), color = if (selected) Color(0xFFFFD875) else Color(0xFF9FAD96), fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
+                    Text(item.category.uppercase(), color = if (selected) Color(0xFFFFD875) else Color(0xFF9FAD96), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = .7.sp)
                 }
                 if (selected) {
                     Spacer(Modifier.width(6.dp))
@@ -322,15 +322,15 @@ private fun DhikrOptionCard(
             }
             if (item.transliteration.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
-                Text(item.transliteration, color = gold, fontSize = 11.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium)
+                Text(item.transliteration, color = gold, fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium)
             }
             if (item.meaning.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text(item.meaning, color = Color(0xFFBEB9AC), fontSize = 11.sp, lineHeight = 16.sp)
+                Text(item.meaning, color = Color(0xFFBEB9AC), fontSize = 12.sp, lineHeight = 16.sp)
             }
             if (item.reference.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
-                Text(item.reference, color = Color(0xFF7F8C78), fontSize = 9.sp, letterSpacing = .25.sp)
+                Text(item.reference, color = Color(0xFF7F8C78), fontSize = 10.sp, letterSpacing = .25.sp)
             }
         }
     }
