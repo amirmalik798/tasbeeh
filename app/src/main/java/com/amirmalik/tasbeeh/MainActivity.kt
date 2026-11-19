@@ -410,7 +410,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             dismissButton = { TextButton(onClick = { showReset = false }) { Text("CANCEL", color = Muted) } }
         )
         if (!showDhikrScreen && !showHistoryScreen && showTarget) TargetDialog(
-            current = effectiveTarget,
+            current = state.target,
             onDismiss = { showTarget = false },
             hasOpenSession = state.openSession != null
         ) { target ->
