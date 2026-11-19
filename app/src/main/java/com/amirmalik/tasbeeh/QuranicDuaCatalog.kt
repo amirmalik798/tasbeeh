@@ -228,7 +228,7 @@ internal class QuranicDuaRepository(context: Context) {
     }
 
     private fun fetchChapter(chapter: Int): Map<String, Triple<String, String, String>>? {
-        val address = "https://api.alquran.cloud/v1/surah/$chapter/editions/quran-uthmani,en.transliteration,en.sahih"
+        val address = "https://api.alquran.cloud/v1/surah/$chapter/editions/quran-uthmani,en.sahih,en.transliteration"
         val connection = (URL(address).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             instanceFollowRedirects = true
@@ -245,8 +245,8 @@ internal class QuranicDuaRepository(context: Context) {
             val editions = JSONObject(payload).optJSONArray("data") ?: return null
             if (editions.length() < 3) return null
             val arabicAyahs = editions.optJSONObject(0)?.optJSONArray("ayahs") ?: return null
-            val transliterationAyahs = editions.optJSONObject(1)?.optJSONArray("ayahs") ?: return null
-            val translationAyahs = editions.optJSONObject(2)?.optJSONArray("ayahs") ?: return null
+            val translationAyahs = editions.optJSONObject(1)?.optJSONArray("ayahs") ?: return null
+            val transliterationAyahs = editions.optJSONObject(2)?.optJSONArray("ayahs") ?: return null
 
             fun textByAyah(ayahs: JSONArray): Map<Int, String> = buildMap {
                 for (index in 0 until ayahs.length()) {
