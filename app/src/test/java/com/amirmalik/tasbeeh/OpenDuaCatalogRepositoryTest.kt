@@ -17,8 +17,8 @@ class OpenDuaCatalogRepositoryTest {
         snapshot!!
         assertEquals(OpenDuaCatalogParser.DATA_VERSION, snapshot.dataVersion)
         assertEquals(267, snapshot.items.map { it.sourceEntryId }.distinct().size)
-        // Parsing succeeds only when all 262 distinct canonical dua IDs were found.
-        assertEquals(262, OpenDuaCatalogParser.EXPECTED_DUA_COUNT)
+        assertEquals(262, snapshot.canonicalDuaCount)
+        assertEquals(249, snapshot.recordingCount)
         assertEquals(249, snapshot.items.flatMap { it.recitationAudioUrls }.distinct().size)
         assertEquals(19, snapshot.categories.size)
         assertEquals("Tag 01", snapshot.categories.first())
