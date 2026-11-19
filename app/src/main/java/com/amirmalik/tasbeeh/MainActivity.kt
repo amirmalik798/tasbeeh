@@ -584,7 +584,7 @@ class MainActivity : ComponentActivity() {
                 storageReadError -> TasbeehStorageRecoveryScreen(
                     onRetry = { storageRetryCount++ }
                 )
-                saved == null -> TasbeehStartupScreen()
+                saved == null || !openDuaCacheLoaded || !quranCacheLoaded -> TasbeehStartupScreen()
                 else -> TasbeehApp(
                     state = saved,
                     store = store,
