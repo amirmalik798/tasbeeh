@@ -531,13 +531,10 @@ private fun TasbeehApp(
         if (!showDhikrScreen && !showHistoryScreen && showSettings) SettingsDialog(
             state = state,
             onDismiss = { showSettings = false },
-            onSave = { sound, haptics, fontScale ->
+            onSave = { sound, haptics, fontScale, voice ->
                 scope.launch {
-                    store.update(
-                        soundEnabled = sound,
-                        hapticsEnabled = haptics,
-                        fontScale = fontScale
-                    )
+                    store.update(soundEnabled = sound, hapticsEnabled = haptics,
+                        fontScale = fontScale, ttsVoicePreference = voice)
                 }
             }
         )
@@ -1180,7 +1177,7 @@ private fun TargetDialog(
         title = { Text("Choose your target", color = Ivory) },
         text = {
             Column(
-                Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (hasOpenSession) {
@@ -1290,11 +1287,12 @@ private fun TargetDialog(
 private fun SettingsDialog(
     state: TasbeehState,
     onDismiss: () -> Unit,
-    onSave: (Boolean, Boolean, Float) -> Unit
+    onSave: (Boolean, Boolean, Float, String) -> Unit
 ) {
     var sound by remember(state.soundEnabled) { mutableStateOf(state.soundEnabled) }
     var haptics by remember(state.hapticsEnabled) { mutableStateOf(state.hapticsEnabled) }
     var fontScale by remember(state.fontScale) { mutableFloatStateOf(state.fontScale) }
+    var ttsVoice by remember(state.ttsVoicePreference) { mutableStateOf(state.ttsVoicePreference) }
 
     val fontSizes = listOf(
         "Standard" to 1.0f,
@@ -1311,8 +1309,27 @@ private fun SettingsDialog(
                 Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                SettingToggle("Counting sound", "A soft sound on each bead", sound) { sound = it }
+                SettingToggle("Counting sound", "A soft sound on every increment", sound) { sound = it }
                 SettingToggle("Haptic feedback", "A gentle tactile response", haptics) { haptics = it }
+
+                Spacer(Modifier.height(3.dp))
+                Text("ARABIC RECITATION VOICE", color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Text("Preferred voice, when available in your device's Arabic TTS engine.", color = Muted, fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("female" to "Female", "male" to "Male").forEach { (value, label) ->
+                        FilterChip(
+                            selected = ttsVoice == value,
+                            onClick = { ttsVoice = value },
+                            modifier = Modifier.weight(1f),
+                            label = { Text(label, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Gold, selectedLabelColor = Ink,
+                                containerColor = Panel2, labelColor = Ivory
+                            )
+                        )
+                    }
+                }
 
                 Spacer(Modifier.height(3.dp))
                 Text(
@@ -1374,7 +1391,7 @@ private fun SettingsDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(sound, haptics, fontScale)
+                onSave(sound, haptics, fontScale, ttsVoice)
                 onDismiss()
             }) { Text("SAVE SETTINGS", color = Gold) }
         },
