@@ -82,13 +82,23 @@ class MainActivity : ComponentActivity() {
         }.getOrNull()
         val store = TasbeehStore(applicationContext)
         setContent {
-            val saved by store.state.collectAsState(initial = TasbeehState())
-            TasbeehApp(saved, store) {
-                if (saved.soundEnabled) {
-                    countToneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 38)
-                }
-                if (saved.hapticsEnabled) {
-                    window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            val savedState by produceState<TasbeehState?>(
+                initialValue = null,
+                key1 = store
+            ) {
+                store.state.collect { value = it }
+            }
+            val saved = savedState
+            if (saved == null) {
+                TasbeehStartupScreen()
+            } else {
+                TasbeehApp(saved, store) {
+                    if (saved.soundEnabled) {
+                        countToneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 38)
+                    }
+                    if (saved.hapticsEnabled) {
+                        window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    }
                 }
             }
         }
@@ -98,6 +108,40 @@ class MainActivity : ComponentActivity() {
         countToneGenerator?.release()
         countToneGenerator = null
         super.onDestroy()
+    }
+}
+
+@Composable
+@Composable
+private fun TasbeehStartupScreen() {
+    Box(
+        Modifier.fillMaxSize()
+            .background(Ink)
+            .statusBarsPadding()
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                Modifier.size(58.dp)
+                    .clip(RoundedCornerShape(19.dp))
+                    .background(Panel2)
+                    .border(1.dp, Gold.copy(alpha = .4f), RoundedCornerShape(19.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                KaabaMark(Modifier.size(29.dp))
+            }
+            Spacer(Modifier.height(18.dp))
+            Text("SERENE DHIKR", color = Ivory, fontSize = 18.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
+            Spacer(Modifier.height(7.dp))
+            Text("Preparing your remembrance", color = Muted, fontSize = 12.sp)
+            Spacer(Modifier.height(22.dp))
+            CircularProgressIndicator(
+                modifier = Modifier.size(23.dp),
+                color = Gold,
+                strokeWidth = 2.dp
+            )
+        }
     }
 }
 
@@ -273,7 +317,8 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             }
             else -> {
             BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
-            val compactLayout = maxHeight < 760.dp || state.fontScale >= 1.2f
+            val compactLayout = maxHeight < 760.dp ||
+                systemDensity.fontScale * state.fontScale >= 1.2f
             Canvas(Modifier.fillMaxSize()) {
                 drawCircle(
                     Brush.radialGradient(listOf(Color(0xFF3A2A0F).copy(alpha = .38f), Color.Transparent), Offset(size.width * .5f, size.height * .30f), size.width * .8f),
