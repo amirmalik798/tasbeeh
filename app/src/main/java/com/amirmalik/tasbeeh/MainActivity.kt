@@ -549,7 +549,7 @@ class MainActivity : ComponentActivity() {
                     quranCacheWriteFailed = result.refreshedFromNetwork && !result.cachePersisted
                     if (!result.isComplete) {
                         quranRefreshError =
-                            "Verified text is available for ${result.completedSurahCount} of 114 surahs. Some chapters could not be downloaded. Retry when your connection is stable; completed chapters remain saved."
+                            "Verified text is available for ${result.completedSurahCount} of 114 surahs. Some chapters could not be downloaded. Retry when your connection is stable."
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
