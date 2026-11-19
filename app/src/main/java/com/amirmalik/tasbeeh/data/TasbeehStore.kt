@@ -17,7 +17,7 @@ import kotlin.math.min
 private val Context.tasbeehDataStore by preferencesDataStore(name = "tasbeeh_state")
 
 const val SESSION_IDLE_TIMEOUT_MS = 15L * 60L * 1000L
-const val DEFAULT_APP_FONT_SCALE = 1.08f
+const val DEFAULT_APP_FONT_SCALE = 1.12f
 
 enum class SessionStatus {
     ACTIVE,
