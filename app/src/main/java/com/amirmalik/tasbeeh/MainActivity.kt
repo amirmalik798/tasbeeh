@@ -149,7 +149,7 @@ internal fun quranPlaybackFailureMessage(
     return if (diagnostics.isEmpty()) {
         causeMessage
     } else {
-        "$causeMessage\\n\\nDiagnostic: ${diagnostics.joinToString(", ")}."
+        "$causeMessage\n\nDiagnostic: ${diagnostics.joinToString(", ")}."
     }
 }
 
@@ -312,7 +312,9 @@ class MainActivity : ComponentActivity() {
     ) {
         val urls = QuranRecitationAudio.audioUrlsForAyahs(ayahKeys)
         if (!QuranRecitationAudio.shouldUseQuranFoundation(ayahKeys) || urls.isEmpty()) {
-            speakArabic(text, preferredVoice, queueMode, showUnavailableNotice = false)
+            showQuranPlaybackError(
+                "The selected Qur'anic passage does not have a valid Quran Foundation audio mapping. No audio was played. Please update the app or select another recitation."
+            )
             return
         }
 
@@ -377,7 +379,7 @@ class MainActivity : ComponentActivity() {
     ) {
         if (text.isBlank()) return
 
-        if (QuranRecitationAudio.shouldUseQuranFoundation(quranAyahKeys)) {
+        if (quranAyahKeys.isNotEmpty()) {
             enqueueQuranRecitation(text, preferredVoice, quranAyahKeys, queueMode)
             return
         }
