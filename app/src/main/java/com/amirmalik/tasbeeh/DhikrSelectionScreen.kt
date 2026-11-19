@@ -439,12 +439,8 @@ internal fun DhikrSelectionScreen(
             isSpeaking = isSpeaking,
             isPreparingRecitation = isPreparingRecitation,
             hasInternetConnection = hasInternetConnection,
-            onPlayRecitation = {
-                onPlayRecitation(
-                    surah.title,
-                    QuranRecitationAudio.ATTRIBUTION,
-                    QuranRecitationAudio.audioUrlsForAyahs(surah.quranAyahKeys)
-                )
+            onPlayRecitation = { title, artist, urls ->
+                onPlayRecitation(title, artist, urls)
             },
             onStopRecitation = onStopRecitation,
             onDismiss = { readingSurah = null }
@@ -624,7 +620,7 @@ private fun DhikrOptionCard(
                         modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            Icons.Default.VolumeUp,
+                            Icons.Default.PlayArrow,
                             contentDescription = "Listen to ${item.title}",
                             tint = if (listenEnabled && onListen != null) gold else Color(0xFF667064),
                             modifier = Modifier.size(19.dp)
