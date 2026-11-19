@@ -299,6 +299,9 @@ internal data class QuranicCatalogRefreshResult(
     val completedSurahCount: Int = 0
 )
 
+internal fun quranSessionSnapshotText(value: String, isFullSurah: Boolean): String =
+    if (isFullSurah) value.take(240) else value
+
 internal fun hasCompleteQuranicText(items: List<DhikrItem>): Boolean {
     val itemsById = items.associateBy { it.id }
     val allSurahsComplete = QuranicDuaCatalog.surahs.all { definition ->
