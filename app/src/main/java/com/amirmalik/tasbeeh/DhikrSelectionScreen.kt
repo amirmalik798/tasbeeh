@@ -72,7 +72,9 @@ internal data class DhikrItem(
     val meaning: String,
     val reference: String = "",
     val customId: String? = null,
-    val quranAyahKeys: List<String> = emptyList()
+    val quranAyahKeys: List<String> = emptyList(),
+    val recitationUrls: List<String> = emptyList(),
+    val recitationCredit: String? = null
 )
 
 @Composable
@@ -80,6 +82,8 @@ internal fun DhikrSelectionScreen(
     currentDhikr: String,
     currentCustomDhikrId: String?,
     customDhikrs: List<CustomDhikr>,
+    builtInDhikrs: List<DhikrItem>,
+    catalogueLoading: Boolean,
     onBack: () -> Unit,
     onSelect: (DhikrItem) -> Unit,
     onCreateCustom: () -> Unit,
@@ -89,7 +93,14 @@ internal fun DhikrSelectionScreen(
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
-    val categories = listOf("All", "My Dhikr", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Morning & Evening", "After Prayer", "In Prayer", "Sleep", "Protection", "Daily Du'a")
+    val categories = remember(builtInDhikrs, customDhikrs) {
+        listOf("All", "My Dhikr") + (
+            builtInDhikrs.map { it.category } +
+                customDhikrs.map { "My Dhikr" }
+            ).filter { it.isNotBlank() && it != "All" && it != "My Dhikr" }
+            .distinct()
+            .sortedBy { it.lowercase(Locale.ROOT) }
+    }
     val keyboardController = LocalSoftwareKeyboardController.current
     val customItems = remember(customDhikrs) {
         customDhikrs.map { custom ->
@@ -105,7 +116,7 @@ internal fun DhikrSelectionScreen(
             )
         }
     }
-    val allItems = remember(customItems) { DhikrCatalog.items + customItems }
+    val allItems = remember(customItems, builtInDhikrs) { builtInDhikrs + customItems }
     val filteredItems = remember(query, category, allItems) {
         val normalizedQuery = normalizeDhikrSearchText(query)
         allItems.filter { item ->
@@ -257,12 +268,21 @@ internal fun DhikrSelectionScreen(
         }
 
         Spacer(Modifier.height(9.dp))
-        if (filteredItems.isEmpty()) {
+        if (catalogueLoading || filteredItems.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No dhikr found", color = Color(0xFFFFF8EA), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (catalogueLoading) "Loading the OpenDua library…" else "No dhikr found",
+                        color = Color(0xFFFFF8EA),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     Spacer(Modifier.height(5.dp))
-                    Text("Try another name or clear your filters.", color = Color(0xFFB0AA9C), fontSize = 12.sp)
+                    Text(
+                        if (catalogueLoading) "Preparing the researched duas and their recitations." else "Try another name or clear your filters.",
+                        color = Color(0xFFB0AA9C),
+                        fontSize = 12.sp
+                    )
                     Spacer(Modifier.height(9.dp))
                     TextButton(onClick = {
                         query = ""
@@ -405,6 +425,20 @@ private fun DhikrOptionCard(
                 )
                 Text(
                     "Audio streamed from Quran.Foundation",
+                    color = Color(0xFF7F8C78),
+                    fontSize = 9.sp
+                )
+            } else if (item.recitationUrls.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "RECORDED RECITATION · OPENDUA",
+                    color = Color(0xFF83B994),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = .55.sp
+                )
+                Text(
+                    item.recitationCredit ?: "Audio streamed from OpenDua",
                     color = Color(0xFF7F8C78),
                     fontSize = 9.sp
                 )
