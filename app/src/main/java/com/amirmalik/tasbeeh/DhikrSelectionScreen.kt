@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
@@ -143,17 +142,18 @@ internal fun DhikrSelectionScreen(
             }
         }
 
-        CreateDhikrAction(onClick = onCreateCustom)
-        Spacer(Modifier.height(13.dp))
-
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.weight(1f).height(56.dp),
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
-                placeholder = { Text("Search by name, words or meaning", color = Color(0xFF888A80), fontSize = 12.sp) },
+                placeholder = { Text("Search dhikr", color = Color(0xFF888A80), fontSize = 12.sp) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFFFFD56A)) },
                 trailingIcon = {
                     if (query.isNotEmpty()) {
@@ -172,8 +172,22 @@ internal fun DhikrSelectionScreen(
                     unfocusedContainerColor = Color(0xFF121714)
                 )
             )
-            Spacer(Modifier.height(11.dp))
-            Row(
+            IconButton(
+                onClick = onCreateCustom,
+                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFFF0BF4E))
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add your own dhikr",
+                    tint = Color(0xFF17130A),
+                    modifier = Modifier.size(27.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(11.dp))
+        Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
@@ -251,34 +265,6 @@ internal fun DhikrSelectionScreen(
                 TextButton(onClick = { pendingDelete = null }) { Text("KEEP", color = Color(0xFFFFD56A)) }
             }
         )
-    }
-}
-
-@Composable
-private fun CreateDhikrAction(onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).clickable(onClick = onClick),
-        color = Color(0xFF151C16),
-        shape = RoundedCornerShape(19.dp),
-        border = BorderStroke(1.dp, Color(0xFFD5A642).copy(alpha = .58f))
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                Modifier.size(42.dp).clip(CircleShape).background(Color(0xFF3B2D13)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = Color(0xFFFFD875), modifier = Modifier.size(22.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Create your own dhikr", color = Color(0xFFFFE6A0), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text("Add Arabic, pronunciation and meaning", color = Color(0xFFAFAE9E), fontSize = 10.sp)
-            }
-            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFFFFD56A), modifier = Modifier.size(18.dp))
-        }
     }
 }
 
