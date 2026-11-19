@@ -275,7 +275,13 @@ class MainActivity : ComponentActivity() {
         mediaControllerFuture = future
         future.addListener(
             {
-                if (mediaControllerFuture !== future || isFinishing || isDestroyed) {
+                // onStop may already have released a stale future. Do not
+                // release it a second time when its listener eventually fires.
+                if (mediaControllerFuture !== future) {
+                    return@addListener
+                }
+                if (isFinishing || isDestroyed) {
+                    mediaControllerFuture = null
                     MediaController.releaseFuture(future)
                     return@addListener
                 }
