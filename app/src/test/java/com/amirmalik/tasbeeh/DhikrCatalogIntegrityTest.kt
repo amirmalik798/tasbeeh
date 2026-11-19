@@ -52,7 +52,7 @@ class DhikrCatalogIntegrityTest {
         val fallback = QuranicDuaCatalog.fallbackItems()
         assertFalse(hasCompleteQuranicText(fallback))
 
-        val complete = fallback.map { item -> item.copy(arabic = "نَصٌّ") }
+        val complete = fallback.map { item -> item.copy(arabic = "نَصٌّ", transliteration = "Nass") }
         assertTrue(hasCompleteQuranicText(complete))
 
         val missingAyah = complete.mapIndexed { index, item ->
@@ -75,13 +75,13 @@ class DhikrCatalogIntegrityTest {
 
         val missingArabic = allVerses.toMutableMap().apply {
             val key = QuranicDuaCatalog.additions.first().ayahKeys.first()
-            put(key, "" to "Translation")
+            put(key, Triple("", "Nass", "Translation"))
         }
         assertFalse(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, missingArabic))
 
         val missingTranslation = allVerses.toMutableMap().apply {
             val key = QuranicDuaCatalog.additions.first().ayahKeys.first()
-            put(key, "نَصٌّ" to "")
+            put(key, Triple("نَصٌّ", "Nass", ""))
         }
         assertFalse(hasAllQuranicTextAndTranslations(QuranicDuaCatalog.additions, missingTranslation))
 
@@ -93,7 +93,7 @@ class DhikrCatalogIntegrityTest {
 
     @Test
     fun savedQuranTextMustProveEveryRequestedAyahWasCached() {
-        val completeItems = QuranicDuaCatalog.fallbackItems().map { it.copy(arabic = "نَصٌّ") }
+        val completeItems = QuranicDuaCatalog.fallbackItems().map { it.copy(arabic = "نَصٌّ", transliteration = "Nass") }
         val completeKeys = QuranicDuaCatalog.additions.associate { it.id to it.ayahKeys }
         assertTrue(hasCompleteQuranicCache(completeItems, completeKeys))
 
