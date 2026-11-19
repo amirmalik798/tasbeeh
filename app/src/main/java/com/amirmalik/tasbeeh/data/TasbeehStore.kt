@@ -134,7 +134,7 @@ internal fun sessionSnapshotForDisplay(session: SavedSession?, counterValue: Int
 data class TasbeehState(
     val count: Int = 0,
     val target: Int = 33,
-    val dhikr: String = "SubhanAllah",
+    val dhikr: String = "Surah al-Fatihah",
     val soundEnabled: Boolean = false,
     val hapticsEnabled: Boolean = true,
     val fontScale: Float = DEFAULT_APP_FONT_SCALE,
@@ -169,7 +169,7 @@ class TasbeehStore(private val context: Context) {
         TasbeehState(
             count = visibleCounterValue(prefs[Keys.count] ?: 0, currentSession?.status),
             target = (prefs[Keys.target] ?: 33).coerceIn(1, 9999),
-            dhikr = prefs[Keys.dhikr] ?: "SubhanAllah",
+            dhikr = prefs[Keys.dhikr] ?: "Surah al-Fatihah",
             soundEnabled = prefs[Keys.sound] ?: false,
             hapticsEnabled = prefs[Keys.haptics] ?: true,
             fontScale = safeAppFontScale(prefs[Keys.fontScale] ?: DEFAULT_APP_FONT_SCALE),
@@ -198,7 +198,7 @@ class TasbeehStore(private val context: Context) {
                         // Keep its count, but do not invent a historical start time.
                         SavedSession(
                             id = UUID.randomUUID().toString(),
-                            dhikr = prefs[Keys.dhikr] ?: "SubhanAllah",
+                            dhikr = prefs[Keys.dhikr] ?: "Surah al-Fatihah",
                             count = legacyCount,
                             target = (prefs[Keys.target] ?: 33).coerceIn(1, 9999),
                             startedAt = 0L,
@@ -442,7 +442,7 @@ class TasbeehStore(private val context: Context) {
             if (prefs[Keys.selectedCustomDhikrId] == id) {
                 finishOpenSessionIfNeeded(prefs, now)
                 prefs[Keys.count] = 0
-                prefs[Keys.dhikr] = "SubhanAllah"
+                prefs[Keys.dhikr] = "Surah al-Fatihah"
                 prefs.remove(Keys.selectedCustomDhikrId)
             }
         }
