@@ -53,6 +53,46 @@ internal fun incrementCounterValueSafely(storedCount: Int): Int {
 internal fun safeAppFontScale(value: Float): Float =
     if (value.isFinite()) value.coerceIn(1.0f, 1.25f) else DEFAULT_APP_FONT_SCALE
 
+private const val MAX_FAVORITE_ITEM_IDS = 1000
+private const val MAX_FAVORITE_ITEM_ID_LENGTH = 180
+
+private fun parseFavoriteItemIds(raw: String, rejectInvalidEntries: Boolean): Set<String> {
+    if (raw.isBlank()) return emptySet()
+    val array = JSONArray(raw)
+    val ids = LinkedHashSet<String>(array.length())
+    for (index in 0 until array.length()) {
+        val id = array.optString(index).trim()
+        if (id.isBlank() || id.length > MAX_FAVORITE_ITEM_ID_LENGTH) {
+            if (rejectInvalidEntries) {
+                throw IllegalStateException("Saved favorites contain an invalid item identity.")
+            }
+            continue
+        }
+        ids.add(id)
+        if (ids.size >= MAX_FAVORITE_ITEM_IDS) break
+    }
+    return ids
+}
+
+internal fun decodeFavoriteItemIds(raw: String): Set<String> =
+    runCatching { parseFavoriteItemIds(raw, rejectInvalidEntries = false) }.getOrDefault(emptySet())
+
+internal fun encodeFavoriteItemIds(ids: Collection<String>): String =
+    JSONArray().apply {
+        ids.asSequence().map(String::trim)
+            .filter { it.isNotBlank() && it.length <= MAX_FAVORITE_ITEM_ID_LENGTH }
+            .distinct().sorted().take(MAX_FAVORITE_ITEM_IDS)
+            .forEach { put(it) }
+    }.toString()
+
+internal fun toggleFavoriteItemId(current: Set<String>, itemId: String): Set<String> {
+    val id = itemId.trim()
+    if (id.isBlank() || id.length > MAX_FAVORITE_ITEM_ID_LENGTH) return current
+    return if (id in current) current - id
+    else if (current.size >= MAX_FAVORITE_ITEM_IDS) current
+    else current + id
+}
+
 internal fun uniqueCustomDhikrEntries(entries: List<CustomDhikr>): List<CustomDhikr> =
     entries.distinctBy { it.id }
 
@@ -179,7 +219,8 @@ data class TasbeehState(
     val quranReciterId: Int = 1,
     val currentSession: SavedSession? = null,
     val customDhikrs: List<CustomDhikr> = emptyList(),
-    val selectedCustomDhikrId: String? = null
+    val selectedCustomDhikrId: String? = null,
+    val favoriteItemIds: Set<String> = emptySet()
 )
 
 class TasbeehStore(private val context: Context) {
@@ -202,6 +243,7 @@ class TasbeehStore(private val context: Context) {
 
         val customDhikrs = stringPreferencesKey("custom_dhikrs")
         val selectedCustomDhikrId = stringPreferencesKey("selected_custom_dhikr_id")
+        val favoriteItemIds = stringPreferencesKey("favorite_item_ids")
     }
 
     val state: Flow<TasbeehState> = context.tasbeehDataStore.data.map { prefs ->
@@ -216,7 +258,8 @@ class TasbeehStore(private val context: Context) {
             quranReciterId = (prefs[Keys.quranReciterId] ?: 1).coerceAtLeast(1),
             currentSession = currentSession,
             customDhikrs = decodeCustomDhikrs(prefs[Keys.customDhikrs].orEmpty()),
-            selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId]
+            selectedCustomDhikrId = prefs[Keys.selectedCustomDhikrId],
+            favoriteItemIds = decodeFavoriteItemIds(prefs[Keys.favoriteItemIds].orEmpty())
         )
     }.flowOn(Dispatchers.Default)
 
@@ -288,6 +331,27 @@ class TasbeehStore(private val context: Context) {
             hapticsEnabled?.let { prefs[Keys.haptics] = it }
             fontScale?.let { prefs[Keys.fontScale] = safeAppFontScale(it) }
             quranReciterId?.takeIf { it > 0 }?.let { prefs[Keys.quranReciterId] = it }
+        }
+    }
+
+    /**
+     * Adds or removes a stable library entry ID from the user's Favorites.
+     * Only the identity is stored; Quran and OpenDua content stays in its
+     * existing catalogue/cache.
+     */
+    suspend fun toggleFavorite(itemId: String) {
+        val normalizedId = itemId.trim()
+        require(normalizedId.isNotBlank() && normalizedId.length <= MAX_FAVORITE_ITEM_ID_LENGTH) {
+            "A valid library item identity is required."
+        }
+        context.tasbeehDataStore.edit { prefs ->
+            val current = parseFavoriteItemIds(
+                prefs[Keys.favoriteItemIds].orEmpty(),
+                rejectInvalidEntries = true
+            )
+            prefs[Keys.favoriteItemIds] = encodeFavoriteItemIds(
+                toggleFavoriteItemId(current, normalizedId)
+            )
         }
     }
 
