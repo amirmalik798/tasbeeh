@@ -416,6 +416,19 @@ internal fun DhikrSelectionScreen(
             }
         )
     }
+    readingSurah?.let { surah ->
+        QuranSurahReaderDialog(
+            item = surah,
+            isSpeaking = isSpeaking,
+            isPreparingRecitation = isPreparingRecitation,
+            hasInternetConnection = hasInternetConnection,
+            onPlayRecitation = {
+                onPlayRecitation(QuranRecitationAudio.audioUrlsForAyahs(surah.quranAyahKeys))
+            },
+            onStopRecitation = onStopRecitation,
+            onDismiss = { readingSurah = null }
+        )
+    }
 }
 
 @Composable
@@ -533,19 +546,6 @@ private fun CatalogStatusPanel(
                 }
             }
         }
-    }
-    readingSurah?.let { surah ->
-        QuranSurahReaderDialog(
-            item = surah,
-            isSpeaking = isSpeaking,
-            isPreparingRecitation = isPreparingRecitation,
-            hasInternetConnection = hasInternetConnection,
-            onPlayRecitation = {
-                onPlayRecitation(QuranRecitationAudio.audioUrlsForAyahs(surah.quranAyahKeys))
-            },
-            onStopRecitation = onStopRecitation,
-            onDismiss = { readingSurah = null }
-        )
     }
 }
 
