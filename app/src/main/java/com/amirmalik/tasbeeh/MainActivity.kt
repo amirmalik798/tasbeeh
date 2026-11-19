@@ -480,29 +480,33 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(quranicDuaRepository, quranRetryCount, hasInternetConnection) {
                 quranRefreshError = null
                 quranCacheWriteFailed = false
+
+                // Show a complete cached catalogue immediately. A missing cache remains
+                // visibly incomplete until the network provides verified content.
                 if (!hasInternetConnection) {
                     quranIsRefreshing = false
                     quranRefreshError =
-                        "No internet connection. Saved Qur'anic text remains available when present; audio recitations require internet."
+                        "No internet connection. Connect to load verified Qur'anic text; recitation audio requires internet."
                     return@LaunchedEffect
                 }
 
-                quranIsRefreshing = true
+                quranIsRefreshing = !hasCompleteQuranicText(extendedQuranicItems)
                 try {
                     val result = quranicDuaRepository.refresh()
-                    extendedQuranicItems = result.items
+                    // Publish only the complete, validated result (or the previous
+                    // complete cache returned by the repository).
+                    if (result.isComplete) {
+                        extendedQuranicItems = result.items
+                    }
                     quranCacheWriteFailed = result.refreshedFromNetwork && !result.cachePersisted
-                    if (!result.refreshedFromNetwork) {
-                        quranRefreshError = if (result.isComplete) {
-                            "The latest Qur'anic text update could not be reached. Your complete saved text is being used."
-                        } else {
-                            "The complete Qur'anic text could not be downloaded. The four selections remain available; retry when your connection is stable."
-                        }
+                    if (!result.refreshedFromNetwork && !result.isComplete) {
+                        quranRefreshError =
+                            "Verified Qur'anic text could not be downloaded. The selections remain listed; retry when your connection is stable."
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; retaining saved references", error)
+                    Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; retaining last complete catalogue", error)
                     quranRefreshError = networkFailureMessage("Qur'anic text", error)
                 } finally {
                     if (currentCoroutineContext().isActive) quranIsRefreshing = false
