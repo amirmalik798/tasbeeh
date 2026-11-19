@@ -598,8 +598,8 @@ internal class QuranicDuaRepository(context: Context) {
                     val ayah = ayahs.optJSONObject(index) ?: continue
                     val number = ayah.optInt("numberInSurah", -1)
                     val value = ayah.optString("text").trim()
-                        .replace(Regex("<[^>]*>"), " ")
-                        .replace(Regex("\\s+"), " ")
+                        .replace(HTML_TAG_REGEX, " ")
+                        .replace(WHITESPACE_REGEX, " ")
                         .trim()
                     if (number > 0 && value.isNotBlank()) put(number, value)
                 }
@@ -628,6 +628,8 @@ internal class QuranicDuaRepository(context: Context) {
     }
 
     private companion object {
+        val HTML_TAG_REGEX = Regex("<[^>]*>")
+        val WHITESPACE_REGEX = Regex("\\s+")
         const val QURAN_CACHE_SCHEMA_VERSION = 1
         const val MAX_QURAN_SURAH_CACHE_BYTES = 4 * 1024 * 1024
     }
