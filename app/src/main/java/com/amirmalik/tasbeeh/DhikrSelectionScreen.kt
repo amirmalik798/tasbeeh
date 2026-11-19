@@ -74,35 +74,6 @@ internal data class DhikrItem(
     val customId: String? = null
 )
 
-internal object DhikrCatalog {
-    val items = listOf(
-        DhikrItem("subhanallah", "SubhanAllah", "SubhanAllah", "Tasbih", "سُبْحَانَ اللَّهِ", "Subḥānallāh", "Glory be to Allah."),
-        DhikrItem("alhamdulillah", "Alhamdulillah", "Alhamdulillah", "Praise", "الْحَمْدُ لِلَّهِ", "Alḥamdulillāh", "All praise belongs to Allah."),
-        DhikrItem("allahu-akbar", "Allahu Akbar", "Allahu Akbar", "Takbir", "اللَّهُ أَكْبَرُ", "Allāhu akbar", "Allah is the Greatest."),
-        DhikrItem("tahlil", "La ilaha illallah", "La ilaha illallah", "Tahlil", "لَا إِلَٰهَ إِلَّا اللَّهُ", "Lā ilāha illallāh", "There is no deity worthy of worship except Allah."),
-        DhikrItem("subhanallah-bihamdihi", "SubhanAllahi wa bihamdihi", "SubhanAllahi wa bihamdihi", "Tasbih", "سُبْحَانَ اللَّهِ وَبِحَمْدِهِ", "Subḥānallāhi wa biḥamdih", "Glory be to Allah and praise be to Him.", "Sahih Muslim"),
-        DhikrItem("subhanallah-azim", "SubhanAllahil-Azim", "SubhanAllahil-Azim", "Tasbih", "سُبْحَانَ اللَّهِ الْعَظِيمِ", "Subḥānallāhil-ʿAẓīm", "Glory be to Allah, the Magnificent."),
-        DhikrItem("four-phrases", "The four beloved phrases", "The four beloved phrases", "Tasbih", "سُبْحَانَ اللَّهِ، وَالْحَمْدُ لِلَّهِ، وَلَا إِلَٰهَ إِلَّا اللَّهُ، وَاللَّهُ أَكْبَرُ", "Subḥānallāh · Alḥamdulillāh · Lā ilāha illallāh · Allāhu akbar", "Glory be to Allah, all praise belongs to Allah, none is worthy of worship except Allah, and Allah is the Greatest."),
-        DhikrItem("hawqalah", "La hawla wa la quwwata illa billah", "La hawla wa la quwwata illa billah", "Tasbih", "لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ", "Lā ḥawla wa lā quwwata illā billāh", "There is no power and no strength except through Allah.", "Sahih al-Bukhari · Sunan Ibn Majah 3824"),
-        DhikrItem("astaghfirullah", "Astaghfirullah", "Astaghfirullah", "Istighfar", "أَسْتَغْفِرُ اللَّهَ", "Astaghfirullāh", "I seek forgiveness from Allah."),
-        DhikrItem("astaghfirullah-tubu", "Astaghfirullaha wa atubu ilayh", "Astaghfirullah wa atubu ilayh", "Istighfar", "أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ", "Astaghfirullāha wa atūbu ilayh", "I seek Allah's forgiveness and turn to Him in repentance."),
-        DhikrItem("sayyid-istighfar", "Sayyid al-Istighfar", "Sayyid al-Istighfar", "Istighfar", "اللَّهُمَّ أَنْتَ رَبِّي لَا إِلَٰهَ إِلَّا أَنْتَ، خَلَقْتَنِي وَأَنَا عَبْدُكَ، وَأَنَا عَلَى عَهْدِكَ وَوَعْدِكَ مَا اسْتَطَعْتُ، أَعُوذُ بِكَ مِنْ شَرِّ مَا صَنَعْتُ، أَبُوءُ لَكَ بِنِعْمَتِكَ عَلَيَّ، وَأَبُوءُ بِذَنْبِي فَاغْفِرْ لِي، فَإِنَّهُ لَا يَغْفِرُ الذُّنُوبَ إِلَّا أَنْتَ", "Allāhumma anta rabbī, lā ilāha illā anta, khalaqtanī wa anā ʿabduka, wa anā ʿalā ʿahdika wa waʿdika mā istaṭaʿtu, aʿūdhu bika min sharri mā ṣanaʿtu, abūʾu laka bi-niʿmatika ʿalayya, wa abūʾu bi-dhanbī, faghfir lī, fa-innahū lā yaghfirudh-dhunūba illā anta.", "O Allah, You are my Lord. There is no deity worthy of worship except You. You created me and I am Your servant. I keep my covenant with You as best I can. I seek refuge in You from the evil I have done, acknowledge Your blessings and confess my sins. Forgive me, for none forgives sins except You.", "Sahih al-Bukhari 6306"),
-        DhikrItem("salawat", "Allahumma salli 'ala Muhammad", "Salawat upon the Prophet ﷺ", "Salawat", "اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ", "Allāhumma ṣalli wa sallim ʿalā nabiyyinā Muḥammad", "O Allah, send Your blessings and peace upon our Prophet Muhammad ﷺ.", "Hisn al-Muslim 98"),
-        DhikrItem("tahlil-complete", "La ilaha illallah wahdahu...", "Tahlil · complete remembrance", "Tahlil", "لَا إِلَٰهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ، لَهُ الْمُلْكُ وَلَهُ الْحَمْدُ، وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ", "Lā ilāha illallāhu waḥdahu lā sharīka lah, lahul-mulku wa lahul-ḥamdu, wa huwa ʿalā kulli shayʾin qadīr", "There is no deity worthy of worship except Allah alone, without partner. His is the dominion and His is all praise, and He has power over all things.", "Sahih al-Bukhari 6403 · Sahih Muslim"),
-        DhikrItem("hasbunallah", "Hasbunallahu wa ni'mal-wakil", "Hasbunallahu wa ni'mal-wakil", "Qur'anic", "حَسْبُنَا اللَّهُ وَنِعْمَ الْوَكِيلُ", "Ḥasbunallāhu wa niʿmal-wakīl", "Allah is sufficient for us, and He is the best Disposer of affairs.", "Qur'an 3:173"),
-        DhikrItem("inna-lillah", "Inna lillahi wa inna ilayhi raji'un", "Inna lillahi wa inna ilayhi raji'un", "Qur'anic", "إِنَّا لِلَّهِ وَإِنَّا إِلَيْهِ رَاجِعُونَ", "Innā lillāhi wa innā ilayhi rājiʿūn", "We belong to Allah, and to Him we shall return.", "Qur'an 2:156"),
-        DhikrItem("dua-yunus", "Dua of Prophet Yunus", "Dua of Prophet Yunus", "Qur'anic", "لَا إِلَٰهَ إِلَّا أَنْتَ سُبْحَانَكَ إِنِّي كُنْتُ مِنَ الظَّالِمِينَ", "Lā ilāha illā anta, subḥānaka, innī kuntu minaẓ-ẓālimīn", "There is no deity except You; glory be to You. I was among the wrongdoers.", "Qur'an 21:87"),
-        DhikrItem("rabbana-atina", "Rabbana atina fid-dunya", "Rabbana atina fid-dunya", "Qur'anic", "رَبَّنَا آتِنَا فِي الدُّنْيَا حَسَنَةً وَفِي الْآخِرَةِ حَسَنَةً وَقِنَا عَذَابَ النَّارِ", "Rabbanā ātinā fid-dunyā ḥasanah, wa fil-ākhirati ḥasanah, wa qinā ʿadhāban-nār", "Our Lord, grant us good in this world and good in the Hereafter, and protect us from the punishment of the Fire.", "Qur'an 2:201"),
-        DhikrItem("rabbi-ghfir-li", "Rabbighfir li", "Rabbighfir li", "Istighfar", "رَبِّ اغْفِرْ لِي وَتُبْ عَلَيَّ إِنَّكَ أَنْتَ التَّوَّابُ الرَّحِيمُ", "Rabbighfir lī wa tub ʿalayya, innaka antat-Tawwābur-Raḥīm", "My Lord, forgive me and accept my repentance. You are the Accepter of repentance, the Most Merciful."),
-        DhikrItem("audhu-kalimat", "A'udhu bi kalimatillah", "A'udhu bi kalimatillah", "Protection", "أَعُوذُ بِكَلِمَاتِ اللَّهِ التَّامَّاتِ مِنْ شَرِّ مَا خَلَقَ", "Aʿūdhu bi-kalimātillāhit-tāmmāti min sharri mā khalaq", "I seek refuge in the perfect words of Allah from the evil of what He has created.", "Hisn al-Muslim 97"),
-        DhikrItem("bismillah-protection", "Bismillahilladhi la yadurru", "Bismillahilladhi la yadurru", "Protection", "بِسْمِ اللَّهِ الَّذِي لَا يَضُرُّ مَعَ اسْمِهِ شَيْءٌ فِي الْأَرْضِ وَلَا فِي السَّمَاءِ وَهُوَ السَّمِيعُ الْعَلِيمُ", "Bismillāhilladhī lā yaḍurru maʿa-smihī shayʾun fil-arḍi wa lā fis-samāʾi wa huwas-Samīʿul-ʿAlīm", "In the name of Allah, with whose name nothing on earth or in the heavens can cause harm. He is the All-Hearing, the All-Knowing.", "Sunan Abi Dawud 5088"),
-        DhikrItem("moses-dua", "Rabbi inni lima anzalta", "Rabbi inni lima anzalta", "Qur'anic", "رَبِّ إِنِّي لِمَا أَنْزَلْتَ إِلَيَّ مِنْ خَيْرٍ فَقِيرٌ", "Rabbi innī limā anzalta ilayya min khayrin faqīr", "My Lord, I am truly in need of whatever good You may send down to me.", "Qur'an 28:24"),
-        DhikrItem("beneficial-knowledge", "Allahumma inni as'aluka ilman nafi'an", "Dua for beneficial knowledge", "Daily Du'a", "اللَّهُمَّ إِنِّي أَسْأَلُكَ عِلْمًا نَافِعًا وَرِزْقًا طَيِّبًا وَعَمَلًا مُتَقَبَّلًا", "Allāhumma innī asʾaluka ʿilman nāfiʿan, wa rizqan ṭayyiban, wa ʿamalan mutaqabbalan", "O Allah, I ask You for beneficial knowledge, good provision and accepted deeds.", "Sunan Ibn Majah 925")
-    )
-
-    fun byValue(value: String): DhikrItem? = items.firstOrNull { it.value == value }
-}
-
 @Composable
 internal fun DhikrSelectionScreen(
     currentDhikr: String,
@@ -117,7 +88,7 @@ internal fun DhikrSelectionScreen(
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
     var pendingDelete by remember { mutableStateOf<CustomDhikr?>(null) }
-    val categories = listOf("All", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Protection", "Daily Du'a", "My Dhikr")
+    val categories = listOf("All", "Tasbih", "Praise", "Takbir", "Tahlil", "Istighfar", "Salawat", "Qur'anic", "Morning & Evening", "After Prayer", "In Prayer", "Sleep", "Protection", "Daily Du'a", "My Dhikr")
     val keyboardController = LocalSoftwareKeyboardController.current
     val customItems = remember(customDhikrs) {
         customDhikrs.map { custom ->

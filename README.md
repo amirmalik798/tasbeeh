@@ -23,3 +23,14 @@ Pushes and pull requests targeting `main` run the Android CI workflow. It runs u
 
 ## Persistence
 The counter, preferences, custom dhikr collection and single current-session record are committed to Preferences DataStore. The previous multi-session history keys are migrated once and removed. DataStore survives process death and normal restarts. Clearing app storage or uninstalling removes local app-private data.
+
+
+## Dhikr library sources and attribution
+
+The built-in library contains 100 selected remembrances and supplications from the Qur'an and Sunnah. Qur'anic passages are referenced by surah and ayah; narrations include their hadith collection and number. The collection was cross-checked against Hisn al-Muslim and OpenDua's versioned reference material. Transliteration is provided as a pronunciation aid; recitation and tajwid should be learned from a qualified teacher or reliable reciter.
+
+OpenDua editorial material and transliteration references are attributed under CC BY 4.0:
+
+OpenDua dataset v0.0.4 (https://opendua.org), by Ihsan Labs at the Human Development Fund. Based on Hisn al-Muslim by Sa'id ibn Ali ibn Wahf al-Qahtani. OpenDua editorial text, dataset structure and the recitation by Muhammad Jumah are licensed CC BY 4.0. OpenDua makes no ownership claim over the underlying religious texts.
+
+Licence: https://opendua.org/licence/data

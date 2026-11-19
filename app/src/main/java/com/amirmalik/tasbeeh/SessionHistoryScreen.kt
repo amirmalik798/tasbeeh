@@ -101,8 +101,7 @@ internal fun SessionHistoryScreen(
             ) {
                 SessionHistoryCard(
                     session = session,
-                    now = now,
-                    isCurrent = session.status == SessionStatus.ACTIVE || session.status == SessionStatus.PAUSED
+                    now = now
                 )
                 Spacer(Modifier.height(12.dp))
             }
@@ -111,7 +110,7 @@ internal fun SessionHistoryScreen(
 }
 
 @Composable
-private fun SessionHistoryCard(session: SavedSession, now: Long, isCurrent: Boolean) {
+private fun SessionHistoryCard(session: SavedSession, now: Long) {
     val active = session.status == SessionStatus.ACTIVE
     val duration = session.durationAt(now)
     val tint = if (session.status == SessionStatus.COMPLETED) HistoryGreen else HistoryGold
@@ -131,13 +130,6 @@ private fun SessionHistoryCard(session: SavedSession, now: Long, isCurrent: Bool
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.width(7.dp))
-                        Text(
-                            if (isCurrent) "CURRENT" else "LATEST",
-                            color = if (isCurrent) HistoryGreen else HistoryMuted,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold
                         )
                     }
                     Spacer(Modifier.height(3.dp))

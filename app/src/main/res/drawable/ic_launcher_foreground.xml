@@ -4,51 +4,46 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Mihrab arch: a quiet symbol of prayer and remembrance. -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#8C6628"
-        android:strokeWidth="1.6"
-        android:pathData="M54,30.5 A25.5,25.5 0 1,1 53.99,30.5"/>
-    <path android:fillColor="#FFE6A0" android:pathData="M50.85,30.50m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M57.45,31.37m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M63.60,33.92m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#DDA83E" android:pathData="M68.88,37.97m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M72.93,43.25m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M75.48,49.40m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#FFE6A0" android:pathData="M76.35,56.00m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M75.48,62.60m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M72.93,68.75m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#DDA83E" android:pathData="M68.88,74.03m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M63.60,78.08m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M57.45,80.63m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#FFE6A0" android:pathData="M50.85,81.50m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M44.25,80.63m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M38.10,78.08m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#DDA83E" android:pathData="M32.82,74.03m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M28.77,68.75m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M26.22,62.60m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#FFE6A0" android:pathData="M25.35,56.00m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M26.22,49.40m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M28.77,43.25m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#DDA83E" android:pathData="M32.82,37.97m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M38.10,33.92m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
-    <path android:fillColor="#F0BF4E" android:pathData="M44.25,31.37m-3.15,0a3.15,3.15 0 1,0 6.30,0a3.15,3.15 0 1,0 -6.30,0"/>
+        android:strokeColor="#E8B84D"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M25,82 L25,50 C25,33 38,20 54,20 C70,20 83,33 83,50 L83,82" />
+
+    <!-- The inner niche gives the mark depth without adding visual clutter. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#A27B39"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M35,80 L35,52 C35,41 43,32 54,32 C65,32 73,41 73,52 L73,80" />
+
+    <!-- A soft eight-point light at the centre of the mihrab. -->
     <path
         android:fillColor="#FFE6A0"
-        android:pathData="M49.40,29.50m-4.60,0a4.60,4.60 0 1,0 9.20,0a4.60,4.60 0 1,0 -9.20,0"/>
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#E6B64E"
-        android:strokeWidth="2"
-        android:strokeLineCap="round"
-        android:pathData="M54,24.5 L54,15.5 M49.5,15.5 L58.5,15.5"/>
+        android:pathData="M54,39 L58,47.5 L67,52 L58,56.5 L54,65 L50,56.5 L41,52 L50,47.5 Z" />
     <path
         android:fillColor="#F0BF4E"
-        android:pathData="M54,12 m-2.8,0 a2.8,2.8 0 1,0 5.6,0 a2.8,2.8 0 1,0 -5.6,0"/>
+        android:pathData="M54,45.5 L57,52 L54,58.5 L51,52 Z" />
+
+    <!-- Three tasbih beads beneath the arch. -->
+    <path
+        android:fillColor="#F0BF4E"
+        android:pathData="M39,79 m-3.4,0 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0" />
+    <path
+        android:fillColor="#FFE6A0"
+        android:pathData="M54,82 m-4.1,0 a4.1,4.1 0 1,0 8.2,0 a4.1,4.1 0 1,0 -8.2,0" />
+    <path
+        android:fillColor="#F0BF4E"
+        android:pathData="M69,79 m-3.4,0 a3.4,3.4 0 1,0 6.8,0 a3.4,3.4 0 1,0 -6.8,0" />
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#D8A43F"
-        android:strokeWidth="1.4"
+        android:strokeColor="#C99538"
+        android:strokeWidth="2"
         android:strokeLineCap="round"
-        android:pathData="M50.5,9 L47.5,4 M54,9 L54,3.5 M57.5,9 L60.5,4"/>
+        android:pathData="M39,88 C47,94 61,94 69,88" />
 </vector>
