@@ -51,7 +51,8 @@ data class SavedSession(
     val endedAt: Long? = null,
     val durationMs: Long? = null
 ) {
-    fun durationAt(now: Long): Long? = sessionDurationMillis(startedAt, endedAt, now)
+    fun durationAt(now: Long): Long? =
+        durationMs ?: sessionDurationMillis(startedAt, endedAt, now)
 }
 
 internal fun sessionDurationMillis(startedAt: Long, endedAt: Long?, now: Long): Long? {
