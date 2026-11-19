@@ -32,7 +32,7 @@ class OpenDuaCatalogRepositoryTest {
         val multiTagged = snapshot.items.first { it.sourceEntryId == "entry-000002" }
         assertEquals(listOf("Tag 02", "Tag 03"), multiTagged.categories)
         assertEquals(
-            listOf("All", "Favorites", "My Dhikhrs", "Quran") + snapshot.categories,
+            listOf("Favorites", "My Dhikhrs", "Quran") + snapshot.categories,
             orderedDhikrCategories(snapshot.categories)
         )
     }
