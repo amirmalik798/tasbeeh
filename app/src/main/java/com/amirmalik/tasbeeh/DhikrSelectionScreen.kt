@@ -107,6 +107,9 @@ internal fun DhikrSelectionScreen(
     quranIsRefreshing: Boolean,
     quranRefreshError: String?,
     quranCacheWriteFailed: Boolean,
+    selectedQuranReciter: QuranReciter,
+    activeRecitationTitle: String,
+    onPlayQuranRecitation: (String, List<String>) -> Unit,
     isSpeaking: Boolean,
     isPreparingRecitation: Boolean,
     onPlayRecitation: (String, String, List<String>) -> Unit,
@@ -164,7 +167,11 @@ internal fun DhikrSelectionScreen(
     val filteredItems = remember(query, category, searchableItems) {
         val normalizedQuery = normalizeDhikrSearchText(query)
         searchableItems.asSequence().filter { (item, searchableFields) ->
-            val matchesCategory = category == "All" || category in item.categories || item.category == category
+            val matchesCategory = when (category) {
+                "All" -> true
+                "Quran" -> QuranicDuaCatalog.isFullSurah(item)
+                else -> category in item.categories || item.category == category
+            }
             val matchesSearch = normalizedQuery.isBlank() ||
                 searchableFields.any { it.contains(normalizedQuery) }
             matchesCategory && matchesSearch
@@ -335,7 +342,7 @@ internal fun DhikrSelectionScreen(
                 onRetry = onRetryOpenDuaCatalog
             )
         }
-        val quranItems = catalogItems.filter { it.category == "Quran" }
+        val quranItems = catalogItems.filter(QuranicDuaCatalog::isFullSurah)
         val quranTextIsCached = quranItems.any {
             it.arabic.isNotBlank() && it.transliteration.isNotBlank()
         }
@@ -383,27 +390,33 @@ internal fun DhikrSelectionScreen(
                         item.customId == currentCustomDhikrId
                     val custom = item.customId?.let(customDhikrsById::get)
                     val isQuran = item.quranAyahKeys.isNotEmpty()
+                    val isFullSurah = QuranicDuaCatalog.isFullSurah(item)
+                    val showSurahSummary = category == "Quran" && isFullSurah
                     val hasRecording = isQuran || item.recitationAudioUrls.isNotEmpty()
+                    val openReader = item.takeIf(QuranicDuaCatalog::isFullSurah)?.let { { readingSurah = it } }
                     DhikrOptionCard(
                         item = item,
                         selected = isSelected,
                         enabled = !isStoreBusy,
                         selectable = isCounterSelectableDhikr(item),
                         showListenButton = true,
-                        listenEnabled = hasRecording && hasInternetConnection,
-                        onClick = { if (isCounterSelectableDhikr(item)) onSelect(item) },
+                        listenEnabled = hasRecording && hasInternetConnection && !isPreparingRecitation,
+                        showQuranSurahSummary = showSurahSummary,
+                        onClick = {
+                            if (showSurahSummary) openReader?.invoke()
+                            else if (isCounterSelectableDhikr(item)) onSelect(item)
+                        },
                         onListen = if (hasRecording) {
                             {
-                                val urls = if (isQuran) {
-                                    QuranRecitationAudio.audioUrlsForAyahs(item.quranAyahKeys)
-                                } else item.recitationAudioUrls
-                                val artist = if (isQuran) {
-                                    QuranRecitationAudio.ATTRIBUTION
-                                } else item.recitationCredit.ifBlank { "OpenDua recitation" }
-                                onPlayRecitation(item.title, artist, urls)
+                                if (isQuran) onPlayQuranRecitation(item.title, item.quranAyahKeys)
+                                else onPlayRecitation(
+                                    item.title,
+                                    item.recitationCredit.ifBlank { "OpenDua recitation" },
+                                    item.recitationAudioUrls
+                                )
                             }
                         } else null,
-                        onRead = item.takeIf(QuranicDuaCatalog::isFullSurah)?.let { { readingSurah = it } },
+                        onRead = openReader,
                         onEdit = custom?.let { entry -> { onEditCustom(entry) } },
                         onDelete = custom?.let { entry -> { pendingDelete = entry } }
                     )
@@ -439,10 +452,10 @@ internal fun DhikrSelectionScreen(
             item = surah,
             isSpeaking = isSpeaking,
             isPreparingRecitation = isPreparingRecitation,
+            activeRecitationTitle = activeRecitationTitle,
+            selectedQuranReciter = selectedQuranReciter,
             hasInternetConnection = hasInternetConnection,
-            onPlayRecitation = { title, artist, urls ->
-                onPlayRecitation(title, artist, urls)
-            },
+            onPlayQuranRecitation = onPlayQuranRecitation,
             onStopRecitation = onStopRecitation,
             onDismiss = { readingSurah = null }
         )
@@ -576,6 +589,7 @@ private fun DhikrOptionCard(
     selectable: Boolean,
     showListenButton: Boolean,
     listenEnabled: Boolean,
+    showQuranSurahSummary: Boolean = false,
     onListen: (() -> Unit)? = null,
     onRead: (() -> Unit)? = null,
     onEdit: (() -> Unit)? = null,
@@ -594,8 +608,8 @@ private fun DhikrOptionCard(
     } else item.meaning
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(
-            enabled = selectable && enabled,
-            role = if (selectable) Role.Button else null,
+            enabled = enabled && (selectable || showQuranSurahSummary),
+            role = if (selectable || showQuranSurahSummary) Role.Button else null,
             onClick = onClick
         ),
         color = if (selected) Color(0xFF252014) else Color(0xFF121714),
@@ -604,6 +618,55 @@ private fun DhikrOptionCard(
         shadowElevation = if (selected) 4.dp else 0.dp
     ) {
         Column(Modifier.padding(horizontal = 15.dp, vertical = 13.dp)) {
+            if (showQuranSurahSummary) {
+                val surahNumber = item.quranAyahKeys.firstOrNull()
+                    ?.substringBefore(':')?.toIntOrNull() ?: 0
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(39.dp).clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF292317))
+                            .border(1.dp, Color(0xFF8C6B31), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            surahNumber.toString().padStart(3, '0'),
+                            color = gold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        item.title,
+                        color = Color(0xFFFFF8EA),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        "${item.quranAyahKeys.size} ayahs",
+                        color = Color(0xFFB9C0B2),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (showListenButton) {
+                        IconButton(
+                            onClick = { onListen?.invoke() },
+                            enabled = listenEnabled && onListen != null,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.VolumeUp,
+                                contentDescription = "Listen to ${item.title}",
+                                tint = if (listenEnabled && onListen != null) gold else Color(0xFF667064),
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     item.title,
@@ -789,6 +852,7 @@ private fun DhikrOptionCard(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = .45.sp
                 )
+            }
             }
         }
     }
