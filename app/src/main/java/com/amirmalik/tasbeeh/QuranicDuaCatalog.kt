@@ -29,7 +29,11 @@ internal data class QuranSurahDefinition(
     val englishName: String,
     val title: String,
     val ayahKeys: List<String>
-)
+) {
+    val id: String
+        get() = if (number == 1) "quran-surah-al-fatiha"
+        else "quran-surah-${number.toString().padStart(3, '0')}"
+}
 
 internal data class QuranAyahText(
     val number: Int,
