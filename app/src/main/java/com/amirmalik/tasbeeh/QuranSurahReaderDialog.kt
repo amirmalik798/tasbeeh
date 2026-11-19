@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledTonalButton
@@ -50,6 +51,20 @@ internal fun QuranSurahReaderDialog(
     val translationAyahs = remember(item.id, item.meaning) {
         item.meaning.split(QuranicDuaCatalog.VERSE_SEPARATOR)
     }
+    val surahNumber = item.quranAyahKeys.firstOrNull()
+        ?.substringBefore(':')?.toIntOrNull()
+    val showOpeningBasmala = QuranicDuaCatalog.isFullSurah(item) &&
+        QuranBasmala.shouldShowForSurah(surahNumber)
+    val displayedAyahIndices = remember(item.id, arabicAyahs, showOpeningBasmala) {
+        if (showOpeningBasmala && QuranBasmala.isStandaloneBasmala(arabicAyahs.firstOrNull().orEmpty())) {
+            arabicAyahs.indices.drop(1)
+        } else {
+            arabicAyahs.indices.toList()
+        }
+    }
+    val openingBasmalaRepresentsAyahOne = showOpeningBasmala &&
+        displayedAyahIndices.firstOrNull() != 0 &&
+        item.quranAyahKeys.firstOrNull() == "1:1"
     val textIsComplete = arabicAyahs.size == item.quranAyahKeys.size &&
         transliterationAyahs.size == item.quranAyahKeys.size &&
         translationAyahs.size == item.quranAyahKeys.size &&
@@ -170,10 +185,65 @@ internal fun QuranSurahReaderDialog(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        if (showOpeningBasmala) {
+                            item(key = "opening-basmala-${item.id}") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        "BISMILLAH",
+                                        color = accent,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.5.sp
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        QuranBasmala.ARABIC_TEXT,
+                                        color = Color(0xFFFFE7AD),
+                                        fontSize = 25.sp,
+                                        lineHeight = 44.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    if (openingBasmalaRepresentsAyahOne) {
+                                        Spacer(Modifier.height(5.dp))
+                                        Text(
+                                            "AYAH 1",
+                                            color = accent,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = .65.sp
+                                        )
+                                        Text(
+                                            transliterationAyahs.first(),
+                                            color = accent,
+                                            fontSize = 13.sp,
+                                            lineHeight = 20.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Text(
+                                            translationAyahs.first(),
+                                            color = Color(0xFFB9C0B2),
+                                            fontSize = 12.sp,
+                                            lineHeight = 18.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         itemsIndexed(
-                            items = item.quranAyahKeys,
-                            key = { _, ayahKey -> ayahKey }
-                        ) { index, ayahKey ->
+                            items = displayedAyahIndices,
+                            key = { _, ayahIndex -> item.quranAyahKeys[ayahIndex] }
+                        ) { _, index ->
+                            val ayahKey = item.quranAyahKeys[index]
+                            val displayedArabic = if (showOpeningBasmala && index == 0) {
+                                QuranBasmala.stripLeadingPrefix(arabicAyahs[index])
+                            } else {
+                                arabicAyahs[index]
+                            }
                             Column(Modifier.fillMaxWidth()) {
                                 Text(
                                     "AYAH " + ayahKey.substringAfter(':'),
@@ -184,7 +254,7 @@ internal fun QuranSurahReaderDialog(
                                 )
                                 Spacer(Modifier.height(5.dp))
                                 Text(
-                                    arabicAyahs[index],
+                                    displayedArabic,
                                     color = Color(0xFFFFE7AD),
                                     fontSize = 24.sp,
                                     lineHeight = 42.sp,

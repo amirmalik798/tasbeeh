@@ -9,6 +9,38 @@ import org.junit.Test
 class QuranRecitationTest {
 
     @Test
+    fun openingBasmalaAppearsForEverySurahExceptAtTawbah() {
+        assertTrue(QuranBasmala.shouldShowForSurah(1))
+        assertTrue(QuranBasmala.shouldShowForSurah(2))
+        assertTrue(QuranBasmala.shouldShowForSurah(114))
+        assertFalse(QuranBasmala.shouldShowForSurah(9))
+        assertFalse(QuranBasmala.shouldShowForSurah(null))
+        assertFalse(QuranBasmala.shouldShowForSurah(0))
+    }
+
+    @Test
+    fun basmalaIsStrippedFromTheFirstAyahWhenItIsPrefixedToTheAyahText() {
+        val firstAyah = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ"
+        assertEquals(
+            "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ",
+            QuranBasmala.stripLeadingPrefix(firstAyah)
+        )
+    }
+
+    @Test
+    fun standaloneBasmalaAyahCanBeMovedIntoTheSeparateOpeningBlockWithoutDuplication() {
+        assertTrue(QuranBasmala.isStandaloneBasmala(QuranBasmala.ARABIC_TEXT))
+        assertTrue(QuranBasmala.isStandaloneBasmala("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ"))
+        assertFalse(QuranBasmala.isStandaloneBasmala("الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ"))
+    }
+
+    @Test
+    fun basmalaRemovalDoesNotChangeAnAyahThatDoesNotStartWithIt() {
+        val firstAyah = "الٓمٓ"
+        assertEquals(firstAyah, QuranBasmala.stripLeadingPrefix(firstAyah))
+    }
+
+    @Test
     fun quranFoundationReciterCatalogueKeepsDistinctRecitationStylesAndStableIds() {
         val payload = """
             {
