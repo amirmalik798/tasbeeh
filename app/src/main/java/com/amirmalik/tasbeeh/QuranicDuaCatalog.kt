@@ -137,40 +137,45 @@ internal class QuranicDuaRepository(context: Context) {
     private val preferences = context.getSharedPreferences("quran_catalog_v2", Context.MODE_PRIVATE)
 
     fun loadCachedItems(): List<DhikrItem> {
-        val raw = preferences.getString("items", null) ?: return QuranicDuaCatalog.fallbackItems()
-        if (raw.length > MAX_QURAN_CACHE_CHARS) return QuranicDuaCatalog.fallbackItems()
+        // Preference type/corruption errors must fall back safely rather than
+        // escaping before the JSON validation block.
         return runCatching {
+            val raw = preferences.getString("items", null)
+                ?: return@runCatching QuranicDuaCatalog.fallbackItems()
+            if (raw.length > MAX_QURAN_CACHE_CHARS) {
+                return@runCatching QuranicDuaCatalog.fallbackItems()
+            }
+
             val array = JSONArray(raw)
             val completedAyahKeysById = mutableMapOf<String, List<String>>()
             if (array.length() != QuranicDuaCatalog.additions.size) {
                 return@runCatching QuranicDuaCatalog.fallbackItems()
             }
-            val cached = buildList {
-                for (index in 0 until array.length()) {
-                    val item = array.optJSONObject(index) ?: continue
-                    val keys = item.optJSONArray("ayahKeys") ?: JSONArray()
-                    val id = item.optString("id")
-                    if (item.has("completedAyahKeys")) {
-                        val completedKeys = item.optJSONArray("completedAyahKeys")
-                            ?: return@runCatching QuranicDuaCatalog.fallbackItems()
-                        completedAyahKeysById[id] =
-                            (0 until completedKeys.length()).map { completedKeys.optString(it) }
-                    }
-                    add(
-                        DhikrItem(
-                            id = id,
-                            value = item.optString("value"),
-                            title = item.optString("title"),
-                            category = "Quran",
-                            arabic = item.optString("arabic"),
-                            transliteration = "",
-                            meaning = item.optString("meaning"),
-                            reference = item.optString("reference"),
-                            quranAyahKeys = (0 until keys.length()).map { keys.optString(it) },
-                            categories = listOf("Quran")
-                        )
-                    )
+            val cached = ArrayList<DhikrItem>(array.length())
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val keys = item.optJSONArray("ayahKeys") ?: JSONArray()
+                val id = item.optString("id")
+                if (item.has("completedAyahKeys")) {
+                    val completedKeys = item.optJSONArray("completedAyahKeys")
+                        ?: return@runCatching QuranicDuaCatalog.fallbackItems()
+                    completedAyahKeysById[id] =
+                        (0 until completedKeys.length()).map { completedKeys.optString(it) }
                 }
+                cached.add(
+                    DhikrItem(
+                        id = id,
+                        value = item.optString("value"),
+                        title = item.optString("title"),
+                        category = "Quran",
+                        arabic = item.optString("arabic"),
+                        transliteration = "",
+                        meaning = item.optString("meaning"),
+                        reference = item.optString("reference"),
+                        quranAyahKeys = (0 until keys.length()).map { keys.optString(it) },
+                        categories = listOf("Quran")
+                    )
+                )
             }
             cached.takeIf { hasCompleteQuranicCache(it, completedAyahKeysById) }
                 ?: QuranicDuaCatalog.fallbackItems()
