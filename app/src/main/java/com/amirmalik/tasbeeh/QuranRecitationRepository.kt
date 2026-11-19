@@ -207,10 +207,18 @@ internal class QuranRecitationRepository(context: Context) {
         }
         try {
             val status = connection.responseCode
-            if (status !in 200..299) throw IOException("Quran Foundation request failed with HTTP $status.")
-            val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            if (body.isBlank() || body.length > MAX_RESPONSE_CHARS) {
-                throw IOException("Quran Foundation returned an empty or oversized audio response.")
+            if (status !in 200..299) {
+                runCatching { connection.errorStream?.close() }
+                throw IOException("Quran Foundation request failed with HTTP $status.")
+            }
+            // Enforce the limit while reading, before allocating the full response.
+            // Checking String.length after readText() would be too late to prevent
+            // an unexpectedly large provider response from exhausting memory.
+            val body = connection.inputStream.use { input ->
+                readUtf8WithLimit(input, MAX_QURAN_SURAH_RESPONSE_BYTES)
+            }
+            if (body.isBlank()) {
+                throw IOException("Quran Foundation returned an empty audio response.")
             }
             return JSONObject(body)
         } finally {
@@ -226,7 +234,6 @@ internal class QuranRecitationRepository(context: Context) {
         const val PAGE_SIZE = 50
         const val MAX_REQUESTED_AYAHS = 700
         const val MAX_AUDIO_URL_CHARS = 2_048
-        const val MAX_RESPONSE_CHARS = 2 * 1024 * 1024
         const val CONNECT_TIMEOUT_MS = 8_000
         const val READ_TIMEOUT_MS = 18_000
     }
