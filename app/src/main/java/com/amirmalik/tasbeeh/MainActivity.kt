@@ -334,7 +334,11 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 Spacer(Modifier.height(8.dp))
 
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
-                    val diameter = min(maxWidth, if (compactLayout) 286.dp else 352.dp)
+                    val preferredDiameter = if (compactLayout) 286.dp else 352.dp
+                    // Fit the strand to both available dimensions so the
+                    // counter actions remain visible on short screens and at
+                    // enlarged accessibility font sizes.
+                    val diameter = min(maxWidth, min(maxHeight, preferredDiameter))
                     TasbeehStrand(
                         count = state.count,
                         onCount = { increment() },
