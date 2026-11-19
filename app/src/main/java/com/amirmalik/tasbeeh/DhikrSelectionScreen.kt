@@ -323,7 +323,7 @@ internal fun DhikrSelectionScreen(
             )
         }
         val quranItems = catalogItems.filter { it.category == "Quran" }
-        val quranTextIsCached = quranItems.size == 4 && quranItems.all { it.arabic.isNotBlank() }
+        val quranTextIsCached = hasCompleteQuranicText(quranItems)
         if ((category == "All" || category == "Quran") &&
             (quranIsRefreshing || quranRefreshError != null || quranCacheWriteFailed)
         ) {
@@ -598,10 +598,26 @@ private fun DhikrOptionCard(
                     textAlign = TextAlign.End,
                     fontWeight = FontWeight.Medium
                 )
+            } else if (item.quranAyahKeys.isNotEmpty()) {
+                Spacer(Modifier.height(11.dp))
+                Text(
+                    "Arabic text is unavailable offline. Connect to the internet and retry to load the verified Qur'anic text.",
+                    color = Color(0xFFE7C17C),
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp
+                )
             }
             if (item.transliteration.isNotBlank()) {
                 Spacer(Modifier.height(7.dp))
                 Text(item.transliteration, color = gold, fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Medium)
+            } else if (item.quranAyahKeys.isNotEmpty()) {
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    "Transliteration will appear once the complete Qur'anic text has loaded.",
+                    color = Color(0xFFBEB9AC),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
             }
             if (item.meaning.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))

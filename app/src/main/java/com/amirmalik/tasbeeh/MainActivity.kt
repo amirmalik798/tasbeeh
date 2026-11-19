@@ -68,10 +68,12 @@ import com.amirmalik.tasbeeh.data.TasbeehState
 import com.amirmalik.tasbeeh.data.TasbeehStore
 import com.amirmalik.tasbeeh.data.sessionSnapshotForDisplay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onStart
 import java.util.ArrayDeque
@@ -321,10 +323,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isTrustedRecitationUrl(url: String): Boolean =
-        url.startsWith("https://verses.quran.foundation/") ||
-                url.startsWith("https://audio.opendua.org/")
-
     private fun playRecitations(urls: List<String>, queueMode: Int) {
         if (isFinishing || isDestroyed) return
         val safeUrls = urls.map { it.trim() }.filter { isTrustedRecitationUrl(it) }
@@ -432,22 +430,67 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val cachedOpenDua = remember(openDuaRepository) { openDuaRepository.loadCachedSnapshot() }
-            var openDuaItems by remember { mutableStateOf(cachedOpenDua.items) }
-            var openDuaCategories by remember { mutableStateOf(cachedOpenDua.categories) }
+            // Catalogue caches can contain megabytes of validated JSON. Read and
+            // verify them on IO so a cold launch never parses the whole library on
+            // the Compose main thread.
+            var openDuaItems by remember(openDuaRepository) {
+                mutableStateOf<List<DhikrItem>>(emptyList())
+            }
+            var openDuaCategories by remember(openDuaRepository) {
+                mutableStateOf<List<String>>(emptyList())
+            }
+            var openDuaCacheLoaded by remember(openDuaRepository) { mutableStateOf(false) }
             var openDuaIsRefreshing by remember { mutableStateOf(true) }
             var openDuaRefreshError by remember { mutableStateOf<String?>(null) }
             var openDuaCacheWriteFailed by remember { mutableStateOf(false) }
             var openDuaRetryCount by remember { mutableIntStateOf(0) }
-            var extendedQuranicItems by remember { mutableStateOf(quranicDuaRepository.loadCachedItems()) }
-            var quranIsRefreshing by remember { mutableStateOf(false) }
+            var extendedQuranicItems by remember(quranicDuaRepository) {
+                mutableStateOf(QuranicDuaCatalog.fallbackItems())
+            }
+            var quranCacheLoaded by remember(quranicDuaRepository) { mutableStateOf(false) }
+            var quranIsRefreshing by remember { mutableStateOf(true) }
             var quranRefreshError by remember { mutableStateOf<String?>(null) }
             var quranCacheWriteFailed by remember { mutableStateOf(false) }
             var quranRetryCount by remember { mutableIntStateOf(0) }
 
-            LaunchedEffect(openDuaRepository, openDuaRetryCount, hasInternetConnection) {
+            LaunchedEffect(openDuaRepository) {
+                try {
+                    val cached = withContext(Dispatchers.IO) {
+                        openDuaRepository.loadCachedSnapshot()
+                    }
+                    openDuaItems = cached.items
+                    openDuaCategories = cached.categories
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w("Noor-e-Dhikr", "Could not load the saved OpenDua catalogue", error)
+                } finally {
+                    if (currentCoroutineContext().isActive) openDuaCacheLoaded = true
+                }
+            }
+
+            LaunchedEffect(quranicDuaRepository) {
+                try {
+                    val cached = withContext(Dispatchers.IO) {
+                        quranicDuaRepository.loadCachedItems()
+                    }
+                    extendedQuranicItems = cached
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.w("Noor-e-Dhikr", "Could not load saved Qur'anic text", error)
+                } finally {
+                    if (currentCoroutineContext().isActive) quranCacheLoaded = true
+                }
+            }
+
+            LaunchedEffect(openDuaRepository, openDuaRetryCount, hasInternetConnection, openDuaCacheLoaded) {
                 openDuaRefreshError = null
                 openDuaCacheWriteFailed = false
+                if (!openDuaCacheLoaded) {
+                    openDuaIsRefreshing = true
+                    return@LaunchedEffect
+                }
                 if (!hasInternetConnection) {
                     openDuaIsRefreshing = false
                     openDuaRefreshError =
@@ -477,32 +520,40 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            LaunchedEffect(quranicDuaRepository, quranRetryCount, hasInternetConnection) {
+            LaunchedEffect(quranicDuaRepository, quranRetryCount, hasInternetConnection, quranCacheLoaded) {
                 quranRefreshError = null
                 quranCacheWriteFailed = false
-                if (!hasInternetConnection) {
-                    quranIsRefreshing = false
-                    quranRefreshError =
-                        "No internet connection. Saved Qur'anic text remains available when present; audio recitations require internet."
+                if (!quranCacheLoaded) {
+                    quranIsRefreshing = true
                     return@LaunchedEffect
                 }
 
-                quranIsRefreshing = true
+                // Show a complete cached catalogue immediately. A missing cache remains
+                // visibly incomplete until the network provides verified content.
+                if (!hasInternetConnection) {
+                    quranIsRefreshing = false
+                    quranRefreshError =
+                        "No internet connection. Connect to load verified Qur'anic text; recitation audio requires internet."
+                    return@LaunchedEffect
+                }
+
+                quranIsRefreshing = !hasCompleteQuranicText(extendedQuranicItems)
                 try {
                     val result = quranicDuaRepository.refresh()
-                    extendedQuranicItems = result.items
+                    // Publish only the complete, validated result (or the previous
+                    // complete cache returned by the repository).
+                    if (result.isComplete) {
+                        extendedQuranicItems = result.items
+                    }
                     quranCacheWriteFailed = result.refreshedFromNetwork && !result.cachePersisted
-                    if (!result.refreshedFromNetwork) {
-                        quranRefreshError = if (result.isComplete) {
-                            "The latest Qur'anic text update could not be reached. Your complete saved text is being used."
-                        } else {
-                            "The complete Qur'anic text could not be downloaded. The four selections remain available; retry when your connection is stable."
-                        }
+                    if (!result.refreshedFromNetwork && !result.isComplete) {
+                        quranRefreshError =
+                            "Verified Qur'anic text could not be downloaded. The selections remain listed; retry when your connection is stable."
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; retaining saved references", error)
+                    Log.w("Noor-e-Dhikr", "Qur'anic text refresh failed; retaining last complete catalogue", error)
                     quranRefreshError = networkFailureMessage("Qur'anic text", error)
                 } finally {
                     if (currentCoroutineContext().isActive) quranIsRefreshing = false
@@ -533,7 +584,7 @@ class MainActivity : ComponentActivity() {
                 storageReadError -> TasbeehStorageRecoveryScreen(
                     onRetry = { storageRetryCount++ }
                 )
-                saved == null -> TasbeehStartupScreen()
+                saved == null || !openDuaCacheLoaded || !quranCacheLoaded -> TasbeehStartupScreen()
                 else -> TasbeehApp(
                     state = saved,
                     store = store,
