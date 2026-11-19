@@ -84,6 +84,9 @@ private val Muted = Color(0xFF9A9B8D)
 internal fun arabicSpeechQueueMode(manualPlayback: Boolean): Int =
     if (manualPlayback) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
 
+internal fun arabicPlaybackControlEnabled(hasArabicText: Boolean, isSpeaking: Boolean): Boolean =
+    hasArabicText || isSpeaking
+
 class MainActivity : ComponentActivity() {
     private data class PendingArabicSpeech(val text: String, val preferredVoice: String)
 
@@ -1576,7 +1579,10 @@ private fun SettingsDialog(
                     }
                     FilledTonalButton(
                         onClick = { if (isSpeaking) onStopSpeech() else onSpeakArabic(ttsVoice) },
-                        enabled = !activeArabic.isNullOrBlank(),
+                        enabled = arabicPlaybackControlEnabled(
+                            hasArabicText = !activeArabic.isNullOrBlank(),
+                            isSpeaking = isSpeaking
+                        ),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = Panel2,
                             contentColor = GoldLight,
