@@ -379,7 +379,7 @@ class MainActivity : ComponentActivity() {
     ) {
         if (text.isBlank()) return
 
-        if (quranAyahKeys.isNotEmpty()) {
+        if (QuranRecitationAudio.shouldAttemptQuranFoundation(quranAyahKeys)) {
             enqueueQuranRecitation(text, preferredVoice, quranAyahKeys, queueMode)
             return
         }
