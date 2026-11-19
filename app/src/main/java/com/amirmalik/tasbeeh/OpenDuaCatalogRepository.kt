@@ -355,9 +355,12 @@ internal class OpenDuaCatalogRepository(context: Context) {
         try {
             val status = connection.responseCode
             if (status !in 200..299) {
+                runCatching { connection.errorStream?.close() }
                 throw IOException("OpenDua catalogue returned HTTP $status")
             }
-            val payload = readUtf8WithLimit(connection.inputStream, MAX_OPENDUA_RESPONSE_BYTES)
+            val payload = connection.inputStream.use { input ->
+                readUtf8WithLimit(input, MAX_OPENDUA_RESPONSE_BYTES)
+            }
             val snapshot = OpenDuaCatalogParser.parse(JSONObject(payload))
                 ?: throw IOException("OpenDua catalogue did not match the complete v${
                     OpenDuaCatalogParser.DATA_VERSION
