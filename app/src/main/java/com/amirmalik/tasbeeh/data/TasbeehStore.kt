@@ -276,7 +276,7 @@ class TasbeehStore(private val context: Context) {
                 // then keeps the original DataStore value intact for diagnosis.
                 val legacyOpen = decodeLegacySession(prefs[Keys.legacyOpenSession].orEmpty())
                 val latestLegacy = decodeLegacySessions(prefs[Keys.legacySessions].orEmpty()).firstOrNull()
-                val recovered = legacyOpen ?: latestLegacy ?: run {
+                val recovered = legacyOpen ?: latestLegacy ?: if (rawCurrentSession.isBlank()) {
                     val legacyCount = (prefs[Keys.count] ?: 0).coerceAtLeast(0)
                     if (legacyCount > 0) {
                         // The former counter did not always create a session record.
@@ -290,7 +290,7 @@ class TasbeehStore(private val context: Context) {
                             status = SessionStatus.ACTIVE
                         )
                     } else null
-                }
+                } else null
 
                 when {
                     recovered != null -> prefs[Keys.currentSession] = encodeSession(recovered)
