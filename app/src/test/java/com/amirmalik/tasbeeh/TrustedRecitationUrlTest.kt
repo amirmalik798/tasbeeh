@@ -28,9 +28,8 @@ class TrustedRecitationUrlTest {
         assertFalse(isTrustedRecitationUrl("javascript:alert(1)"))
         assertFalse(isTrustedRecitationUrl("not a URL"))
         assertFalse(isTrustedRecitationUrl(""))
+        assertFalse(isTrustedRecitationUrl("https://audio.opendua.org/" + "a".repeat(2_048)))
     }
-}
-
     @Test
     fun openduaRecordingsRequireTheExactApprovedAudioHost() {
         assertTrue(isTrustedOpenDuaAudioUrl("https://audio.opendua.org/hisn/recitation.mp3"))
@@ -40,3 +39,4 @@ class TrustedRecitationUrlTest {
         assertFalse(isTrustedOpenDuaAudioUrl("http://audio.opendua.org/hisn/file.mp3"))
         assertFalse(isTrustedOpenDuaAudioUrl("https://verses.quran.foundation/recitation.mp3"))
     }
+}
