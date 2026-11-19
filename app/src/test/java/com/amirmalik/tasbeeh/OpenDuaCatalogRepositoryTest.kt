@@ -17,6 +17,7 @@ class OpenDuaCatalogRepositoryTest {
         snapshot!!
         assertEquals(OpenDuaCatalogParser.DATA_VERSION, snapshot.dataVersion)
         assertEquals(267, snapshot.items.map { it.sourceEntryId }.distinct().size)
+        assertEquals(268, snapshot.items.size)
         assertEquals(262, snapshot.canonicalDuaCount)
         assertEquals(249, snapshot.recordingCount)
         assertEquals(249, snapshot.items.flatMap { it.recitationAudioUrls }.distinct().size)
@@ -25,6 +26,15 @@ class OpenDuaCatalogRepositoryTest {
         assertEquals("Tag 19", snapshot.categories.last())
         assertEquals(5, snapshot.items.count { !it.isCountable })
         assertTrue(snapshot.items.all { it.categories.isNotEmpty() })
+        assertTrue(snapshot.items.any { it.isCountable && it.recitationAudioUrls.isEmpty() })
+        assertTrue(snapshot.items.flatMap { it.recitationAudioUrls }
+            .all { it.startsWith("https://audio.opendua.org/") })
+        val multiTagged = snapshot.items.first { it.sourceEntryId == "entry-000002" }
+        assertEquals(listOf("Tag 02", "Tag 03"), multiTagged.categories)
+        assertEquals(
+            listOf("All", "Quran", "My Dhikhrs") + snapshot.categories,
+            orderedDhikrCategories(snapshot.categories)
+        )
     }
 
     @Test
@@ -122,7 +132,11 @@ class OpenDuaCatalogRepositoryTest {
                     .put("type", if (instruction) "instruction" else "invocation")
                     .put("chapterId", "chapter-000001")
                     .put("sourceReference", index.toString())
-                    .put("tags", JSONArray().put(tagIds[(index - 1) % tagIds.size]))
+                    .put("tags", if (index == 2) {
+                        JSONArray().put(tagIds[1]).put(tagIds[2])
+                    } else {
+                        JSONArray().put(tagIds[(index - 1) % tagIds.size])
+                    })
                     .put("variations", variations)
             )
         }
