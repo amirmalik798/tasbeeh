@@ -275,6 +275,11 @@ class MainActivity : ComponentActivity() {
             stopDeviceTtsQueue()
         }
 
+        // A Quran track is a multi-file sequence; a single failure should
+        // discard the remaining track and synthesize the selected Arabic text
+        // once, rather than repeating the complete dhikr after every failed ayah.
+        pendingQuranAudioUrls.clear()
+        pendingQuranFallbacks.clear()
         urls.forEach { url ->
             pendingQuranAudioUrls.addLast(url)
             pendingQuranFallbacks.addLast(PendingQuranFallback(text, preferredVoice, queueMode))
