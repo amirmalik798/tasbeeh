@@ -212,7 +212,6 @@ internal fun DhikrSelectionScreen(
                     )
                 }
             }
-        }
 
         Spacer(Modifier.height(9.dp))
         if (filteredItems.isEmpty()) {
