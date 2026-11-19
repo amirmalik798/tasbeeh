@@ -677,7 +677,7 @@ private fun TasbeehApp(
                 onSpeakArabic(
                     activeDhikrArabic.orEmpty(),
                     voice,
-                    TextToSpeech.QUEUE_FLUSH
+                    TextToSpeech.QUEUE_ADD
                 )
             },
             onStopSpeech = onStopSpeech,
