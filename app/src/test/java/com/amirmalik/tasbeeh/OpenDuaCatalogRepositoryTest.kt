@@ -38,6 +38,18 @@ class OpenDuaCatalogRepositoryTest {
     }
 
     @Test
+    fun completeCatalogueIsNotRejectedWhenOptionalDuaOrRecordingMetadataDiffers() {
+        val root = sampleRelease()
+        root.getJSONObject("counts").put("duas", 261).put("recordings", 248)
+
+        val snapshot = OpenDuaCatalogParser.parse(root)
+
+        assertNotNull(snapshot)
+        assertEquals(267, snapshot!!.items.map { it.sourceEntryId }.distinct().size)
+        assertEquals(19, snapshot.categories.size)
+    }
+
+    @Test
     fun contextualVariationsStaySeparateAndKeepTheirOwnTitlesAndAudio() {
         val snapshot = OpenDuaCatalogParser.parse(sampleRelease())!!
         val firstEntry = snapshot.items.filter { it.sourceEntryId == "entry-000001" }
