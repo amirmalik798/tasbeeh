@@ -423,7 +423,6 @@ class TasbeehStore(private val context: Context) {
         if (session.status == SessionStatus.ACTIVE || session.status == SessionStatus.PAUSED) {
             val finished = finishSession(session, now, SessionStatus.INCOMPLETE)
             prefs[Keys.currentSession] = encodeSession(finished)
-            upsertHistory(prefs, finished)
         }
     }
 
@@ -471,15 +470,6 @@ class TasbeehStore(private val context: Context) {
             endedAt = endedAt,
             durationMs = duration
         )
-    }
-
-    private fun removeHistorySession(
-        prefs: androidx.datastore.preferences.core.MutablePreferences,
-        sessionId: String
-    ) {
-        val remaining = decodeSessionList(prefs[Keys.sessionHistory].orEmpty())
-            .filterNot { it.id == sessionId }
-        prefs[Keys.sessionHistory] = encodeSessionList(remaining)
     }
 
     private fun decodeSession(raw: String): SavedSession? = runCatching {
