@@ -9,6 +9,22 @@ import org.junit.Test
 class QuranRecitationTest {
 
     @Test
+    fun quranAudioPositionUsesAyahLabelAndOpenDuaAudioKeepsTrackLabel() {
+        assertEquals(
+            "Ayah 6 of 7",
+            recitationPositionLabel(
+                "https://verses.quran.foundation/AbdulBaset/Mujawwad/mp3/001006.mp3",
+                5,
+                7
+            )
+        )
+        assertEquals(
+            "Track 1 of 3",
+            recitationPositionLabel("https://audio.opendua.org/hisn/example.mp3", 0, 3)
+        )
+    }
+
+    @Test
     fun openingBasmalaAppearsForEverySurahExceptAtTawbah() {
         assertTrue(QuranBasmala.shouldShowForSurah(1))
         assertTrue(QuranBasmala.shouldShowForSurah(2))
