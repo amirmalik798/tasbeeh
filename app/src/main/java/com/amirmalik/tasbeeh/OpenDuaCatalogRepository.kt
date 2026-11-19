@@ -36,10 +36,9 @@ internal object OpenDuaCatalogParser {
         if (root.optString("dataVersion") != DATA_VERSION) return null
 
         val counts = root.optJSONObject("counts") ?: return null
-        if (counts.optInt("entries", -1) != EXPECTED_ENTRY_COUNT ||
-            counts.optInt("duas", -1) != EXPECTED_DUA_COUNT ||
-            counts.optInt("recordings", -1) != EXPECTED_RECORDING_COUNT
-        ) return null
+        // Entry count is the catalogue completeness contract. Dua and recording
+        // totals are metadata and must not discard otherwise valid entries.
+        if (counts.optInt("entries", -1) != EXPECTED_ENTRY_COUNT) return null
 
         val tags = root.optJSONArray("tags") ?: return null
         val categoryById = LinkedHashMap<String, String>()
@@ -215,13 +214,18 @@ internal object OpenDuaCatalogParser {
         // Refuse partial or malformed releases. The app keeps its last complete
         // cached release rather than silently displaying a truncated library.
         if (sourceEntryIds.size != EXPECTED_ENTRY_COUNT ||
-            canonicalDuaIds.size != EXPECTED_DUA_COUNT ||
-            recordingIds.size != EXPECTED_RECORDING_COUNT ||
+            categories.size != EXPECTED_CATEGORY_COUNT ||
             items.isEmpty() ||
             items.map { it.id }.distinct().size != items.size
         ) return null
 
-        return OpenDuaCatalogSnapshot(items, categories, DATA_VERSION, canonicalDuaIds.size, recordingIds.size)
+        return OpenDuaCatalogSnapshot(
+            items = items,
+            categories = categories,
+            dataVersion = DATA_VERSION,
+            canonicalDuaCount = canonicalDuaIds.size,
+            recordingCount = recordingIds.size
+        )
     }
 }
 
@@ -237,8 +241,8 @@ internal class OpenDuaCatalogRepository(context: Context) {
         val rawItems = preferences.getString("items", null)
             ?: return OpenDuaCatalogSnapshot(emptyList(), emptyList(), version)
         if (preferences.getInt("source_entry_count", 0) != OpenDuaCatalogParser.EXPECTED_ENTRY_COUNT ||
-            preferences.getInt("canonical_dua_count", 0) != OpenDuaCatalogParser.EXPECTED_DUA_COUNT ||
-            preferences.getInt("recording_count", 0) != OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
+            preferences.getInt("canonical_dua_count", 0) !in 1..OpenDuaCatalogParser.EXPECTED_DUA_COUNT ||
+            preferences.getInt("recording_count", 0) !in 0..OpenDuaCatalogParser.EXPECTED_RECORDING_COUNT
         ) {
             return OpenDuaCatalogSnapshot(emptyList(), emptyList(), OpenDuaCatalogParser.DATA_VERSION)
         }
@@ -274,10 +278,13 @@ internal class OpenDuaCatalogRepository(context: Context) {
     suspend fun refresh(): OpenDuaCatalogSnapshot = withContext(Dispatchers.IO) {
         val connection = (URL(OpenDuaCatalogParser.DATASET_URL).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
-            connectTimeout = 15_000
-            readTimeout = 30_000
+            instanceFollowRedirects = true
+            useCaches = false
+            connectTimeout = 20_000
+            readTimeout = 45_000
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "NOOR-E-DHIKR/1.0")
+            setRequestProperty("Accept-Encoding", "identity")
+            setRequestProperty("Cache-Control", "no-cache")
         }
         try {
             val status = connection.responseCode
