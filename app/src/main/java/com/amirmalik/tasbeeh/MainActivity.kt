@@ -481,7 +481,6 @@ class MainActivity : ComponentActivity() {
                     openDuaIsRefreshing = openDuaIsRefreshing,
                     openDuaRefreshError = openDuaRefreshError,
                     openDuaCacheWriteFailed = openDuaCacheWriteFailed,
-                    hasInternetConnection = hasInternetConnection,
                     quranIsRefreshing = quranIsRefreshing,
                     quranRefreshError = quranRefreshError,
                     quranCacheWriteFailed = quranCacheWriteFailed,
