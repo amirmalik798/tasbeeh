@@ -41,6 +41,20 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.amirmalik.tasbeeh.data.CustomDhikr
+import java.util.Locale
+
+internal fun normalizeDhikrSearchText(value: String): String {
+    val lowered = value.lowercase(Locale.ROOT)
+    return buildString(lowered.length) {
+        lowered.forEach { character ->
+            val isArabicMark = character in '\u064B'..'\u065F' ||
+                character == '\u0670' ||
+                character == '\u0640' ||
+                character in '\u06D6'..'\u06ED'
+            if (!isArabicMark) append(character)
+        }
+    }.replace(Regex("\\s+"), " ").trim()
+}
 
 internal data class DhikrItem(
     val id: String,
@@ -115,14 +129,12 @@ internal fun DhikrSelectionScreen(
     }
     val allItems = remember(customItems) { DhikrCatalog.items + customItems }
     val filteredItems = remember(query, category, allItems) {
+        val normalizedQuery = normalizeDhikrSearchText(query)
         allItems.filter { item ->
             val matchesCategory = category == "All" || item.category == category
-            val q = query.trim()
-            val matchesSearch = q.isBlank() ||
-                item.title.contains(q, ignoreCase = true) ||
-                item.transliteration.contains(q, ignoreCase = true) ||
-                item.meaning.contains(q, ignoreCase = true) ||
-                item.arabic.contains(q, ignoreCase = true)
+            val matchesSearch = normalizedQuery.isBlank() ||
+                listOf(item.title, item.transliteration, item.meaning, item.arabic)
+                    .any { value -> normalizeDhikrSearchText(value).contains(normalizedQuery) }
             matchesCategory && matchesSearch
         }
     }

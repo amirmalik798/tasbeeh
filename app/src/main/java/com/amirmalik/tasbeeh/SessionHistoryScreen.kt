@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.amirmalik.tasbeeh.data.SavedSession
@@ -123,7 +124,14 @@ private fun SessionHistoryCard(session: SavedSession, now: Long, isCurrent: Bool
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(session.dhikr, color = HistoryIvory, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            session.dhikr,
+                            color = HistoryIvory,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Spacer(Modifier.width(7.dp))
                         Text(
                             if (isCurrent) "CURRENT" else "LATEST",
@@ -156,7 +164,7 @@ private fun SessionHistoryCard(session: SavedSession, now: Long, isCurrent: Bool
                     if (session.startedAt > 0L) add(SessionEvent(SessionEventType.STARTED, session.startedAt))
                     session.endedAt?.let { add(SessionEvent(SessionEventType.ENDED, it)) }
                 }
-                if (session.status == SessionStatus.ACTIVE && base.none { it.type == SessionEventType.STARTED }) {
+                if (session.startedAt > 0L && base.none { it.type == SessionEventType.STARTED }) {
                     listOf(SessionEvent(SessionEventType.STARTED, session.startedAt)) + base
                 } else base
             }
