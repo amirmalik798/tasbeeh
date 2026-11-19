@@ -416,39 +416,27 @@ private fun TasbeehApp(
 
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
                     val preferredDiameter = if (compactLayout) 286.dp else 352.dp
-                    // Fit the strand to both available dimensions so the
-                    // counter actions remain visible on short screens and at
-                    // enlarged accessibility font sizes.
                     val diameter = min(maxWidth, min(maxHeight, preferredDiameter))
-                    TasbeehStrand(
-                        count = state.count,
-                        onCount = { increment() },
-                        enabled = !sessionPaused,
-                        modifier = Modifier.size(diameter)
-                    )
+                    Box(Modifier.size(diameter), contentAlignment = Alignment.Center) {
+                        TasbeehStrand(count = state.count, onCount = { increment() }, enabled = !sessionPaused, modifier = Modifier.fillMaxSize())
+                        AnimatedContent(
+                            targetState = state.count,
+                            transitionSpec = {
+                                (slideInVertically { it / 3 } + fadeIn(tween(130))) togetherWith
+                                    (slideOutVertically { -it / 3 } + fadeOut(tween(130)))
+                            },
+                            label = "bead-counter",
+                            modifier = Modifier.align(Alignment.Center).offset(y = diameter * -.075f)
+                        ) { count ->
+                            Text(count.toString(), color = Ivory, fontSize = if (compactLayout) 38.sp else 46.sp,
+                                fontWeight = FontWeight.Light, letterSpacing = (-1.5).sp, textAlign = TextAlign.Center)
+                        }
+                    }
                 }
 
-                Spacer(Modifier.height(if (compactLayout) 2.dp else 5.dp))
-                Text("YOUR REMEMBRANCE", color = Muted, fontSize = 11.sp, letterSpacing = 2.4.sp)
-                Spacer(Modifier.height(2.dp))
-                AnimatedContent(
-                    targetState = state.count,
-                    transitionSpec = {
-                        (slideInVertically { it / 2 } + fadeIn(tween(130))) togetherWith
-                            (slideOutVertically { -it / 2 } + fadeOut(tween(130)))
-                    },
-                    label = "counter"
-                ) { count ->
-                    Text(
-                        count.toString(),
-                        color = Ivory,
-                        fontSize = if (compactLayout) 54.sp else 64.sp,
-                        lineHeight = if (compactLayout) 59.sp else 68.sp,
-                        fontWeight = FontWeight.Light,
-                        letterSpacing = (-2).sp
-                    )
-                }
-                Text("${(effectiveTarget - state.count.coerceAtMost(effectiveTarget)).coerceAtLeast(0)} remaining", color = Muted, fontSize = 12.sp)
+                Spacer(Modifier.height(if (compactLayout) 1.dp else 4.dp))
+                Text("${(effectiveTarget - state.count.coerceAtMost(effectiveTarget)).coerceAtLeast(0)} remaining",
+                    color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(if (compactLayout) 7.dp else 12.dp))
                 ProgressTrack(state.count, effectiveTarget)
                 Spacer(Modifier.height(if (compactLayout) 8.dp else 15.dp))
