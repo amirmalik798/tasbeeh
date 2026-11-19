@@ -84,12 +84,17 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     var showSettings by remember { mutableStateOf(false) }
     var showReset by remember { mutableStateOf(false) }
     var showTarget by remember { mutableStateOf(false) }
-    var showDhikr by remember { mutableStateOf(false) }
+    var showDhikrScreen by remember { mutableStateOf(false) }
+    val selectedDhikr = DhikrCatalog.byValue(state.dhikr)
     var completionRecordedFor by remember { mutableIntStateOf(-1) }
 
-    BackHandler(enabled = showHistory || showSettings) {
-        showHistory = false
-        showSettings = false
+    BackHandler(enabled = showDhikrScreen || showHistory || showSettings) {
+        if (showDhikrScreen) {
+            showDhikrScreen = false
+        } else {
+            showHistory = false
+            showSettings = false
+        }
     }
 
     fun increment() {
@@ -106,7 +111,20 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
     }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Gold, onPrimary = Ink, background = Ink, surface = Panel, onSurface = Ivory, secondary = Color(0xFF16714B))) {
-        Box(Modifier.fillMaxSize().background(Ink)) {
+        if (showDhikrScreen) {
+            DhikrSelectionScreen(
+                currentDhikr = state.dhikr,
+                onBack = { showDhikrScreen = false },
+                onUse = { dhikr ->
+                    showDhikrScreen = false
+                    if (dhikr.value != state.dhikr) {
+                        completionRecordedFor = -1
+                        scope.launch { store.update(count = 0, dhikr = dhikr.value) }
+                    }
+                }
+            )
+        } else {
+            Box(Modifier.fillMaxSize().background(Ink)) {
             Canvas(Modifier.fillMaxSize()) {
                 drawCircle(
                     Brush.radialGradient(listOf(Color(0xFF3A2A0F).copy(alpha = .38f), Color.Transparent), Offset(size.width * .5f, size.height * .30f), size.width * .8f),
@@ -128,8 +146,21 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                     Text("A MOMENT OF REMEMBRANCE", color = Muted, fontSize = 10.sp, letterSpacing = 2.2.sp, fontWeight = FontWeight.Medium)
                 }
                 Spacer(Modifier.height(10.dp))
-                Text(state.dhikr, color = Ivory, fontSize = 25.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
-                Text("سُبْحَانَ اللّٰهِ", color = GoldLight.copy(alpha = .85f), fontSize = 19.sp, modifier = Modifier.padding(top = 2.dp))
+                Text(
+                    selectedDhikr?.title ?: state.dhikr,
+                    color = Ivory,
+                    fontSize = if ((selectedDhikr?.title ?: state.dhikr).length > 22) 19.sp else 25.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    selectedDhikr?.arabic ?: "سُبْحَانَ اللّٰهِ",
+                    color = GoldLight.copy(alpha = .92f),
+                    fontSize = if ((selectedDhikr?.arabic?.length ?: 0) > 55) 14.sp else 19.sp,
+                    lineHeight = 22.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 2.dp).fillMaxWidth()
+                )
                 Spacer(Modifier.height(8.dp))
 
                 BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
@@ -175,7 +206,7 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
                 Spacer(Modifier.height(10.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     QuickChip("Target · ${state.target}", Modifier.weight(1f)) { showTarget = true }
-                    QuickChip("Change dhikr", Modifier.weight(1f)) { showDhikr = true }
+                    QuickChip("Change dhikr", Modifier.weight(1f)) { showDhikrScreen = true }
                 }
                 Spacer(Modifier.height(14.dp))
             }
@@ -190,17 +221,18 @@ private fun TasbeehApp(state: TasbeehState, store: TasbeehStore, onTap: () -> Un
             }
         }
 
-        if (showReset) AlertDialog(
+        }
+
+        if (!showDhikrScreen && showReset) AlertDialog(
             onDismissRequest = { showReset = false }, containerColor = Panel,
             title = { Text("Reset this session?", color = Ivory) },
             text = { Text("Your current count will return to zero. Completed sessions remain in history.", color = Muted) },
             confirmButton = { TextButton(onClick = { scope.launch { store.update(count = 0) }; completionRecordedFor = -1; showReset = false }) { Text("RESET COUNT", color = Gold) } },
             dismissButton = { TextButton(onClick = { showReset = false }) { Text("CANCEL", color = Muted) } }
         )
-        if (showTarget) TargetDialog(state.target, { showTarget = false }) { target -> scope.launch { store.update(target = target) }; showTarget = false }
-        if (showDhikr) DhikrDialog(state.dhikr, { showDhikr = false }) { dhikr -> scope.launch { store.update(dhikr = dhikr) }; showDhikr = false }
-        if (showSettings) SettingsDialog(state, { showSettings = false }) { sound, haptics -> scope.launch { store.update(soundEnabled = sound, hapticsEnabled = haptics) } }
-        if (showHistory) HistoryDialog(state.sessions, { showHistory = false })
+        if (!showDhikrScreen && showTarget) TargetDialog(state.target, { showTarget = false }) { target -> scope.launch { store.update(target = target) }; showTarget = false }
+        if (!showDhikrScreen && showSettings) SettingsDialog(state, { showSettings = false }) { sound, haptics -> scope.launch { store.update(soundEnabled = sound, hapticsEnabled = haptics) } }
+        if (!showDhikrScreen && showHistory) HistoryDialog(state.sessions, { showHistory = false })
     }
 }
 
@@ -655,27 +687,6 @@ private fun TargetDialog(current: Int, onDismiss: () -> Unit, onSave: (Int) -> U
         },
         confirmButton = { TextButton(onClick = { custom.toIntOrNull()?.takeIf { it in 1..9999 }?.let(onSave) }) { Text("SAVE", color = Gold) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL", color = Muted) } }
-    )
-}
-
-@Composable
-private fun DhikrDialog(current: String, onDismiss: () -> Unit, onSelect: (String) -> Unit) {
-    val options = listOf("SubhanAllah", "Alhamdulillah", "Allahu Akbar", "Astaghfirullah", "La ilaha illallah", "Allahumma salli 'ala Muhammad")
-    AlertDialog(
-        onDismissRequest = onDismiss, containerColor = Panel,
-        title = { Text("Choose dhikr", color = Ivory) },
-        text = {
-            Column {
-                options.forEach { option ->
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onSelect(option) }.padding(vertical = 11.dp, horizontal = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(option, Modifier.weight(1f), color = if (option == current) Gold else Ivory, fontSize = 14.sp)
-                        if (option == current) Icon(Icons.Default.Check, null, tint = Gold, modifier = Modifier.size(17.dp))
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("CLOSE", color = Muted) } }
     )
 }
 
