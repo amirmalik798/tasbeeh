@@ -1341,8 +1341,6 @@ private fun TasbeehApp(
                     },
                     onStop = {
                         VoiceCountingService.stop(context)
-                        voiceServiceState = VoiceServiceState.STOPPED
-                        voiceServiceMessage = "Voice counting stopped. Your saved count is unchanged."
                     },
                     onBack = {
                         VoiceCountingService.stop(context)
