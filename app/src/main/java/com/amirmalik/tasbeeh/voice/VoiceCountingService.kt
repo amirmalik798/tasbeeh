@@ -39,6 +39,7 @@ internal enum class VoiceServiceState {
     PREPARING,
     LISTENING,
     PROCESSING,
+    PAUSING,
     PAUSED,
     STOPPED,
     ERROR,
@@ -73,6 +74,9 @@ internal class VoiceCountingService : Service() {
             }
             ACTION_PAUSE -> {
                 pauseRequested.set(true)
+                if (sessionJob?.isActive == true) {
+                    publishState(VoiceServiceState.PAUSING, "Pausing and releasing microphone access…")
+                }
                 requestStop()
                 if (sessionJob == null) {
                     publishState(VoiceServiceState.PAUSED, "Listening paused. Your saved counter session remains available.")
