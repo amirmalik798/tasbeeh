@@ -389,15 +389,28 @@ class TasbeehStore(private val context: Context) {
         meaning: String,
         fallbackTarget: Int,
         now: Long,
-        expectedCustomDhikrId: String? = null
+        expectedCustomDhikrId: String? = null,
+        expectedVoiceProfileId: String? = null,
+        expectedVoiceProfileSourceHash: String? = null
     ): CountOutcome {
         var outcome = CountOutcome.COUNTED
         context.tasbeehDataStore.edit { prefs ->
-            if (expectedCustomDhikrId != null &&
-                prefs[Keys.selectedCustomDhikrId] != expectedCustomDhikrId
-            ) {
-                outcome = CountOutcome.STALE_SELECTION
-                return@edit
+            if (expectedCustomDhikrId != null) {
+                if (prefs[Keys.selectedCustomDhikrId] != expectedCustomDhikrId) {
+                    outcome = CountOutcome.STALE_SELECTION
+                    return@edit
+                }
+                if (expectedVoiceProfileId != null || expectedVoiceProfileSourceHash != null) {
+                    val currentDhikr = decodeCustomDhikrsForMutation(prefs[Keys.customDhikrs].orEmpty())
+                        .firstOrNull { it.id == expectedCustomDhikrId }
+                    if (currentDhikr == null ||
+                        currentDhikr.voiceProfileId != expectedVoiceProfileId ||
+                        currentDhikr.voiceProfileSourceHash != expectedVoiceProfileSourceHash
+                    ) {
+                        outcome = CountOutcome.STALE_SELECTION
+                        return@edit
+                    }
+                }
             }
             val existing = decodeSession(prefs[Keys.currentSession].orEmpty())
             if (existing?.status == SessionStatus.PAUSED) {
