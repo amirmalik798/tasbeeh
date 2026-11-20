@@ -230,5 +230,14 @@ internal fun VoiceCountingScreen(
             lineHeight = 15.sp,
             textAlign = TextAlign.Center
         )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            "Notifications are optional. Even when they are disabled, the app still speaks “TARGET REACHED”.",
+            modifier = Modifier.fillMaxWidth(),
+            color = VoiceMuted,
+            fontSize = 10.sp,
+            lineHeight = 15.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }
