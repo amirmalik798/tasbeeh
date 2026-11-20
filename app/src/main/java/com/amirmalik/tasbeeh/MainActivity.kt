@@ -1007,28 +1007,63 @@ private fun TasbeehApp(
     var voiceServiceMessage by remember { mutableStateOf("Voice counting is ready when you are.") }
     var voiceTranscript by remember { mutableStateOf("") }
     var pendingVoiceStart by remember { mutableStateOf<CustomDhikr?>(null) }
+    var pendingNotificationVoiceStart by remember { mutableStateOf<CustomDhikr?>(null) }
     var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
+
+    fun launchVoiceCountingService(dhikr: CustomDhikr, notificationPermissionGranted: Boolean? = null) {
+        val target = state.currentSession
+            ?.takeIf { it.dhikr == dhikr.title &&
+                (it.status == SessionStatus.ACTIVE || it.status == SessionStatus.PAUSED)
+            }?.target ?: state.target
+        runCatching {
+            ContextCompat.startForegroundService(
+                context,
+                VoiceCountingService.createStartIntent(context, dhikr, target)
+            )
+            voiceServiceState = VoiceServiceState.PREPARING
+            voiceServiceMessage = if (notificationPermissionGranted == false) {
+                "Voice counting is starting. TARGET REACHED will still be spoken; notifications are turned off."
+            } else {
+                "Starting private on-device recognition…"
+            }
+        }.onFailure { error ->
+            voiceServiceState = VoiceServiceState.ERROR
+            voiceServiceMessage = error.localizedMessage
+                ?.takeIf { it.isNotBlank() }
+                ?: "Android could not start voice counting. Please retry."
+        }
+    }
+
+    val targetNotificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pending = pendingNotificationVoiceStart
+        pendingNotificationVoiceStart = null
+        if (pending != null) launchVoiceCountingService(pending, granted)
+    }
+
+    fun requestTargetNotificationPermissionOrStart(dhikr: CustomDhikr) {
+        val notificationPermissionMissing =
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (notificationPermissionMissing) {
+            pendingNotificationVoiceStart = dhikr
+            targetNotificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            launchVoiceCountingService(dhikr, true)
+        }
+    }
+
     val voicePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         val pending = pendingVoiceStart
         pendingVoiceStart = null
         if (granted && pending != null) {
-            val target = state.currentSession
-                ?.takeIf { it.dhikr == pending.title &&
-                    (it.status == SessionStatus.ACTIVE || it.status == SessionStatus.PAUSED)
-                }?.target ?: state.target
-            runCatching {
-                ContextCompat.startForegroundService(
-                    context,
-                    VoiceCountingService.createStartIntent(context, pending, target)
-                )
-            }.onFailure { error ->
-                voiceServiceState = VoiceServiceState.ERROR
-                voiceServiceMessage = error.localizedMessage
-                    ?.takeIf { it.isNotBlank() }
-                    ?: "Android could not start voice counting. Please retry."
-            }
+            requestTargetNotificationPermissionOrStart(pending)
         } else if (pending != null) {
             voiceServiceState = VoiceServiceState.ERROR
             voiceServiceMessage = "Microphone permission is required. Tap Start again after enabling it."
@@ -1084,23 +1119,7 @@ private fun TasbeehApp(
                 android.Manifest.permission.RECORD_AUDIO
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            val target = state.currentSession
-                ?.takeIf { it.dhikr == dhikr.title &&
-                    (it.status == SessionStatus.ACTIVE || it.status == SessionStatus.PAUSED)
-                }?.target ?: state.target
-            runCatching {
-                ContextCompat.startForegroundService(
-                    context,
-                    VoiceCountingService.createStartIntent(context, dhikr, target)
-                )
-                voiceServiceState = VoiceServiceState.PREPARING
-                voiceServiceMessage = "Starting private on-device recognition…"
-            }.onFailure { error ->
-                voiceServiceState = VoiceServiceState.ERROR
-                voiceServiceMessage = error.localizedMessage
-                    ?.takeIf { it.isNotBlank() }
-                    ?: "Android could not start voice counting. Please retry."
-            }
+            requestTargetNotificationPermissionOrStart(dhikr)
         } else {
             pendingVoiceStart = dhikr
             voicePermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
