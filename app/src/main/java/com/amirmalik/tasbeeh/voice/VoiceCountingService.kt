@@ -178,9 +178,14 @@ internal class VoiceCountingService : Service() {
             if (args.sourceHash != voiceConfigurationHash(args.arabic, args.transliteration)) {
                 throw IOException("This Dhikr was edited after voice enrollment. Record a new sample in the Dhikr editor.")
             }
-            if (args.referenceText.isBlank()) {
-                throw IOException("This Dhikr has no valid voice sample. Open its editor and record one.")
-            }
+            val phraseProfile = VoiceProfileRepository.load(
+                context = this,
+                profileId = args.profileId,
+                dhikrId = args.id,
+                expectedSourceHash = args.sourceHash
+            ) ?: throw IOException(
+                "This Dhikr's private voice sample is missing on this device. Open its editor and record it again."
+            )
             val modelFiles = VoiceModelRepository.modelFiles(this)
             if (!VoiceModelRepository.isInstalled(this)) {
                 throw IOException("Offline voice recognition is not installed. Open this Dhikr's editor and complete voice setup first.")
@@ -258,7 +263,7 @@ internal class VoiceCountingService : Service() {
                 }
                 if (stopRequested.get()) break
 
-                if (!isDhikrPhraseMatch(args.referenceText, transcript)) {
+                if (!isDhikrPhraseMatch(phraseProfile.referenceText, transcript)) {
                     publishState(
                         VoiceServiceState.LISTENING,
                         "Not counted — please repeat the configured Dhikr.",
@@ -387,7 +392,7 @@ internal class VoiceCountingService : Service() {
         val arabic: String,
         val transliteration: String,
         val meaning: String,
-        val referenceText: String,
+        val profileId: String,
         val sourceHash: String,
         val fallbackTarget: Int
     ) {
@@ -398,11 +403,12 @@ internal class VoiceCountingService : Service() {
                 val arabic = intent.getStringExtra(EXTRA_ARABIC).orEmpty().take(800)
                 val transliteration = intent.getStringExtra(EXTRA_TRANSLITERATION).orEmpty().take(800)
                 val meaning = intent.getStringExtra(EXTRA_MEANING).orEmpty().take(500)
-                val reference = intent.getStringExtra(EXTRA_REFERENCE_TEXT).orEmpty().take(1000)
+                val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty().take(36)
                 val sourceHash = intent.getStringExtra(EXTRA_SOURCE_HASH).orEmpty().take(64)
                 val target = intent.getIntExtra(EXTRA_TARGET, 33).coerceIn(1, 9999)
-                if (reference.isBlank() || sourceHash.isBlank()) return null
-                return SessionArguments(id, title.take(60), arabic, transliteration, meaning, reference, sourceHash, target)
+                if (profileId.isBlank() || sourceHash.isBlank()) return null
+                if (runCatching { java.util.UUID.fromString(profileId) }.isFailure) return null
+                return SessionArguments(id, title.take(60), arabic, transliteration, meaning, profileId, sourceHash, target)
             }
         }
     }
@@ -422,7 +428,7 @@ internal class VoiceCountingService : Service() {
         private const val EXTRA_ARABIC = "arabic"
         private const val EXTRA_TRANSLITERATION = "transliteration"
         private const val EXTRA_MEANING = "meaning"
-        private const val EXTRA_REFERENCE_TEXT = "reference_text"
+        private const val EXTRA_PROFILE_ID = "profile_id"
         private const val EXTRA_SOURCE_HASH = "source_hash"
         private const val EXTRA_TARGET = "target"
         private const val FOREGROUND_CHANNEL_ID = "voice_counting_foreground_v1"
@@ -440,7 +446,7 @@ internal class VoiceCountingService : Service() {
                 putExtra(EXTRA_ARABIC, dhikr.arabic)
                 putExtra(EXTRA_TRANSLITERATION, dhikr.transliteration)
                 putExtra(EXTRA_MEANING, dhikr.meaning)
-                putExtra(EXTRA_REFERENCE_TEXT, dhikr.voiceReferenceText)
+                putExtra(EXTRA_PROFILE_ID, dhikr.voiceProfileId)
                 putExtra(EXTRA_SOURCE_HASH, dhikr.voiceProfileSourceHash)
                 putExtra(EXTRA_TARGET, target.coerceIn(1, 9999))
             }
