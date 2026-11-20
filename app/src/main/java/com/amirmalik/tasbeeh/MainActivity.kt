@@ -79,6 +79,7 @@ import com.amirmalik.tasbeeh.data.sessionSnapshotForDisplay
 import com.amirmalik.tasbeeh.voice.TargetReachedFeedback
 import com.amirmalik.tasbeeh.voice.VoiceCountingScreen
 import com.amirmalik.tasbeeh.voice.VoiceCountingService
+import com.amirmalik.tasbeeh.voice.VoiceProfileRepository
 import com.amirmalik.tasbeeh.voice.VoiceServiceState
 import com.amirmalik.tasbeeh.voice.openVoiceAppSettings
 import com.amirmalik.tasbeeh.voice.shouldAnnounceTargetReached
@@ -1070,8 +1071,9 @@ private fun TasbeehApp(
             voiceServiceMessage = "Your counter session is paused. Resume it from the main counter before starting voice counting."
             return
         }
-        if (!dhikr.voiceReferenceText.isNotBlank() ||
-            dhikr.voiceProfileSourceHash.isBlank()
+        if (dhikr.voiceProfileId.isBlank() ||
+            dhikr.voiceProfileSourceHash.isBlank() ||
+            dhikr.voiceProfileCreatedAt <= 0L
         ) {
             voiceServiceState = VoiceServiceState.ERROR
             voiceServiceMessage = "Set up a voice sample for this Dhikr in its editor first."
@@ -1238,9 +1240,36 @@ private fun TasbeehApp(
                         editingCustomDhikr = null
                     },
                     onSave = { custom ->
+                        val previousProfileId = editingCustomDhikr?.voiceProfileId.orEmpty()
+                        val nextProfileId = custom.voiceProfileId
                         launchStoreOperation(
                             label = "Saving your Dhikr…",
-                            operation = { store.saveCustomDhikr(custom) },
+                            operation = {
+                                val hasNewProfile = custom.voiceReferenceText.isNotBlank() &&
+                                    nextProfileId.isNotBlank() &&
+                                    nextProfileId != previousProfileId
+                                if (hasNewProfile) {
+                                    VoiceProfileRepository.save(
+                                        context = context,
+                                        profileId = nextProfileId,
+                                        dhikrId = custom.id,
+                                        referenceText = custom.voiceReferenceText,
+                                        sourceHash = custom.voiceProfileSourceHash,
+                                        createdAt = custom.voiceProfileCreatedAt
+                                    )
+                                }
+                                try {
+                                    store.saveCustomDhikr(custom.copy(voiceReferenceText = ""))
+                                    if (previousProfileId.isNotBlank() && previousProfileId != nextProfileId) {
+                                        VoiceProfileRepository.delete(context, previousProfileId)
+                                    }
+                                } catch (error: Throwable) {
+                                    if (hasNewProfile) {
+                                        VoiceProfileRepository.delete(context, nextProfileId)
+                                    }
+                                    throw error
+                                }
+                            },
                             onSuccess = {
                                 showCustomDhikrEditor = false
                                 editingCustomDhikr = null
