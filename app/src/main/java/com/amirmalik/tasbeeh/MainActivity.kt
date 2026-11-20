@@ -1049,11 +1049,23 @@ private fun TasbeehApp(
                     context,
                     android.Manifest.permission.POST_NOTIFICATIONS
                 ) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (notificationPermissionMissing) {
+        if (!notificationPermissionMissing) {
+            launchVoiceCountingService(dhikr, true)
+            return
+        }
+        val permissionPreferences = context.getSharedPreferences(
+            "runtime_permission_prompts_v1",
+            android.content.Context.MODE_PRIVATE
+        )
+        val hasAlreadyAsked = permissionPreferences.getBoolean("target_notifications_requested", false)
+        if (hasAlreadyAsked) {
+            launchVoiceCountingService(dhikr, false)
+        } else {
+            permissionPreferences.edit()
+                .putBoolean("target_notifications_requested", true)
+                .apply()
             pendingNotificationVoiceStart = dhikr
             targetNotificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            launchVoiceCountingService(dhikr, true)
         }
     }
 
