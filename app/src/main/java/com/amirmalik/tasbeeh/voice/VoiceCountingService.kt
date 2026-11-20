@@ -274,7 +274,9 @@ internal class VoiceCountingService : Service() {
                         break
                     }
                     CountOutcome.TARGET_REACHED -> {
-                        TargetReachedFeedback.onTargetReached(applicationContext)
+                        if (shouldAnnounceTargetReached(outcome)) {
+                            TargetReachedFeedback.onTargetReached(applicationContext)
+                        }
                         finalMessage = "TARGET REACHED"
                         finalState = VoiceServiceState.TARGET_REACHED
                         stopRequested.set(true)
