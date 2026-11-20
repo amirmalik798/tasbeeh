@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.UUID
 
 class VoicePhraseRecognitionTest {
 
@@ -61,7 +62,7 @@ class VoicePhraseRecognitionTest {
         assertFalse(legacy.hasUsableVoiceProfile())
 
         val configured = legacy.copy(
-            voiceReferenceText = "سبحان الله",
+            voiceProfileId = UUID.randomUUID().toString(),
             voiceProfileSourceHash = voiceConfigurationHash(legacy.arabic, legacy.transliteration),
             voiceProfileCreatedAt = 100L
         )
