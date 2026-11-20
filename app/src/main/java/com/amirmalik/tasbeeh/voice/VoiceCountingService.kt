@@ -40,6 +40,7 @@ internal enum class VoiceServiceState {
     LISTENING,
     PROCESSING,
     PAUSING,
+    STOPPING,
     PAUSED,
     STOPPED,
     ERROR,
@@ -66,8 +67,12 @@ internal class VoiceCountingService : Service() {
         when (intent?.action) {
             ACTION_STOP -> {
                 pauseRequested.set(false)
+                if (sessionJob?.isActive == true) {
+                    publishState(VoiceServiceState.STOPPING, "Stopping microphone access…")
+                }
                 requestStop()
                 if (sessionJob == null) {
+                    publishState(VoiceServiceState.STOPPED, "Voice counting stopped.")
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelfResult(startId)
                 }
@@ -350,10 +355,10 @@ internal class VoiceCountingService : Service() {
                 runCatching { captureJob?.join() }
                 segmentsCloseAndClear(segments)
                 runCatching { recognizer?.close() }
+                sessionJob = null
                 publishState(finalState, finalMessage)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelfResult(currentStartId)
-                sessionJob = null
             }
         }
     }
