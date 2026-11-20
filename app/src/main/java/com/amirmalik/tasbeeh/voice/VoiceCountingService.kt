@@ -273,8 +273,8 @@ internal class VoiceCountingService : Service() {
                 }
                 if (stopRequested.get()) break
 
-                val outcome = withContext(Dispatchers.IO) {
-                    TasbeehStore(applicationContext).countDhikr(
+                val result = withContext(Dispatchers.IO) {
+                    TasbeehStore(applicationContext).countDhikrWithResult(
                         dhikr = args.title,
                         arabic = args.arabic,
                         transliteration = args.transliteration,
@@ -286,7 +286,7 @@ internal class VoiceCountingService : Service() {
                         expectedVoiceProfileSourceHash = args.sourceHash
                     )
                 }
-                when (outcome) {
+                when (result.outcome) {
                     CountOutcome.PAUSED -> {
                         finalMessage = "Your counter is paused. Resume the session before using voice counting."
                         finalState = VoiceServiceState.STOPPED
@@ -294,9 +294,9 @@ internal class VoiceCountingService : Service() {
                         break
                     }
                     CountOutcome.TARGET_REACHED -> {
-                        if (shouldAnnounceTargetReached(outcome)) {
+                        result.completedSessionId?.let { sessionId ->
                             withContext(Dispatchers.Main.immediate) {
-                                TargetReachedFeedback.onTargetReached(applicationContext)
+                                TargetReachedFeedback.onTargetReached(applicationContext, sessionId)
                             }
                         }
                         finalMessage = "TARGET REACHED"
