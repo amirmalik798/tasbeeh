@@ -11,6 +11,8 @@ import androidx.core.app.NotificationManagerCompat
 import com.amirmalik.tasbeeh.R
 import java.util.Locale
 
+internal const val TARGET_REACHED_ANNOUNCEMENT = "TARGET REACHED"
+
 internal fun shouldAnnounceTargetReached(outcome: CountOutcome): Boolean =
     outcome == CountOutcome.TARGET_REACHED
 
@@ -78,7 +80,7 @@ internal object TargetReachedFeedback {
             putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
         }
         speechEngine.speak(
-            "TARGET REACHED",
+            TARGET_REACHED_ANNOUNCEMENT,
             TextToSpeech.QUEUE_ADD,
             params,
             "serene-dhikr-target-reached"
