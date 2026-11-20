@@ -80,6 +80,7 @@ import com.amirmalik.tasbeeh.voice.TargetReachedFeedback
 import com.amirmalik.tasbeeh.voice.VoiceCountingScreen
 import com.amirmalik.tasbeeh.voice.VoiceCountingService
 import com.amirmalik.tasbeeh.voice.VoiceServiceState
+import com.amirmalik.tasbeeh.voice.shouldAnnounceTargetReached
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -1198,7 +1199,7 @@ private fun TasbeehApp(
             if (outcome == CountOutcome.COUNTED || outcome == CountOutcome.TARGET_REACHED) {
                 onTap()
             }
-            if (outcome == CountOutcome.TARGET_REACHED) {
+            if (shouldAnnounceTargetReached(outcome)) {
                 TargetReachedFeedback.onTargetReached(context)
                 if (showVoiceCountingScreen) {
                     VoiceCountingService.stop(context)
