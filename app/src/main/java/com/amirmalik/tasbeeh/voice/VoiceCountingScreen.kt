@@ -66,10 +66,12 @@ internal fun VoiceCountingScreen(
     val isActive = state == VoiceServiceState.PREPARING ||
         state == VoiceServiceState.LISTENING ||
         state == VoiceServiceState.PROCESSING ||
-        state == VoiceServiceState.PAUSING
+        state == VoiceServiceState.PAUSING ||
+        state == VoiceServiceState.STOPPING
     val isBusy = state == VoiceServiceState.PREPARING ||
         state == VoiceServiceState.PROCESSING ||
-        state == VoiceServiceState.PAUSING
+        state == VoiceServiceState.PAUSING ||
+        state == VoiceServiceState.STOPPING
     val progress = (count.toFloat() / target.coerceAtLeast(1)).coerceIn(0f, 1f)
     Column(
         Modifier.fillMaxSize()
@@ -135,6 +137,7 @@ internal fun VoiceCountingScreen(
                         VoiceServiceState.LISTENING -> "Listening on this device"
                         VoiceServiceState.PROCESSING -> "Checking the phrase"
                         VoiceServiceState.PAUSING -> "Pausing microphone"
+                        VoiceServiceState.STOPPING -> "Stopping microphone"
                         VoiceServiceState.PAUSED -> "Listening paused"
                         VoiceServiceState.TARGET_REACHED -> "Target reached"
                         VoiceServiceState.ERROR -> "Voice count unavailable"
@@ -191,9 +194,21 @@ internal fun VoiceCountingScreen(
                 shape = RoundedCornerShape(17.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF733E33), contentColor = VoiceIvory)
             ) {
+                enabled = state != VoiceServiceState.PAUSING && state != VoiceServiceState.STOPPING,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF733E33), contentColor = VoiceIvory)
+            ) {
                 Icon(if (canPause) Icons.Default.Pause else Icons.Default.Stop, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text(if (canPause) "PAUSE LISTENING" else "STOP LISTENING", fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+                Text(
+                    when {
+                        state == VoiceServiceState.PAUSING -> "PAUSING…"
+                        state == VoiceServiceState.STOPPING -> "STOPPING…"
+                        canPause -> "PAUSE LISTENING"
+                        else -> "STOP LISTENING"
+                    },
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = .8.sp
+                )
             }
         } else if (state != VoiceServiceState.TARGET_REACHED) {
             Button(
