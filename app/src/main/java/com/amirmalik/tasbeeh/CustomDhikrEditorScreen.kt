@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.amirmalik.tasbeeh.data.CustomDhikr
 import com.amirmalik.tasbeeh.voice.VoiceEnrollmentSection
+import com.amirmalik.tasbeeh.voice.voiceConfigurationHash
 import java.util.UUID
 
 private val EditorInk = Color(0xFF090B0A)
@@ -51,6 +52,7 @@ internal fun CustomDhikrEditorScreen(
     var transliteration by remember(existing?.id) { mutableStateOf(existing?.transliteration.orEmpty()) }
     var meaning by remember(existing?.id) { mutableStateOf(existing?.meaning.orEmpty()) }
     var voiceReferenceText by remember(existing?.id) { mutableStateOf(existing?.voiceReferenceText.orEmpty()) }
+    var voiceProfileId by remember(existing?.id) { mutableStateOf(existing?.voiceProfileId.orEmpty()) }
     var voiceProfileSourceHash by remember(existing?.id) { mutableStateOf(existing?.voiceProfileSourceHash.orEmpty()) }
     var voiceProfileCreatedAt by remember(existing?.id) { mutableStateOf(existing?.voiceProfileCreatedAt ?: 0L) }
     var attemptedSave by remember(existing?.id) { mutableStateOf(false) }
@@ -67,6 +69,7 @@ internal fun CustomDhikrEditorScreen(
         transliteration != existing?.transliteration.orEmpty() ||
         meaning != existing?.meaning.orEmpty() ||
         voiceReferenceText != existing?.voiceReferenceText.orEmpty() ||
+        voiceProfileId != existing?.voiceProfileId.orEmpty() ||
         voiceProfileSourceHash != existing?.voiceProfileSourceHash.orEmpty() ||
         voiceProfileCreatedAt != (existing?.voiceProfileCreatedAt ?: 0L)
 
@@ -220,11 +223,12 @@ internal fun CustomDhikrEditorScreen(
                 dhikrId = existing?.id ?: "new-dhikr",
                 arabic = arabic.trim(),
                 transliteration = transliteration.trim(),
-                savedReferenceText = voiceReferenceText,
+                savedProfileId = voiceProfileId,
                 savedSourceHash = voiceProfileSourceHash,
                 savedAt = voiceProfileCreatedAt,
-                onProfileChanged = { reference, sourceHash, createdAt ->
+                onProfileChanged = { reference, profileId, sourceHash, createdAt ->
                     voiceReferenceText = reference
+                    voiceProfileId = profileId
                     voiceProfileSourceHash = sourceHash
                     voiceProfileCreatedAt = createdAt
                 }
@@ -345,6 +349,9 @@ internal fun CustomDhikrEditorScreen(
                     onClick = {
                         attemptedSave = true
                         if (canSave) {
+                            val profileMatchesText = voiceProfileId.isNotBlank() &&
+                                voiceProfileSourceHash == voiceConfigurationHash(arabic.trim(), transliteration.trim()) &&
+                                voiceProfileCreatedAt > 0L
                             onSave(
                                 CustomDhikr(
                                     id = existing?.id ?: UUID.randomUUID().toString(),
@@ -353,9 +360,10 @@ internal fun CustomDhikrEditorScreen(
                                     transliteration = transliteration.trim(),
                                     meaning = meaning.trim(),
                                     createdAt = existing?.createdAt ?: System.currentTimeMillis(),
-                                    voiceReferenceText = voiceReferenceText,
-                                    voiceProfileSourceHash = voiceProfileSourceHash,
-                                    voiceProfileCreatedAt = voiceProfileCreatedAt
+                                    voiceReferenceText = if (profileMatchesText) voiceReferenceText else "",
+                                    voiceProfileId = if (profileMatchesText) voiceProfileId else "",
+                                    voiceProfileSourceHash = if (profileMatchesText) voiceProfileSourceHash else "",
+                                    voiceProfileCreatedAt = if (profileMatchesText) voiceProfileCreatedAt else 0L
                                 )
                             )
                         }
