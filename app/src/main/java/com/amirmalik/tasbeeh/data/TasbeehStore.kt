@@ -38,6 +38,11 @@ enum class CountOutcome {
     STALE_SELECTION
 }
 
+data class CountOperationResult(
+    val outcome: CountOutcome,
+    val completedSessionId: String? = null
+)
+
 internal fun shouldUseLegacyCountOnlyRecovery(
     rawCurrentSession: String,
     hasRecoverableLegacySession: Boolean,
@@ -392,8 +397,31 @@ class TasbeehStore(private val context: Context) {
         expectedCustomDhikrId: String? = null,
         expectedVoiceProfileId: String? = null,
         expectedVoiceProfileSourceHash: String? = null
-    ): CountOutcome {
+    ): CountOutcome = countDhikrWithResult(
+        dhikr = dhikr,
+        arabic = arabic,
+        transliteration = transliteration,
+        meaning = meaning,
+        fallbackTarget = fallbackTarget,
+        now = now,
+        expectedCustomDhikrId = expectedCustomDhikrId,
+        expectedVoiceProfileId = expectedVoiceProfileId,
+        expectedVoiceProfileSourceHash = expectedVoiceProfileSourceHash
+    ).outcome
+
+    suspend fun countDhikrWithResult(
+        dhikr: String,
+        arabic: String,
+        transliteration: String,
+        meaning: String,
+        fallbackTarget: Int,
+        now: Long,
+        expectedCustomDhikrId: String? = null,
+        expectedVoiceProfileId: String? = null,
+        expectedVoiceProfileSourceHash: String? = null
+    ): CountOperationResult {
         var outcome = CountOutcome.COUNTED
+        var completedSessionId: String? = null
         context.tasbeehDataStore.edit { prefs ->
             if (expectedCustomDhikrId != null) {
                 if (prefs[Keys.selectedCustomDhikrId] != expectedCustomDhikrId) {
@@ -450,13 +478,14 @@ class TasbeehStore(private val context: Context) {
             val reachedTarget = nextCount >= target
             val saved = if (reachedTarget) {
                 outcome = CountOutcome.TARGET_REACHED
+                completedSessionId = session.id
                 finishSession(session, now, SessionStatus.COMPLETED)
             } else {
                 session.copy(status = SessionStatus.ACTIVE, endedAt = null)
             }
             prefs[Keys.currentSession] = encodeSession(saved)
         }
-        return outcome
+        return CountOperationResult(outcome, completedSessionId)
     }
 
     suspend fun undoCount(now: Long) {
