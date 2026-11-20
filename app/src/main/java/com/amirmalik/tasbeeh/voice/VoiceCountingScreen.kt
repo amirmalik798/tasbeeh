@@ -65,8 +65,11 @@ internal fun VoiceCountingScreen(
 ) {
     val isActive = state == VoiceServiceState.PREPARING ||
         state == VoiceServiceState.LISTENING ||
-        state == VoiceServiceState.PROCESSING
-    val isBusy = state == VoiceServiceState.PREPARING || state == VoiceServiceState.PROCESSING
+        state == VoiceServiceState.PROCESSING ||
+        state == VoiceServiceState.PAUSING
+    val isBusy = state == VoiceServiceState.PREPARING ||
+        state == VoiceServiceState.PROCESSING ||
+        state == VoiceServiceState.PAUSING
     val progress = (count.toFloat() / target.coerceAtLeast(1)).coerceIn(0f, 1f)
     Column(
         Modifier.fillMaxSize()
@@ -131,6 +134,7 @@ internal fun VoiceCountingScreen(
                         VoiceServiceState.PREPARING -> "Preparing recognition"
                         VoiceServiceState.LISTENING -> "Listening on this device"
                         VoiceServiceState.PROCESSING -> "Checking the phrase"
+                        VoiceServiceState.PAUSING -> "Pausing microphone"
                         VoiceServiceState.PAUSED -> "Listening paused"
                         VoiceServiceState.TARGET_REACHED -> "Target reached"
                         VoiceServiceState.ERROR -> "Voice count unavailable"
