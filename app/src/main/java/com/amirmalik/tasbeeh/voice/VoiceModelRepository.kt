@@ -18,7 +18,7 @@ import java.util.Locale
  */
 internal object VoiceModelRepository {
     const val MODEL_ID = "sherpa-onnx-whisper-tiny-ar-v1"
-    private const val MODEL_REVISION = "65176e2"
+    private const val MODEL_REVISION = "65176e2deb88badc814a94058666cadccc29b61c"
     private const val TOKEN_FILE_MAX_BYTES = 1_000_000L
     private const val ENCODER_MAX_BYTES = 20_000_000L
     private const val DECODER_MAX_BYTES = 100_000_000L
@@ -55,7 +55,7 @@ internal object VoiceModelRepository {
             fileName = "tiny-tokens.txt",
             url = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/resolve/$MODEL_REVISION/tiny-tokens.txt",
             maxBytes = TOKEN_FILE_MAX_BYTES,
-            sha256 = null
+            sha256 = "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126"
         )
     )
 
