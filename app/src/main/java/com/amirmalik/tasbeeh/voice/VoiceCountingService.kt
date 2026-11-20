@@ -325,6 +325,10 @@ internal class VoiceCountingService : Service() {
             captureJob.join()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (error: LinkageError) {
+            Log.w(TAG, "The local speech engine could not be loaded on this device.", error)
+            finalState = VoiceServiceState.ERROR
+            finalMessage = "Offline speech recognition is not supported on this device. Tap counting is still available."
         } catch (error: Exception) {
             Log.w(TAG, "Voice counting session stopped after an error.", error)
             finalState = VoiceServiceState.ERROR
