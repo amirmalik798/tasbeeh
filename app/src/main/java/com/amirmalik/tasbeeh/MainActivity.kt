@@ -1387,6 +1387,9 @@ private fun TasbeehApp(
                         }
                         launchStoreOperation(label = "Deleting your Dhikr…", onSuccess = onDeleted) {
                             store.deleteCustomDhikr(custom.id, System.currentTimeMillis())
+                            if (custom.voiceProfileId.isNotBlank()) {
+                                VoiceProfileRepository.delete(context, custom.voiceProfileId)
+                            }
                         }
                     },
                     onVoiceCount = { custom ->
