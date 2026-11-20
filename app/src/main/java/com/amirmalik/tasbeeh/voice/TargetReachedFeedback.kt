@@ -17,6 +17,7 @@ import java.util.LinkedHashSet
 import java.util.Locale
 
 internal const val TARGET_REACHED_ANNOUNCEMENT = "TARGET REACHED"
+private const val RESERVED_TARGET_NOTIFICATION_ID = 6201
 
 internal fun shouldAnnounceTargetReached(outcome: CountOutcome): Boolean =
     outcome == CountOutcome.TARGET_REACHED
@@ -48,7 +49,7 @@ internal fun notificationIdForSession(sessionId: String): Int {
         (bytes[3].toInt() and 0xff)
     value = value and Int.MAX_VALUE
     return when (value) {
-        0, FIXED_NOTIFICATION_ID -> value xor 0x13579BDF
+        0, RESERVED_TARGET_NOTIFICATION_ID -> value xor 0x13579BDF
         else -> value
     }
 }
@@ -63,7 +64,6 @@ internal fun notificationIdForSession(sessionId: String): Int {
 internal object TargetReachedFeedback {
     private const val TAG = "DhikrTargetTts"
     private const val CHANNEL_ID = "dhikr_target_reached_v1"
-    private const val FIXED_NOTIFICATION_ID = 6201
     private const val PREFS_NAME = "target_completion_feedback_v1"
     private const val KEY_ANNOUNCED_SESSION_IDS = "announced_session_ids"
     private const val MAX_PERSISTED_SESSION_IDS = 64
