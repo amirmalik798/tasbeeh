@@ -69,13 +69,19 @@ internal object VoiceModelRepository {
         )
     }
 
-    fun isInstalled(context: Context): Boolean {
+    fun isInstalled(context: Context): Boolean = runCatching {
         val files = modelFiles(context)
-        return files.encoder.isFile && files.encoder.length() in 1..ENCODER_MAX_BYTES &&
-            files.decoder.isFile && files.decoder.length() in 1..DECODER_MAX_BYTES &&
-            files.tokens.isFile && files.tokens.length() in 100_000..TOKEN_FILE_MAX_BYTES &&
+        files.encoder.isFile &&
+            files.encoder.length() in 1..ENCODER_MAX_BYTES &&
+            sha256(files.encoder) == assets[0].sha256 &&
+            files.decoder.isFile &&
+            files.decoder.length() in 1..DECODER_MAX_BYTES &&
+            sha256(files.decoder) == assets[1].sha256 &&
+            files.tokens.isFile &&
+            files.tokens.length() in 100_000..TOKEN_FILE_MAX_BYTES &&
+            sha256(files.tokens) == assets[2].sha256 &&
             validateTokenFile(files.tokens)
-    }
+    }.getOrDefault(false)
 
     suspend fun ensureInstalled(
         context: Context,
