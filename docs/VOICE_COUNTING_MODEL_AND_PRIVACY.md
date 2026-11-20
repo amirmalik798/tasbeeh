@@ -13,7 +13,7 @@ The selected decoder is Whisper. The implementation does **not** instantiate she
 
 ## Model assets and integrity
 
-The app downloads only these files, on explicit voice setup, over HTTPS into its private `filesDir/voice-models/` directory:
+The app downloads only these files, on explicit voice setup, over HTTPS into its private `noBackupFilesDir/voice-models/` directory (excluded from Android app backup):
 
 | File | Expected size | SHA-256 |
 |---|---:|---|
@@ -46,7 +46,7 @@ Before upgrading sherpa-onnx or changing model/decoder families, repeat the secu
 - The saved voice profile consists of the recognized phrase text, the hash of the Dhikr's Arabic/transliteration configuration, and an enrollment timestamp. It is **not** a speaker embedding or biometric identity profile.
 - If the configured Dhikr text changes, the existing sample becomes stale and voice count is disabled until the user re-enrols.
 - Live audio, transcripts, and profile text are not uploaded to any server or written to logs.
-- Model files and saved phrase metadata stay in app-private storage/DataStore.
+- Model files stay in app-private no-backup storage and are downloaded again after a device restore; saved phrase metadata stays in the existing local DataStore with the user's custom Dhikr.
 - No gallery, photos, videos, shared audio, contacts, location, or broad storage permission is added.
 - The dedicated microphone foreground service is non-exported, starts from an explicit visible-UI action, and uses `START_NOT_STICKY`. It does not resume microphone capture automatically after process death.
 - The existing Media3 Quran/OpenDua playback service is not used for microphone capture.
