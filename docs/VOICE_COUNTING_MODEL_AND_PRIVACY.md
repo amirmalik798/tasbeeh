@@ -43,10 +43,10 @@ Before upgrading sherpa-onnx or changing model/decoder families, repeat the secu
 - Audio capture uses Android `AudioRecord` with the `VOICE_RECOGNITION` source, 16 kHz mono PCM.
 - Enrollment audio is kept in memory only. The temporary sample buffer is zeroed after transcription and is never saved as a file.
 - Recognition audio is segmented into bounded utterances (maximum eight seconds per candidate) with a bounded pending-segment queue.
-- The saved voice profile consists of the recognized phrase text, the hash of the Dhikr's Arabic/transliteration configuration, and an enrollment timestamp. It is **not** a speaker embedding or biometric identity profile.
+- The recognized phrase is stored as a small, versioned JSON profile under app-private `noBackupFilesDir/voice-profiles/`, keyed by a random UUID and bound to a SHA-256 hash of the Dhikr ID. The file also stores the phrase hash and enrollment timestamp. It is **not** a speaker embedding or biometric identity profile.
 - If the configured Dhikr text changes, the existing sample becomes stale and voice count is disabled until the user re-enrols.
-- Live audio, transcripts, and profile text are not uploaded to any server or written to logs.
-- Model files stay in app-private no-backup storage and are downloaded again after a device restore; saved phrase metadata stays in the existing local DataStore with the user's custom Dhikr.
+- Live audio, transcripts, and profile text are not uploaded to any server or written to logs. The transcript is not stored in Preferences DataStore, not passed through the foreground-service Intent, and not included in Android app backup.
+- Model files and recognized phrase profiles stay in app-private no-backup storage and are downloaded/re-enrolled after a device restore; the existing DataStore stores only the profile UUID, Dhikr-text hash and enrollment timestamp with the user's custom Dhikr.
 - No gallery, photos, videos, shared audio, contacts, location, or broad storage permission is added.
 - The dedicated microphone foreground service is non-exported, starts from an explicit visible-UI action, and uses `START_NOT_STICKY`. It does not resume microphone capture automatically after process death.
 - The existing Media3 Quran/OpenDua playback service is not used for microphone capture.
