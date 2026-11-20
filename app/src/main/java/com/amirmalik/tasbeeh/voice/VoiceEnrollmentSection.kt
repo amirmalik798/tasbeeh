@@ -79,6 +79,7 @@ internal fun VoiceEnrollmentSection(
     val hasStaleProfile = savedReferenceText.isNotBlank() && !hasConfiguredProfile
 
     var isWorking by remember(dhikrId) { mutableStateOf(false) }
+    var showPermissionSettings by remember(dhikrId) { mutableStateOf(false) }
     var isRecording by remember(dhikrId) { mutableStateOf(false) }
     var statusText by remember(dhikrId) { mutableStateOf("") }
     var pendingTranscript by remember(dhikrId) { mutableStateOf("") }
@@ -156,6 +157,7 @@ internal fun VoiceEnrollmentSection(
             beginEnrollment()
         } else {
             statusText = "Microphone access was not granted. You can still save and use this Dhikr with tap counting."
+            showPermissionSettings = true
         }
     }
 
@@ -263,6 +265,11 @@ internal fun VoiceEnrollmentSection(
             }
             if (statusText.isNotBlank()) {
                 Text(statusText, color = EnrollmentMuted, fontSize = 11.sp, lineHeight = 17.sp)
+            }
+            if (showPermissionSettings) {
+                TextButton(onClick = { openVoiceAppSettings(context) }) {
+                    Text("OPEN MICROPHONE PERMISSION SETTINGS", color = EnrollmentGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
