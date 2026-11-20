@@ -1198,7 +1198,7 @@ private fun TasbeehApp(
         val selected = selectedCustomDhikr ?: return
         val now = System.currentTimeMillis()
         launchStoreOperation(label = "Saving your count…") {
-            val outcome = store.countDhikr(
+            val result = store.countDhikrWithResult(
                 dhikr = countDhikrTitle.ifBlank { selected.title },
                 arabic = countDhikrArabic ?: selected.arabic,
                 transliteration = countDhikrTransliteration ?: selected.transliteration,
@@ -1206,11 +1206,14 @@ private fun TasbeehApp(
                 fallbackTarget = effectiveTarget,
                 now = now
             )
+            val outcome = result.outcome
             if (outcome == CountOutcome.COUNTED || outcome == CountOutcome.TARGET_REACHED) {
                 onTap()
             }
             if (shouldAnnounceTargetReached(outcome)) {
-                TargetReachedFeedback.onTargetReached(context)
+                result.completedSessionId?.let { sessionId ->
+                    TargetReachedFeedback.onTargetReached(context, sessionId)
+                }
                 if (showVoiceCountingScreen) {
                     VoiceCountingService.stop(context)
                 }
