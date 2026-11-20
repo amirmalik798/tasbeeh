@@ -6,9 +6,13 @@ import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.amirmalik.tasbeeh.data.CountOutcome
 import androidx.core.app.NotificationManagerCompat
 import com.amirmalik.tasbeeh.R
 import java.util.Locale
+
+internal fun shouldAnnounceTargetReached(outcome: CountOutcome): Boolean =
+    outcome == CountOutcome.TARGET_REACHED
 
 /**
  * Announces the target transition through Android's installed TTS engine.
