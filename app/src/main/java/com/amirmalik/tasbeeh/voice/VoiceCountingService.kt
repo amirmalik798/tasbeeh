@@ -24,6 +24,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -307,15 +308,17 @@ internal class VoiceCountingService : Service() {
                 ?: "Voice counting could not continue. Your saved counter remains available."
         } finally {
             stopRequested.set(true)
-            runCatching { activeRecorder?.stop() }
-            captureJob?.cancel()
-            captureJob?.join()
-            segmentsCloseAndClear(segments)
-            recognizer?.close()
-            publishState(finalState, finalMessage)
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelfResult(currentStartId)
-            sessionJob = null
+            withContext(NonCancellable) {
+                runCatching { activeRecorder?.stop() }
+                captureJob?.cancel()
+                runCatching { captureJob?.join() }
+                segmentsCloseAndClear(segments)
+                runCatching { recognizer?.close() }
+                publishState(finalState, finalMessage)
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelfResult(currentStartId)
+                sessionJob = null
+            }
         }
     }
 
