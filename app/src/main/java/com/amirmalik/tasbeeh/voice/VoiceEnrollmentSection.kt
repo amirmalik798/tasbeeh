@@ -144,6 +144,8 @@ internal fun VoiceEnrollmentSection(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (error: LinkageError) {
+                statusText = "Offline speech recognition could not be loaded on this device. You can still save and count this Dhikr using taps."
             } catch (error: Exception) {
                 statusText = error.localizedMessage
                     ?.takeIf { it.isNotBlank() }
