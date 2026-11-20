@@ -243,7 +243,7 @@ internal fun VoiceCountingScreen(
         }
         Spacer(Modifier.height(13.dp))
         Text(
-            "Phrase matching runs locally. Recognition is not speaker identity verification. You can always use the tap counter.",
+            "Phrase matching runs locally, not speaker identity verification. Accepted counts join the same session and can be undone with the existing Undo action when available. You can always return to tap counting.",
             modifier = Modifier.fillMaxWidth(),
             color = VoiceMuted,
             fontSize = 10.sp,
