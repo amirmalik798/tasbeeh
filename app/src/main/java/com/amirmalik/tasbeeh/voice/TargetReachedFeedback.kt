@@ -40,9 +40,10 @@ internal object TargetReachedFeedback {
             pendingAnnouncements = (pendingAnnouncements + 1).coerceAtMost(3)
             if (initializing) return
             initializing = true
-            engine = TextToSpeech(applicationContext) { status ->
-                val speechEngine = engine
-                synchronized(lock) {
+            try {
+                engine = TextToSpeech(applicationContext) { status ->
+                    val speechEngine = engine
+                    synchronized(lock) {
                     initializing = false
                     if (status != TextToSpeech.SUCCESS || speechEngine == null) {
                         pendingAnnouncements = 0
@@ -71,6 +72,11 @@ internal object TargetReachedFeedback {
                         Log.w(TAG, "Could not announce the completed Dhikr target.", error)
                     }
                 }
+                }
+            } catch (error: Exception) {
+                initializing = false
+                pendingAnnouncements = 0
+                Log.w(TAG, "Could not create the Android TTS engine.", error)
             }
         }
     }
@@ -79,12 +85,16 @@ internal object TargetReachedFeedback {
         val params = Bundle().apply {
             putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
         }
-        speechEngine.speak(
-            TARGET_REACHED_ANNOUNCEMENT,
-            TextToSpeech.QUEUE_ADD,
-            params,
-            "serene-dhikr-target-reached"
-        )
+        runCatching {
+            speechEngine.speak(
+                TARGET_REACHED_ANNOUNCEMENT,
+                TextToSpeech.QUEUE_ADD,
+                params,
+                "serene-dhikr-target-reached"
+            )
+        }.onFailure { error ->
+            Log.w(TAG, "Could not speak the target-completion announcement.", error)
+        }
     }
 
     fun showNotification(context: Context) {
