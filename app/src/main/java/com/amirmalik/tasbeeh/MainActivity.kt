@@ -1042,31 +1042,10 @@ private fun TasbeehApp(
         if (pending != null) launchVoiceCountingService(pending, granted)
     }
 
-    fun requestTargetNotificationPermissionOrStart(dhikr: CustomDhikr) {
-        val notificationPermissionMissing =
-            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
-                ContextCompat.checkSelfPermission(
-                    context,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (!notificationPermissionMissing) {
-            launchVoiceCountingService(dhikr, true)
-            return
-        }
-        val permissionPreferences = context.getSharedPreferences(
-            "runtime_permission_prompts_v1",
-            android.content.Context.MODE_PRIVATE
-        )
-        val hasAlreadyAsked = permissionPreferences.getBoolean("target_notifications_requested", false)
-        if (hasAlreadyAsked) {
-            launchVoiceCountingService(dhikr, false)
-        } else {
-            permissionPreferences.edit()
-                .putBoolean("target_notifications_requested", true)
-                .apply()
-            pendingNotificationVoiceStart = dhikr
-            targetNotificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
+    // Target notifications are optional. TTS remains the required completion feedback.
+    // Do not block explicit microphone startup on POST_NOTIFICATIONS.
+    fun requestVoiceSessionStart(dhikr: CustomDhikr) {
+        launchVoiceCountingService(dhikr)
     }
 
     val voicePermissionLauncher = rememberLauncherForActivityResult(
@@ -1075,7 +1054,7 @@ private fun TasbeehApp(
         val pending = pendingVoiceStart
         pendingVoiceStart = null
         if (granted && pending != null) {
-            requestTargetNotificationPermissionOrStart(pending)
+            requestVoiceSessionStart(pending)
         } else if (pending != null) {
             voiceServiceState = VoiceServiceState.ERROR
             voiceServiceMessage = "Microphone permission is required. Tap Start again after enabling it."
@@ -1131,7 +1110,7 @@ private fun TasbeehApp(
                 android.Manifest.permission.RECORD_AUDIO
             ) == android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            requestTargetNotificationPermissionOrStart(dhikr)
+            requestVoiceSessionStart(dhikr)
         } else {
             pendingVoiceStart = dhikr
             voicePermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
