@@ -60,7 +60,7 @@ internal object VoiceModelRepository {
     )
 
     fun modelFiles(context: Context): ModelFiles {
-        val directory = File(context.filesDir, "voice-models/$MODEL_ID")
+        val directory = File(context.noBackupFilesDir, "voice-models/$MODEL_ID")
         return ModelFiles(
             directory = directory,
             encoder = File(directory, assets[0].fileName),
@@ -90,7 +90,7 @@ internal object VoiceModelRepository {
         val files = modelFiles(context)
         if (isInstalled(context)) return@withContext files
 
-        val stats = StatFs(context.filesDir.absolutePath)
+        val stats = StatFs(context.noBackupFilesDir.absolutePath)
         val available = stats.availableBytes
         if (available < REQUIRED_FREE_BYTES) {
             throw IOException("At least 125 MB of free app storage is required to install offline voice recognition.")
