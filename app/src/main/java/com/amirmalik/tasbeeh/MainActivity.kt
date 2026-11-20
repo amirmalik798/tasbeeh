@@ -1,6 +1,7 @@
 package com.amirmalik.tasbeeh
 
 import android.content.ComponentName
+import android.content.IntentFilter
 import android.media.MediaPlayer
 import android.net.ConnectivityManager
 import android.net.Network
@@ -12,6 +13,8 @@ import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -73,6 +76,10 @@ import com.amirmalik.tasbeeh.data.SessionStatus
 import com.amirmalik.tasbeeh.data.TasbeehState
 import com.amirmalik.tasbeeh.data.TasbeehStore
 import com.amirmalik.tasbeeh.data.sessionSnapshotForDisplay
+import com.amirmalik.tasbeeh.voice.TargetReachedFeedback
+import com.amirmalik.tasbeeh.voice.VoiceCountingScreen
+import com.amirmalik.tasbeeh.voice.VoiceCountingService
+import com.amirmalik.tasbeeh.voice.VoiceServiceState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -991,7 +998,39 @@ private fun TasbeehApp(
     var showTarget by remember { mutableStateOf(false) }
     var showDhikrScreen by remember { mutableStateOf(false) }
     var showCustomDhikrEditor by remember { mutableStateOf(false) }
+    var showVoiceCountingScreen by remember { mutableStateOf(false) }
+    var voiceCountingDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
+    var voiceServiceState by remember { mutableStateOf(VoiceServiceState.IDLE) }
+    var voiceServiceMessage by remember { mutableStateOf("Voice counting is ready when you are.") }
+    var voiceTranscript by remember { mutableStateOf("") }
+    var pendingVoiceStart by remember { mutableStateOf<CustomDhikr?>(null) }
     var editingCustomDhikr by remember { mutableStateOf<CustomDhikr?>(null) }
+    val voicePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pending = pendingVoiceStart
+        pendingVoiceStart = null
+        if (granted && pending != null) {
+            val target = state.currentSession
+                ?.takeIf { it.dhikr == pending.title &&
+                    (it.status == SessionStatus.ACTIVE || it.status == SessionStatus.PAUSED)
+                }?.target ?: state.target
+            runCatching {
+                ContextCompat.startForegroundService(
+                    context,
+                    VoiceCountingService.createStartIntent(context, pending, target)
+                )
+            }.onFailure { error ->
+                voiceServiceState = VoiceServiceState.ERROR
+                voiceServiceMessage = error.localizedMessage
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Android could not start voice counting. Please retry."
+            }
+        } else if (pending != null) {
+            voiceServiceState = VoiceServiceState.ERROR
+            voiceServiceMessage = "Microphone permission is required. Tap Start again after enabling it."
+        }
+    }
     val selectedCustomDhikr = state.customDhikrs.firstOrNull { it.id == state.selectedCustomDhikrId }
     LaunchedEffect(state.selectedCustomDhikrId, state.customDhikrs, state.dhikr, state.currentSession?.status) {
         val hasOpenSession = state.currentSession?.status == SessionStatus.ACTIVE ||
@@ -1018,6 +1057,70 @@ private fun TasbeehApp(
                     store.clearDhikrSelection(System.currentTimeMillis())
                 }
             }
+        }
+    }
+
+    fun requestVoiceCounting(dhikr: CustomDhikr) {
+        if (!dhikr.voiceReferenceText.isNotBlank() ||
+            dhikr.voiceProfileSourceHash.isBlank()
+        ) {
+            voiceServiceState = VoiceServiceState.ERROR
+            voiceServiceMessage = "Set up a voice sample for this Dhikr in its editor first."
+            return
+        }
+        if (ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            val target = state.currentSession
+                ?.takeIf { it.dhikr == dhikr.title &&
+                    (it.status == SessionStatus.ACTIVE || it.status == SessionStatus.PAUSED)
+                }?.target ?: state.target
+            runCatching {
+                ContextCompat.startForegroundService(
+                    context,
+                    VoiceCountingService.createStartIntent(context, dhikr, target)
+                )
+                voiceServiceState = VoiceServiceState.PREPARING
+                voiceServiceMessage = "Starting private on-device recognition…"
+            }.onFailure { error ->
+                voiceServiceState = VoiceServiceState.ERROR
+                voiceServiceMessage = error.localizedMessage
+                    ?.takeIf { it.isNotBlank() }
+                    ?: "Android could not start voice counting. Please retry."
+            }
+        } else {
+            pendingVoiceStart = dhikr
+            voicePermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    DisposableEffect(context) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(receiverContext: android.content.Context?, intent: android.content.Intent?) {
+                if (intent?.action != VoiceCountingService.ACTION_STATE) return
+                voiceServiceState = runCatching {
+                    VoiceServiceState.valueOf(
+                        intent.getStringExtra(VoiceCountingService.EXTRA_STATE).orEmpty()
+                    )
+                }.getOrDefault(VoiceServiceState.ERROR)
+                voiceServiceMessage = intent.getStringExtra(VoiceCountingService.EXTRA_MESSAGE)
+                    ?.take(180)
+                    .orEmpty()
+                voiceTranscript = intent.getStringExtra(VoiceCountingService.EXTRA_TRANSCRIPT)
+                    ?.take(180)
+                    .orEmpty()
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(VoiceCountingService.ACTION_STATE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        onDispose {
+            runCatching { context.unregisterReceiver(receiver) }
         }
     }
 
@@ -1063,10 +1166,14 @@ private fun TasbeehApp(
     val canUndo = canUndoCount(state.count, activeSession?.status)
 
     // The editor owns its own BackHandler so it can ask before discarding edits.
-    BackHandler(enabled = showDhikrScreen || showHistoryScreen || showSettings) {
+    BackHandler(enabled = showDhikrScreen || showHistoryScreen || showSettings || showVoiceCountingScreen) {
         if (showCustomDhikrEditor) {
             // The editor owns Back while idle. While saving it disables its
             // handler so this parent handler consumes Back without unmounting it.
+        } else if (showVoiceCountingScreen) {
+            VoiceCountingService.stop(context)
+            showVoiceCountingScreen = false
+            voiceCountingDhikr = null
         } else if (showDhikrScreen) {
             showDhikrScreen = false
         } else if (showHistoryScreen) {
@@ -1088,7 +1195,15 @@ private fun TasbeehApp(
                 fallbackTarget = effectiveTarget,
                 now = now
             )
-            if (outcome == CountOutcome.COUNTED) onTap()
+            if (outcome == CountOutcome.COUNTED || outcome == CountOutcome.TARGET_REACHED) {
+                onTap()
+            }
+            if (outcome == CountOutcome.TARGET_REACHED) {
+                TargetReachedFeedback.onTargetReached(context)
+                if (showVoiceCountingScreen) {
+                    VoiceCountingService.stop(context)
+                }
+            }
         }
     }
 
@@ -1129,6 +1244,29 @@ private fun TasbeehApp(
                 SessionHistoryScreen(
                     session = state.currentSession,
                     onBack = { showHistoryScreen = false }
+                )
+            }
+            showVoiceCountingScreen && voiceCountingDhikr != null -> {
+                VoiceCountingScreen(
+                    dhikr = voiceCountingDhikr!!,
+                    count = state.count,
+                    target = state.currentSession
+                        ?.takeIf { it.dhikr == voiceCountingDhikr?.title }
+                        ?.target ?: state.target,
+                    state = voiceServiceState,
+                    message = voiceServiceMessage,
+                    transcript = voiceTranscript,
+                    onStart = { voiceCountingDhikr?.let(::requestVoiceCounting) },
+                    onStop = {
+                        VoiceCountingService.stop(context)
+                        voiceServiceState = VoiceServiceState.STOPPED
+                        voiceServiceMessage = "Voice counting stopped. Your saved count is unchanged."
+                    },
+                    onBack = {
+                        VoiceCountingService.stop(context)
+                        showVoiceCountingScreen = false
+                        voiceCountingDhikr = null
+                    }
                 )
             }
             showDhikrScreen -> {
@@ -1192,9 +1330,43 @@ private fun TasbeehApp(
                         showCustomDhikrEditor = true
                     },
                     onDeleteCustom = { custom, onDeleted ->
+                        if (voiceCountingDhikr?.id == custom.id) {
+                            VoiceCountingService.stop(context)
+                            showVoiceCountingScreen = false
+                            voiceCountingDhikr = null
+                        }
                         launchStoreOperation(label = "Deleting your Dhikr…", onSuccess = onDeleted) {
                             store.deleteCustomDhikr(custom.id, System.currentTimeMillis())
                         }
+                    },
+                    onVoiceCount = { custom ->
+                        val openVoiceScreen = {
+                            voiceCountingDhikr = custom
+                            voiceServiceState = VoiceServiceState.STOPPED
+                            voiceServiceMessage = "Ready. Start listening when you want to count."
+                            voiceTranscript = ""
+                            showDhikrScreen = false
+                            showVoiceCountingScreen = true
+                        }
+                        if (custom.id == state.selectedCustomDhikrId) {
+                            openVoiceScreen()
+                        } else {
+                            launchStoreOperation(
+                                label = "Selecting your Dhikr…",
+                                onSuccess = openVoiceScreen
+                            ) {
+                                store.selectCustomDhikr(custom, System.currentTimeMillis())
+                            }
+                        }
+                    },
+                    onVoiceSetup = { custom ->
+                        if (voiceCountingDhikr?.id == custom.id) {
+                            VoiceCountingService.stop(context)
+                            showVoiceCountingScreen = false
+                            voiceCountingDhikr = null
+                        }
+                        editingCustomDhikr = custom
+                        showCustomDhikrEditor = true
                     }
                 )
             }
