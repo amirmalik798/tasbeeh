@@ -199,7 +199,12 @@ internal object VoiceModelRepository {
     private fun openTrustedConnection(initialUrl: String): HttpURLConnection {
         var current = URL(initialUrl)
         repeat(6) {
-            if (current.protocol != "https" || !isTrustedModelHost(current.host)) {
+            if (
+                current.protocol != "https" ||
+                (current.port != -1 && current.port != 443) ||
+                current.userInfo != null ||
+                !isTrustedHuggingFaceModelHost(current.host)
+            ) {
                 throw IOException("The model download redirected to an untrusted host.")
             }
             val connection = current.openConnection() as? HttpURLConnection
@@ -230,11 +235,19 @@ internal object VoiceModelRepository {
         throw IOException("The model host redirected too many times.")
     }
 
-    private fun isTrustedModelHost(host: String): Boolean {
-        val normalized = host.lowercase(Locale.ROOT)
+    /**
+     * Hugging Face serves immutable model files from both huggingface.co and
+     * its documented hf.co storage/CDN family (for example us.aws.cdn.hf.co
+     * and cdn-lfs-us-1.hf.co). Matching is suffix-boundary aware: lookalike
+     * hosts such as "hf.co.attacker.example" are never accepted.
+     */
+    internal fun isTrustedHuggingFaceModelHost(host: String): Boolean {
+        val normalized = host.trimEnd('.').lowercase(Locale.ROOT)
+        if (normalized.isBlank() || normalized.length > 253) return false
         return normalized == "huggingface.co" ||
             normalized.endsWith(".huggingface.co") ||
-            normalized.endsWith(".xethub.hf.co")
+            normalized == "hf.co" ||
+            normalized.endsWith(".hf.co")
     }
 
     private fun validateTokenFile(file: File): Boolean = runCatching {
