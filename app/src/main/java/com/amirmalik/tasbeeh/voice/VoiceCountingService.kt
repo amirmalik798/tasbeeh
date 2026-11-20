@@ -39,6 +39,7 @@ internal enum class VoiceServiceState {
     PREPARING,
     LISTENING,
     PROCESSING,
+    PAUSED,
     STOPPED,
     ERROR,
     TARGET_REACHED
@@ -52,6 +53,7 @@ internal enum class VoiceServiceState {
 internal class VoiceCountingService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val stopRequested = AtomicBoolean(false)
+    private val pauseRequested = AtomicBoolean(false)
     @Volatile private var activeRecorder: android.media.AudioRecord? = null
     private var sessionJob: Job? = null
     private var currentStartId: Int = 0
@@ -62,8 +64,18 @@ internal class VoiceCountingService : Service() {
         currentStartId = startId
         when (intent?.action) {
             ACTION_STOP -> {
+                pauseRequested.set(false)
                 requestStop()
                 if (sessionJob == null) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelfResult(startId)
+                }
+            }
+            ACTION_PAUSE -> {
+                pauseRequested.set(true)
+                requestStop()
+                if (sessionJob == null) {
+                    publishState(VoiceServiceState.PAUSED, "Listening paused. Your saved counter session remains available.")
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelfResult(startId)
                 }
@@ -95,6 +107,7 @@ internal class VoiceCountingService : Service() {
                     return START_NOT_STICKY
                 }
                 stopRequested.set(false)
+                pauseRequested.set(false)
                 publishState(VoiceServiceState.PREPARING, "Preparing offline voice recognition…")
                 sessionJob = serviceScope.launch {
                     runVoiceSession(args)
@@ -298,6 +311,10 @@ internal class VoiceCountingService : Service() {
                     }
                 }
             }
+            if (pauseRequested.get() && finalState == VoiceServiceState.STOPPED) {
+                finalState = VoiceServiceState.PAUSED
+                finalMessage = "Listening paused. Resume whenever you are ready; your count is preserved."
+            }
             captureJob.join()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -393,6 +410,7 @@ internal class VoiceCountingService : Service() {
     companion object {
         private const val TAG = "VoiceCountingService"
         private const val ACTION_START = "com.amirmalik.tasbeeh.voice.START"
+        private const val ACTION_PAUSE = "com.amirmalik.tasbeeh.voice.PAUSE"
         private const val ACTION_STOP = "com.amirmalik.tasbeeh.voice.STOP"
         const val ACTION_STATE = "com.amirmalik.tasbeeh.voice.STATE"
         const val EXTRA_STATE = "state"
@@ -426,6 +444,14 @@ internal class VoiceCountingService : Service() {
                 putExtra(EXTRA_SOURCE_HASH, dhikr.voiceProfileSourceHash)
                 putExtra(EXTRA_TARGET, target.coerceIn(1, 9999))
             }
+
+        fun pause(context: Context) {
+            runCatching {
+                context.startService(
+                    Intent(context, VoiceCountingService::class.java).setAction(ACTION_PAUSE)
+                )
+            }.onFailure { Log.w(TAG, "Could not pause voice counting.", it) }
+        }
 
         fun stop(context: Context) {
             runCatching {
