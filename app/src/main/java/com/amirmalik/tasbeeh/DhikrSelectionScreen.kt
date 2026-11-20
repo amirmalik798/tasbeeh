@@ -807,7 +807,7 @@ private fun DhikrOptionCard(
                     contentPadding = PaddingValues(vertical = 5.dp)
                 ) {
                     Icon(
-                        androidx.compose.material.icons.filled.Mic,
+                        Icons.Default.Mic,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
                         tint = gold
