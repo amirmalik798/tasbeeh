@@ -26,6 +26,16 @@ The counter, preferences, custom dhikr collection, Favorites and single current-
 
 Recorded audio is played by an Android Media3 `MediaSessionService`, not by the Activity. Playback continues when the app UI is backgrounded or the screen is off, with a system media notification and lock-screen / Bluetooth media controls. The service maintains a bounded, trusted-URL playlist checkpoint so playback can be resumed if Android terminates the service process. As with any Android foreground service, the OS, battery restrictions, loss of connectivity, or user force-stop can still interrupt playback; the service is not a guarantee against every device/vendor shutdown.
 
+## Voice counting
+
+Voice counting is an optional, on-device input method for personal Dhikrs in **My Dhikhrs**. A user explicitly records a short sample in the custom Dhikr editor and then starts listening from that Dhikr's **Voice count** action. The first setup downloads the pinned multilingual Whisper Tiny int8 model (about 104 MB extracted) into app-private storage; after setup, recognition works offline. Temporary microphone samples are held in memory only and cleared after transcription. Serene Dhikr does not upload microphone audio, recognized phrases, or voice profiles.
+
+The current implementation performs Arabic phrase matching, not speaker identity verification: another speaker saying the same phrase may also be accepted, and background audio can cause recognition errors. Voice counting is therefore a convenience, not an identity/security feature. Users can always return to the existing tap counter. The app asks for microphone access only when the user chooses to record a sample or start voice counting; it does not request gallery, shared-media, contacts, location, or broad storage permissions. A dedicated microphone foreground service owns active listening and is stopped by Pause, Stop, target completion, or session teardown. It does not reuse the Quran/OpenDua playback service.
+
+When the saved session reaches its target through either tap or voice counting, Android TTS announces **“TARGET REACHED”**. The in-app completion banner remains, and a quiet notification is shown when Android notifications are enabled.
+
+Model, dependency, checksum, security, and privacy details are documented in [Voice counting model and privacy](docs/VOICE_COUNTING_MODEL_AND_PRIVACY.md).
+
 ## Catalogue structure
 
 The built-in library is now sourced from two separate collections. The category order is fixed:
