@@ -68,5 +68,7 @@ class VoicePhraseRecognitionTest {
         )
         assertTrue(configured.hasUsableVoiceProfile())
         assertFalse(configured.copy(arabic = "الحمد لله").hasUsableVoiceProfile())
+        assertFalse(configured.copy(voiceProfileId = "not-a-uuid").hasUsableVoiceProfile())
+        assertFalse(configured.copy(voiceProfileCreatedAt = 0L).hasUsableVoiceProfile())
     }
 }
