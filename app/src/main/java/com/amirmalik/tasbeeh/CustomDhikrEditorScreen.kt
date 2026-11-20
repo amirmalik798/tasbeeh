@@ -226,6 +226,7 @@ internal fun CustomDhikrEditorScreen(
                 savedProfileId = voiceProfileId,
                 savedSourceHash = voiceProfileSourceHash,
                 savedAt = voiceProfileCreatedAt,
+                isProfileStaged = voiceReferenceText.isNotBlank(),
                 onProfileChanged = { reference, profileId, sourceHash, createdAt ->
                     voiceReferenceText = reference
                     voiceProfileId = profileId
