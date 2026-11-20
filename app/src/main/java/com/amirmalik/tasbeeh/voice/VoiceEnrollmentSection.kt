@@ -47,6 +47,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 private val EnrollmentPanel = Color(0xFF141A15)
@@ -56,27 +57,28 @@ private val EnrollmentMuted = Color(0xFF9A9B8D)
 
 /**
  * Optional voice enrollment. The captured waveform exists only in memory and is
- * zeroed immediately after transcription. Only the reviewed transcript and source
- * text hash are passed back to the custom-Dhikr editor for its normal Save action.
+ * zeroed immediately after transcription. The reviewed transcript is kept in editor
+ * memory only until save, then written to the app's no-backup voice-profile store.
  */
 @Composable
 internal fun VoiceEnrollmentSection(
     dhikrId: String,
     arabic: String,
     transliteration: String,
-    savedReferenceText: String,
+    savedProfileId: String,
     savedSourceHash: String,
     savedAt: Long,
-    onProfileChanged: (referenceText: String, sourceHash: String, createdAt: Long) -> Unit
+    onProfileChanged: (referenceText: String, profileId: String, sourceHash: String, createdAt: Long) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val currentSourceHash = remember(arabic, transliteration) {
         voiceConfigurationHash(arabic, transliteration)
     }
-    val hasConfiguredProfile = savedReferenceText.isNotBlank() &&
-        savedSourceHash.isNotBlank() && savedSourceHash == currentSourceHash
-    val hasStaleProfile = savedReferenceText.isNotBlank() && !hasConfiguredProfile
+    val hasProfileMetadata = savedProfileId.isNotBlank()
+    val hasConfiguredProfile = hasProfileMetadata &&
+        savedSourceHash.isNotBlank() && savedSourceHash == currentSourceHash && savedAt > 0L
+    val hasStaleProfile = hasProfileMetadata && !hasConfiguredProfile
 
     var isWorking by remember(dhikrId) { mutableStateOf(false) }
     var showPermissionSettings by remember(dhikrId) { mutableStateOf(false) }
@@ -127,8 +129,13 @@ internal fun VoiceEnrollmentSection(
                             "The spoken sample did not match the Arabic Dhikr text. Check the text or try recording again."
                         )
                     }
-                    onProfileChanged(transcript, currentSourceHash, System.currentTimeMillis())
-                    statusText = "Voice phrase saved. It will be stored with this Dhikr when you save the editor."
+                    onProfileChanged(
+                        transcript,
+                        UUID.randomUUID().toString(),
+                        currentSourceHash,
+                        System.currentTimeMillis()
+                    )
+                    statusText = "Voice phrase prepared. It will be kept privately on this device when you save the Dhikr."
                 } else {
                     pendingTranscript = transcript
                     pendingHash = currentSourceHash
@@ -176,11 +183,18 @@ internal fun VoiceEnrollmentSection(
         }
     }
 
-    LaunchedEffect(currentSourceHash, savedSourceHash, savedReferenceText) {
+    LaunchedEffect(currentSourceHash, savedProfileId, savedSourceHash, savedAt, dhikrId) {
         if (hasStaleProfile) {
             statusText = "The Dhikr text changed after this sample was recorded. Record a new sample before voice counting."
-        } else if (hasConfiguredProfile && statusText.isBlank()) {
-            statusText = "Voice phrase is set up for this Dhikr."
+        } else if (hasConfiguredProfile) {
+            val exists = withContext(Dispatchers.IO) {
+                VoiceProfileRepository.load(context, savedProfileId, dhikrId, currentSourceHash) != null
+            }
+            statusText = if (exists) {
+                "Voice phrase is set up on this device."
+            } else {
+                "The private voice sample is not present on this device. Record it again to enable voice counting."
+            }
         }
     }
 
@@ -252,10 +266,15 @@ internal fun VoiceEnrollmentSection(
                 }
                 Button(
                     onClick = {
-                        onProfileChanged(pendingTranscript, pendingHash, System.currentTimeMillis())
+                        onProfileChanged(
+                            pendingTranscript,
+                            UUID.randomUUID().toString(),
+                            pendingHash,
+                            System.currentTimeMillis()
+                        )
                         pendingTranscript = ""
                         pendingHash = ""
-                        statusText = "Voice phrase saved. It will be stored with this Dhikr when you save the editor."
+                        statusText = "Voice phrase prepared. It will be kept privately on this device when you save the Dhikr."
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = EnrollmentGold, contentColor = Color(0xFF17130A))
@@ -309,10 +328,10 @@ internal fun VoiceEnrollmentSection(
                         }
                     }
                 }
-                if (savedReferenceText.isNotBlank()) {
+                if (savedProfileId.isNotBlank()) {
                     TextButton(
                         onClick = {
-                            onProfileChanged("", "", 0L)
+                            onProfileChanged("", "", "", 0L)
                             pendingTranscript = ""
                             pendingHash = ""
                             statusText = "Voice sample removed. Tap counting remains available."
