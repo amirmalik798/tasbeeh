@@ -38,7 +38,7 @@ internal class VoiceRepetitionSegmenter {
             trailingSilenceSamples += frame.size
         } else {
             preRoll.addLast(frame.copyOf())
-            while (preRoll.size > PRE_ROLL_FRAMES) preRoll.removeFirst()
+            while (preRoll.size > PRE_ROLL_FRAMES) preRoll.removeFirst().fill(0f)
         }
 
         return if (isRecording &&
