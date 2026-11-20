@@ -183,6 +183,8 @@ internal fun VoiceEnrollmentSection(
         onDispose {
             activeStopSignal?.set(true)
             enrollmentJob?.cancel()
+            pendingTranscript = ""
+            pendingHash = ""
         }
     }
 
