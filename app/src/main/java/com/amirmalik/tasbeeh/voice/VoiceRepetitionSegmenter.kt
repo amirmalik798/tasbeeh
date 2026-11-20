@@ -22,7 +22,11 @@ internal class VoiceRepetitionSegmenter {
         if (speech) {
             if (!isRecording) {
                 isRecording = true
-                while (preRoll.isNotEmpty()) currentFrames.add(preRoll.removeFirst())
+                while (preRoll.isNotEmpty()) {
+                    val bufferedFrame = preRoll.removeFirst()
+                    currentFrames.add(bufferedFrame)
+                    totalSamples += bufferedFrame.size
+                }
             }
             currentFrames.add(frame.copyOf())
             speechSamples += frame.size
@@ -49,7 +53,7 @@ internal class VoiceRepetitionSegmenter {
 
     fun discardPending() {
         resetCurrent()
-        preRoll.clear()
+        while (preRoll.isNotEmpty()) preRoll.removeFirst().fill(0f)
     }
 
     private fun finishCurrent(): FloatArray? {
