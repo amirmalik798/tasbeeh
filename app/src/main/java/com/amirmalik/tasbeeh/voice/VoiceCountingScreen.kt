@@ -54,7 +54,9 @@ internal fun VoiceCountingScreen(
     state: VoiceServiceState,
     message: String,
     transcript: String,
+    canPause: Boolean,
     onStart: () -> Unit,
+    onPause: () -> Unit,
     onStop: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -126,6 +128,7 @@ internal fun VoiceCountingScreen(
                         VoiceServiceState.PREPARING -> "Preparing recognition"
                         VoiceServiceState.LISTENING -> "Listening on this device"
                         VoiceServiceState.PROCESSING -> "Checking the phrase"
+                        VoiceServiceState.PAUSED -> "Listening paused"
                         VoiceServiceState.TARGET_REACHED -> "Target reached"
                         VoiceServiceState.ERROR -> "Voice count unavailable"
                         else -> "Voice counting stopped"
@@ -176,14 +179,14 @@ internal fun VoiceCountingScreen(
         Spacer(Modifier.weight(1f))
         if (isActive) {
             Button(
-                onClick = onStop,
+                onClick = if (canPause) onPause else onStop,
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 shape = RoundedCornerShape(17.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF733E33), contentColor = VoiceIvory)
             ) {
-                Icon(Icons.Default.Stop, contentDescription = null)
+                Icon(if (canPause) Icons.Default.Pause else Icons.Default.Stop, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text("STOP LISTENING", fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+                Text(if (canPause) "PAUSE LISTENING" else "STOP LISTENING", fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
             }
         } else if (state != VoiceServiceState.TARGET_REACHED) {
             Button(
@@ -194,7 +197,7 @@ internal fun VoiceCountingScreen(
             ) {
                 Icon(Icons.Default.Mic, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text("START VOICE COUNT", fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+                Text(if (state == VoiceServiceState.PAUSED) "RESUME LISTENING" else "START VOICE COUNT", fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
             }
         }
         Spacer(Modifier.height(8.dp))
