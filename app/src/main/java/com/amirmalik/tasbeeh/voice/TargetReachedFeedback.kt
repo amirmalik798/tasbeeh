@@ -1,6 +1,8 @@
 package com.amirmalik.tasbeeh.voice
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
@@ -8,6 +10,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.amirmalik.tasbeeh.data.CountOutcome
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.amirmalik.tasbeeh.R
 import java.util.Locale
 
@@ -100,6 +103,14 @@ internal object TargetReachedFeedback {
 
     fun showNotification(context: Context) {
         runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return
+            }
             val manager = NotificationManagerCompat.from(context)
             if (!manager.areNotificationsEnabled()) return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
