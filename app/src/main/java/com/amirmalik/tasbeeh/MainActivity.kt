@@ -1062,6 +1062,13 @@ private fun TasbeehApp(
     }
 
     fun requestVoiceCounting(dhikr: CustomDhikr) {
+        if (state.currentSession?.status == SessionStatus.PAUSED &&
+            state.currentSession.dhikr == dhikr.title
+        ) {
+            voiceServiceState = VoiceServiceState.STOPPED
+            voiceServiceMessage = "Your counter session is paused. Resume it from the main counter before starting voice counting."
+            return
+        }
         if (!dhikr.voiceReferenceText.isNotBlank() ||
             dhikr.voiceProfileSourceHash.isBlank()
         ) {
@@ -1257,7 +1264,18 @@ private fun TasbeehApp(
                     state = voiceServiceState,
                     message = voiceServiceMessage,
                     transcript = voiceTranscript,
-                    onStart = { voiceCountingDhikr?.let(::requestVoiceCounting) },
+                    canPause = state.currentSession?.let {
+                        it.dhikr == voiceCountingDhikr?.title && it.status == SessionStatus.ACTIVE
+                    } == true,
+                    canStart = state.currentSession?.let {
+                        it.dhikr != voiceCountingDhikr?.title || it.status != SessionStatus.PAUSED
+                    } != false,
+                    onStart = { voiceCountingDhikr?.let { requestVoiceCounting(it) } },
+                    onPause = {
+                        VoiceCountingService.pause(context)
+                        voiceServiceState = VoiceServiceState.PAUSED
+                        voiceServiceMessage = "Listening paused. Your counter session and saved count remain available."
+                    },
                     onStop = {
                         VoiceCountingService.stop(context)
                         voiceServiceState = VoiceServiceState.STOPPED
