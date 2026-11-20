@@ -68,6 +68,7 @@ internal fun VoiceEnrollmentSection(
     savedProfileId: String,
     savedSourceHash: String,
     savedAt: Long,
+    isProfileStaged: Boolean,
     onProfileChanged: (referenceText: String, profileId: String, sourceHash: String, createdAt: Long) -> Unit
 ) {
     val context = LocalContext.current
@@ -183,17 +184,23 @@ internal fun VoiceEnrollmentSection(
         }
     }
 
-    LaunchedEffect(currentSourceHash, savedProfileId, savedSourceHash, savedAt, dhikrId) {
-        if (hasStaleProfile) {
-            statusText = "The Dhikr text changed after this sample was recorded. Record a new sample before voice counting."
-        } else if (hasConfiguredProfile) {
-            val exists = withContext(Dispatchers.IO) {
-                VoiceProfileRepository.load(context, savedProfileId, dhikrId, currentSourceHash) != null
+    LaunchedEffect(currentSourceHash, savedProfileId, savedSourceHash, savedAt, isProfileStaged, dhikrId) {
+        when {
+            hasStaleProfile -> {
+                statusText = "The Dhikr text changed after this sample was recorded. Record a new sample before voice counting."
             }
-            statusText = if (exists) {
-                "Voice phrase is set up on this device."
-            } else {
-                "The private voice sample is not present on this device. Record it again to enable voice counting."
+            hasConfiguredProfile && isProfileStaged -> {
+                statusText = "Voice sample ready. Save this Dhikr to store the phrase privately on this device."
+            }
+            hasConfiguredProfile -> {
+                val exists = withContext(Dispatchers.IO) {
+                    VoiceProfileRepository.load(context, savedProfileId, dhikrId, currentSourceHash) != null
+                }
+                statusText = if (exists) {
+                    "Voice phrase is set up on this device."
+                } else {
+                    "The private voice sample is not present on this device. Record it again to enable voice counting."
+                }
             }
         }
     }
@@ -241,7 +248,7 @@ internal fun VoiceEnrollmentSection(
                     fontWeight = FontWeight.Bold
                 )
             }
-            if (savedAt > 0L && hasConfiguredProfile) {
+            if (savedAt > 0L && hasConfiguredProfile && !isProfileStaged) {
                 Text(
                     "Sample saved locally · ${java.text.DateFormat.getDateInstance().format(java.util.Date(savedAt))}",
                     color = EnrollmentMuted,
