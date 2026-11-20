@@ -80,17 +80,17 @@ internal object VoiceAudioRecorder {
                     written += read
                 }
             }
+            if (written < MIN_ENROLLMENT_SAMPLES) {
+                throw IOException("The recording was too short. Speak one complete Dhikr, then stop.")
+            }
+            captured.copyOf(written)
         } finally {
+            captured.fill(0f)
+            frame.fill(0)
             runCatching {
                 if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) recorder.stop()
             }
             recorder.release()
-            frame.fill(0)
         }
-        if (written < MIN_ENROLLMENT_SAMPLES) {
-            captured.fill(0f)
-            throw IOException("The recording was too short. Speak one complete Dhikr, then stop.")
-        }
-        captured.copyOf(written).also { captured.fill(0f) }
     }
 }
