@@ -55,6 +55,7 @@ internal fun VoiceCountingScreen(
     message: String,
     transcript: String,
     canPause: Boolean,
+    canStart: Boolean,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
@@ -193,11 +194,20 @@ internal fun VoiceCountingScreen(
                 onClick = onStart,
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 shape = RoundedCornerShape(17.dp),
+                enabled = canStart,
                 colors = ButtonDefaults.buttonColors(containerColor = VoiceGold, contentColor = VoiceInk)
             ) {
                 Icon(Icons.Default.Mic, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text(if (state == VoiceServiceState.PAUSED) "RESUME LISTENING" else "START VOICE COUNT", fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+                Text(
+                    when {
+                        !canStart -> "COUNTER PAUSED"
+                        state == VoiceServiceState.PAUSED -> "RESUME LISTENING"
+                        else -> "START VOICE COUNT"
+                    },
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = .8.sp
+                )
             }
         }
         Spacer(Modifier.height(8.dp))
