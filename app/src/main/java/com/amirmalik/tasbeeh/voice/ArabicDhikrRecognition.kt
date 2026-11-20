@@ -4,6 +4,7 @@ import com.amirmalik.tasbeeh.data.CustomDhikr
 import java.security.MessageDigest
 import java.text.Normalizer
 import java.util.Locale
+import java.util.UUID
 
 /**
  * Deterministic text normalization used for both enrollment and finalized ASR results.
@@ -99,6 +100,8 @@ internal fun voiceConfigurationHash(arabic: String, transliteration: String): St
 }
 
 internal fun CustomDhikr.hasUsableVoiceProfile(): Boolean =
-    voiceReferenceText.isNotBlank() &&
+    voiceProfileId.isNotBlank() &&
+        runCatching { UUID.fromString(voiceProfileId) }.isSuccess &&
         voiceProfileSourceHash.isNotBlank() &&
-        voiceProfileSourceHash == voiceConfigurationHash(arabic, transliteration)
+        voiceProfileSourceHash == voiceConfigurationHash(arabic, transliteration) &&
+        voiceProfileCreatedAt > 0L
