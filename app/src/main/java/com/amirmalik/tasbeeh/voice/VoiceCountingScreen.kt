@@ -60,6 +60,7 @@ internal fun VoiceCountingScreen(
     onStart: () -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
+    onOpenSettings: () -> Unit,
     onBack: () -> Unit
 ) {
     val isActive = state == VoiceServiceState.PREPARING ||
@@ -209,6 +210,11 @@ internal fun VoiceCountingScreen(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = .8.sp
                 )
+            }
+        }
+        if (state == VoiceServiceState.ERROR && message.contains("microphone permission", ignoreCase = true)) {
+            TextButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+                Text("OPEN MICROPHONE SETTINGS", color = VoiceGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(8.dp))
