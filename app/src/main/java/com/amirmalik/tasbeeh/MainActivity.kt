@@ -1338,8 +1338,6 @@ private fun TasbeehApp(
                     onOpenSettings = { openVoiceAppSettings(context) },
                     onPause = {
                         VoiceCountingService.pause(context)
-                        voiceServiceState = VoiceServiceState.PAUSED
-                        voiceServiceMessage = "Listening paused. Your counter session and saved count remain available."
                     },
                     onStop = {
                         VoiceCountingService.stop(context)
