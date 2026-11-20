@@ -281,7 +281,9 @@ internal class VoiceCountingService : Service() {
                         meaning = args.meaning,
                         fallbackTarget = args.fallbackTarget,
                         now = System.currentTimeMillis(),
-                        expectedCustomDhikrId = args.id
+                        expectedCustomDhikrId = args.id,
+                        expectedVoiceProfileId = args.profileId,
+                        expectedVoiceProfileSourceHash = args.sourceHash
                     )
                 }
                 when (outcome) {
