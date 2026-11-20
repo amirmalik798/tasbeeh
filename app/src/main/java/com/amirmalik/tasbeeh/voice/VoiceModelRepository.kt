@@ -174,12 +174,20 @@ internal object VoiceModelRepository {
             if (asset.fileName == "tiny-tokens.txt" && !validateTokenFile(temporary)) {
                 throw IOException("The voice model vocabulary file is invalid.")
             }
-            java.nio.file.Files.move(
-                temporary.toPath(),
-                destination.toPath(),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE
-            )
+            try {
+                java.nio.file.Files.move(
+                    temporary.toPath(),
+                    destination.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                )
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                java.nio.file.Files.move(
+                    temporary.toPath(),
+                    destination.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                )
+            }
         } catch (error: Exception) {
             temporary.delete()
             throw error
