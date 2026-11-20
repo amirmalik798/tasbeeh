@@ -432,6 +432,7 @@ class TasbeehStore(private val context: Context) {
                     val currentDhikr = decodeCustomDhikrsForMutation(prefs[Keys.customDhikrs].orEmpty())
                         .firstOrNull { it.id == expectedCustomDhikrId }
                     if (currentDhikr == null ||
+                        currentDhikr.title != dhikr ||
                         currentDhikr.voiceProfileId != expectedVoiceProfileId ||
                         currentDhikr.voiceProfileSourceHash != expectedVoiceProfileSourceHash
                     ) {
