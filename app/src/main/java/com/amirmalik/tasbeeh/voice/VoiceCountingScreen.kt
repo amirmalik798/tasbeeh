@@ -192,10 +192,11 @@ internal fun VoiceCountingScreen(
                 onClick = if (canPause) onPause else onStop,
                 modifier = Modifier.fillMaxWidth().height(54.dp),
                 shape = RoundedCornerShape(17.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF733E33), contentColor = VoiceIvory)
-            ) {
                 enabled = state != VoiceServiceState.PAUSING && state != VoiceServiceState.STOPPING,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF733E33), contentColor = VoiceIvory)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF733E33),
+                    contentColor = VoiceIvory
+                )
             ) {
                 Icon(if (canPause) Icons.Default.Pause else Icons.Default.Stop, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
