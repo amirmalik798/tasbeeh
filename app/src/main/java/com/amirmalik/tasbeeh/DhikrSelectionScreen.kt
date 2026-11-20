@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CloudDone
@@ -385,35 +386,15 @@ internal fun DhikrSelectionScreen(
         }
         Spacer(Modifier.height(3.dp))
         if (filteredItems.isEmpty()) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        if (category == "Favorites") "No favorites yet" else "No dhikr found",
-                        color = Color(0xFFFFF8EA),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        if (category == "Favorites") {
-                            "Tap the star on any Quran or dua entry to save it here."
-                        } else {
-                            "Try another name or clear your filters."
-                        },
-                        color = Color(0xFFB0AA9C),
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(9.dp))
-                    TextButton(onClick = {
-                        query = ""
-                        category = ""
-                        keyboardController?.hide()
-                    }) {
-                        Text("CLEAR SEARCH & FILTERS", color = Color(0xFFFFD56A), fontSize = 11.sp)
-                    }
-                }
-            }
+            DhikrLibraryEmptyState(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                category = category,
+                isSearching = query.isNotBlank(),
+                hasFavorites = searchableItems.any { (item, _) -> item.id in favoriteItemIds },
+                hasPersonalDhikrs = customItems.isNotEmpty(),
+                isStoreBusy = isStoreBusy,
+                onCreateCustom = onCreateCustom
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -943,6 +924,132 @@ private fun DhikrOptionCard(
                     letterSpacing = .45.sp
                 )
             }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun DhikrLibraryEmptyState(
+    modifier: Modifier = Modifier,
+    category: String,
+    isSearching: Boolean,
+    hasFavorites: Boolean,
+    hasPersonalDhikrs: Boolean,
+    isStoreBusy: Boolean,
+    onCreateCustom: () -> Unit
+) {
+    val noFavoritesSaved = category == "Favorites" && !hasFavorites
+    val noPersonalDhikrsCreated = category == "My Dhikhrs" && !hasPersonalDhikrs
+
+    val icon = when {
+        noFavoritesSaved -> Icons.Default.Star
+        noPersonalDhikrsCreated -> Icons.Default.AutoAwesome
+        else -> Icons.Default.Search
+    }
+    val title = when {
+        noFavoritesSaved -> "Your favorites belong here"
+        noPersonalDhikrsCreated -> "Create your personal collection"
+        category == "Favorites" -> "No matching favorites"
+        category == "My Dhikhrs" -> "No matching dhikrs"
+        else -> "No dhikrs found"
+    }
+    val description = when {
+        noFavoritesSaved ->
+            "Save the duas and remembrances you love by tapping the star on any entry. They will be ready for you here."
+        noPersonalDhikrsCreated ->
+            "Add a remembrance of your own, with its Arabic text, pronunciation and meaning, and keep it close in your personal collection."
+        isSearching ->
+            "Nothing in this collection matches your search. Try a different name, Arabic phrase or meaning."
+        else ->
+            "There are no entries to show in this collection right now."
+    }
+    val eyebrow = when {
+        noFavoritesSaved -> "YOUR SAVED COLLECTION"
+        noPersonalDhikrsCreated -> "YOUR PERSONAL COLLECTION"
+        else -> "DHIKR LIBRARY"
+    }
+
+    Column(
+        modifier = modifier.padding(horizontal = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFF131914),
+            shape = RoundedCornerShape(26.dp),
+            border = BorderStroke(1.dp, Color(0xFF384136))
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier.size(68.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFF3B321E), Color(0xFF242A21))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color(0xFFFFD875),
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    eyebrow,
+                    color = Color(0xFFD9B45D),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    title,
+                    color = Color(0xFFFFF8EA),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(9.dp))
+                Text(
+                    description,
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFFB0AA9C),
+                    fontSize = 13.sp,
+                    lineHeight = 20.sp,
+                    textAlign = TextAlign.Center
+                )
+                if (noPersonalDhikrsCreated) {
+                    Spacer(Modifier.height(20.dp))
+                    Button(
+                        onClick = onCreateCustom,
+                        enabled = !isStoreBusy,
+                        shape = RoundedCornerShape(15.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFF0BF4E),
+                            contentColor = Color(0xFF17130A)
+                        )
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "CREATE YOUR FIRST DHIKR",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = .55.sp
+                        )
+                    }
+                }
             }
         }
     }
