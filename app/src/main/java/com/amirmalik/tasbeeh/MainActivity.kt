@@ -80,6 +80,7 @@ import com.amirmalik.tasbeeh.voice.TargetReachedFeedback
 import com.amirmalik.tasbeeh.voice.VoiceCountingScreen
 import com.amirmalik.tasbeeh.voice.VoiceCountingService
 import com.amirmalik.tasbeeh.voice.VoiceServiceState
+import com.amirmalik.tasbeeh.voice.openVoiceAppSettings
 import com.amirmalik.tasbeeh.voice.shouldAnnounceTargetReached
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1271,6 +1272,7 @@ private fun TasbeehApp(
                         it.dhikr != voiceCountingDhikr?.title || it.status != SessionStatus.PAUSED
                     } != false,
                     onStart = { voiceCountingDhikr?.let { requestVoiceCounting(it) } },
+                    onOpenSettings = { openVoiceAppSettings(context) },
                     onPause = {
                         VoiceCountingService.pause(context)
                         voiceServiceState = VoiceServiceState.PAUSED
