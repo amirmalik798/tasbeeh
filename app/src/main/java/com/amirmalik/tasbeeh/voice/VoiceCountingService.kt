@@ -303,6 +303,7 @@ internal class VoiceCountingService : Service() {
                         break
                     }
                     CountOutcome.TARGET_REACHED -> {
+                        stopRequested.set(true)
                         result.completedSessionId?.let { sessionId ->
                             withContext(Dispatchers.Main.immediate) {
                                 TargetReachedFeedback.onTargetReached(applicationContext, sessionId)
@@ -310,7 +311,6 @@ internal class VoiceCountingService : Service() {
                         }
                         finalMessage = "TARGET REACHED"
                         finalState = VoiceServiceState.TARGET_REACHED
-                        stopRequested.set(true)
                         break
                     }
                     CountOutcome.STALE_SELECTION -> {
