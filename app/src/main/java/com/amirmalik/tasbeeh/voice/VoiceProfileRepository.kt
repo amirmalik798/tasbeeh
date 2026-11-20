@@ -49,6 +49,7 @@ internal object VoiceProfileRepository {
         if (createdAt <= 0L) throw IOException("The Dhikr voice profile timestamp is invalid.")
 
         val directory = profileDirectory(context)
+        cleanupTemporaryProfiles(directory)
         if (!directory.exists() && !directory.mkdirs()) {
             throw IOException("Could not create the private voice-profile directory.")
         }
@@ -104,7 +105,9 @@ internal object VoiceProfileRepository {
             if (dhikrId.isBlank() || !expectedSourceHash.matches(Regex("[a-f0-9]{64}"))) {
                 return@runCatching null
             }
-            val file = profileFile(profileDirectory(context), profileId)
+            val directory = profileDirectory(context)
+            cleanupTemporaryProfiles(directory)
+            val file = profileFile(directory, profileId)
             if (!file.isFile || file.length() !in 1..MAX_PROFILE_BYTES.toLong()) {
                 return@runCatching null
             }
@@ -135,6 +138,12 @@ internal object VoiceProfileRepository {
         val directory = profileDirectory(context)
         runCatching { profileFile(directory, profileId).delete() }
         runCatching { File(directory, "${profileId}.json.part").delete() }
+    }
+
+    private fun cleanupTemporaryProfiles(directory: File) {
+        directory.listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".json.part") }
+            ?.forEach { temporary -> runCatching { temporary.delete() } }
     }
 
     private fun profileDirectory(context: Context): File =
