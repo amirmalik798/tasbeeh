@@ -460,7 +460,11 @@ internal fun DhikrSelectionScreen(
                         } else null,
                         onRead = openReader,
                         onEdit = custom?.let { entry -> { onEditCustom(entry) } },
-                        onDelete = custom?.let { entry -> { pendingDelete = entry } }
+                        onDelete = custom?.let { entry -> { pendingDelete = entry } },
+                        onVoiceCount = custom?.takeIf { it.hasUsableVoiceProfile() }
+                            ?.let { entry -> { onVoiceCount(entry) } },
+                        onVoiceSetup = custom?.takeIf { !it.hasUsableVoiceProfile() }
+                            ?.let { entry -> { onVoiceSetup(entry) } }
                     )
                 }
             }
