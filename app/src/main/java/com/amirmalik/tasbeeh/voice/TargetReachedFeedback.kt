@@ -39,39 +39,40 @@ internal object TargetReachedFeedback {
             }
             pendingAnnouncements = (pendingAnnouncements + 1).coerceAtMost(3)
             if (initializing) return
+
             initializing = true
             try {
                 engine = TextToSpeech(applicationContext) { status ->
                     val speechEngine = engine
                     synchronized(lock) {
-                    initializing = false
-                    if (status != TextToSpeech.SUCCESS || speechEngine == null) {
-                        pendingAnnouncements = 0
-                        Log.w(TAG, "The device TTS engine could not be initialized.")
-                        return@synchronized
-                    }
-                    runCatching {
-                        speechEngine.setAudioAttributes(
-                            android.media.AudioAttributes.Builder()
-                                .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
-                                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
-                                .build()
-                        )
-                        val languageResult = speechEngine.setLanguage(Locale.US)
-                        if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
-                            languageResult == TextToSpeech.LANG_NOT_SUPPORTED
-                        ) {
-                            speechEngine.setLanguage(Locale.getDefault())
+                        initializing = false
+                        if (status != TextToSpeech.SUCCESS || speechEngine == null) {
+                            pendingAnnouncements = 0
+                            Log.w(TAG, "The device TTS engine could not be initialized.")
+                            return@synchronized
                         }
-                        speechEngine.setSpeechRate(0.96f)
-                        val queued = pendingAnnouncements
-                        pendingAnnouncements = 0
-                        repeat(queued) { speak(speechEngine) }
-                    }.onFailure { error ->
-                        pendingAnnouncements = 0
-                        Log.w(TAG, "Could not announce the completed Dhikr target.", error)
+                        runCatching {
+                            speechEngine.setAudioAttributes(
+                                android.media.AudioAttributes.Builder()
+                                    .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build()
+                            )
+                            val languageResult = speechEngine.setLanguage(Locale.US)
+                            if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
+                                languageResult == TextToSpeech.LANG_NOT_SUPPORTED
+                            ) {
+                                speechEngine.setLanguage(Locale.getDefault())
+                            }
+                            speechEngine.setSpeechRate(0.96f)
+                            val queued = pendingAnnouncements
+                            pendingAnnouncements = 0
+                            repeat(queued) { speak(speechEngine) }
+                        }.onFailure { error ->
+                            pendingAnnouncements = 0
+                            Log.w(TAG, "Could not announce the completed Dhikr target.", error)
+                        }
                     }
-                }
                 }
             } catch (error: Exception) {
                 initializing = false
@@ -98,32 +99,35 @@ internal object TargetReachedFeedback {
     }
 
     fun showNotification(context: Context) {
-        val manager = NotificationManagerCompat.from(context)
-        if (!manager.areNotificationsEnabled()) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE)
-                as? android.app.NotificationManager ?: return
-            val channel = android.app.NotificationChannel(
-                CHANNEL_ID,
-                "Dhikr target reached",
-                android.app.NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "A quiet notice when your Dhikr target is completed."
-                setSound(null, null)
-                enableVibration(false)
+        runCatching {
+            val manager = NotificationManagerCompat.from(context)
+            if (!manager.areNotificationsEnabled()) return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE)
+                    as? android.app.NotificationManager ?: return
+                val channel = android.app.NotificationChannel(
+                    CHANNEL_ID,
+                    "Dhikr target reached",
+                    android.app.NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "A quiet notice when your Dhikr target is completed."
+                    setSound(null, null)
+                    enableVibration(false)
+                }
+                notificationManager.createNotificationChannel(channel)
             }
-            notificationManager.createNotificationChannel(channel)
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Target reached")
+                .setContentText("MashaAllah — your Dhikr target is complete.")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .build()
+            manager.notify(NOTIFICATION_ID, notification)
+        }.onFailure { error ->
+            Log.w(TAG, "Could not post the target-completion notification.", error)
         }
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Target reached")
-            .setContentText("MashaAllah — your Dhikr target is complete.")
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
-            .build()
-        runCatching { manager.notify(NOTIFICATION_ID, notification) }
-            .onFailure { Log.w(TAG, "Could not post the target-completion notification.", it) }
     }
 
     fun onTargetReached(context: Context) {
