@@ -355,10 +355,10 @@ internal class VoiceCountingService : Service() {
                 runCatching { captureJob?.join() }
                 segmentsCloseAndClear(segments)
                 runCatching { recognizer?.close() }
-                sessionJob = null
                 publishState(finalState, finalMessage)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelfResult(currentStartId)
+                sessionJob = null
             }
         }
     }
