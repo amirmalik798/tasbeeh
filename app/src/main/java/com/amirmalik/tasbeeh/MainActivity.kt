@@ -1255,6 +1255,8 @@ private fun TasbeehApp(
                     onSave = { custom ->
                         val previousProfileId = editingCustomDhikr?.voiceProfileId.orEmpty()
                         val nextProfileId = custom.voiceProfileId
+                        val shouldDeletePreviousProfile = previousProfileId.isNotBlank() &&
+                            previousProfileId != nextProfileId
                         launchStoreOperation(
                             label = "Saving your Dhikr…",
                             operation = {
@@ -1271,16 +1273,9 @@ private fun TasbeehApp(
                                         createdAt = custom.voiceProfileCreatedAt
                                     )
                                 }
-                                try {
-                                    store.saveCustomDhikr(custom.copy(voiceReferenceText = ""))
-                                    if (previousProfileId.isNotBlank() && previousProfileId != nextProfileId) {
-                                        VoiceProfileRepository.delete(context, previousProfileId)
-                                    }
-                                } catch (error: Throwable) {
-                                    if (hasNewProfile) {
-                                        VoiceProfileRepository.delete(context, nextProfileId)
-                                    }
-                                    throw error
+                                store.saveCustomDhikr(custom.copy(voiceReferenceText = ""))
+                                if (shouldDeletePreviousProfile) {
+                                    VoiceProfileRepository.delete(context, previousProfileId)
                                 }
                             },
                             onSuccess = {
